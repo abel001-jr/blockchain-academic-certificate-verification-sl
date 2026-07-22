@@ -1,0 +1,32 @@
+API Key: ee93cbaa4c69aae60aae
+API Secret: b3c4b1629d9cd173fd7fb7c32367af0451b8513f49001827864cfb571f667b27
+JWT: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiI5NjNhNGM2Ny1kMDI4LTQ1ZTItYjkyYi02NmFlMTdmNDExN2EiLCJlbWFpbCI6ImFtc2FtMDQyQGNlbnRyYWwuZWR1LnNsIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsInBpbl9wb2xpY3kiOnsicmVnaW9ucyI6W3siZGVzaXJlZFJlcGxpY2F0aW9uQ291bnQiOjEsImlkIjoiRlJBMSJ9LHsiZGVzaXJlZFJlcGxpY2F0aW9uQ291bnQiOjEsImlkIjoiTllDMSJ9XSwidmVyc2lvbiI6MX0sIm1mYV9lbmFibGVkIjpmYWxzZSwic3RhdHVzIjoiQUNUSVZFIn0sImF1dGhlbnRpY2F0aW9uVHlwZSI6InNjb3BlZEtleSIsInNjb3BlZEtleUtleSI6ImVlOTNjYmFhNGM2OWFhZTYwYWFlIiwic2NvcGVkS2V5U2VjcmV0IjoiYjNjNGIxNjI5ZDljZDE3M2ZkN2ZiN2MzMjM2N2FmMDQ1MWI4NTEzZjQ5MDAxODI3ODY0Y2ZiNTcxZjY2N2IyNyIsImV4cCI6MTgxNTc2OTAxMH0.c-dcKQB01GEIfFAiX473tZheZUT84pornqHRvj1kfHs
+
+
+SMTP with Brevo
+
+login: b24ba5001@smtp-brevo.com
+key: bsku7VwrXKVYq2n
+
+
+main:
+key: xsmtpsib-f5614c8ec1e765743d97d10fe62ed680052a64dcfaa029e59a8a54b8b98295a8-bDazMLg7byNetDfC
+login: b24c96001@smtp-brevo.com
+
+
+Basic commands:
+
+npm run node
+
+npm run compile
+
+npm run test
+
+npm run deploy:local
+npx hardhat run scripts/deploy.ts
+
+rmdir /s /q node_modules\.vite
+or 
+/d /r . %d in (__pycache__) do @if exist "%d" rmdir /s /q "%d"
+
+del /s /q *.pyc 2>nul

@@ -1,0 +1,502 @@
+Design a modern enterprise web application called CREDENCE.
+
+CREDENCE is a blockchain-powered academic certificate issuance and verification platform developed as a proof-of-concept for higher education institutions.
+
+IMPORTANT
+
+This is NOT a University Management System.
+
+The application ONLY manages the lifecycle of academic certificates.
+
+Its responsibilities include:
+
+• Certificate issuance
+• Certificate management
+• Certificate storage
+• Blockchain registration
+• Certificate verification
+• QR verification
+• Certificate audit history
+
+The application does NOT manage:
+
+• Student admissions
+• Course registration
+• Finance
+• Examinations
+• Timetables
+• Learning Management
+• General student records
+
+The blockchain is the trust layer.
+
+The university issues certificates, but certificate authenticity is verified through blockchain records rather than relying solely on a centralized database.
+
+SYSTEM USERS
+
+Design all interfaces around these roles.
+
+• Super Admin
+• Institutional Admin
+• Registrar
+• Student
+• Employer / Verifier
+
+Each interface should expose only the features relevant to that role.
+
+DESIGN PHILOSOPHY
+
+The application should communicate:
+
+Trust
+
+Security
+
+Academic Excellence
+
+Professionalism
+
+Transparency
+
+Simplicity
+
+Modern Enterprise Software
+
+The design should resemble enterprise platforms such as Stripe Dashboard, GitHub, Linear, Microsoft, Atlassian, and Notion rather than cryptocurrency exchanges or NFT marketplaces.
+
+Avoid flashy Web3 aesthetics.
+
+Blockchain should remain mostly invisible while providing trust behind the scenes.
+
+DESIGN STYLE
+
+Create a clean and spacious interface with:
+
+• Large whitespace
+• Comfortable spacing
+• Soft shadows
+• Rounded corners
+• Minimal borders
+• Clear hierarchy
+• Consistent alignment
+• Low visual noise
+
+The interface should reduce eye strain during prolonged use.
+
+VISUAL THEME
+
+Primary Background
+
+Warm Cream
+
+#FAF7F2
+
+Secondary Background
+
+White
+
+#FFFFFF
+
+Primary Brand
+
+Deep Navy Blue
+
+#1E3A5F
+
+Accent
+
+Soft Gold
+
+#C79A3B
+
+Success
+
+#2E7D32
+
+Warning
+
+#ED8A19
+
+Danger
+
+#C62828
+
+Neutral
+
+Modern Gray palette
+
+Use Navy Blue for branding, navigation, page headings, active elements, and primary actions.
+
+Use Cream as the dominant background.
+
+Use Soft Gold sparingly for highlights, certificate identity, blockchain indicators, icons, and premium accents.
+
+Avoid excessive gradients and bright colors.
+
+TYPOGRAPHY
+
+Use Inter.
+
+Typography should prioritize readability over decoration.
+
+Headings should be bold.
+
+Paragraphs should have comfortable spacing.
+
+Use generous line height.
+
+Maintain a clear visual hierarchy.
+
+Avoid decorative fonts.
+
+GRID & SPACING
+
+Use an 8-point spacing system.
+
+Large page margins.
+
+Consistent padding.
+
+Generous spacing between sections.
+
+Do not crowd information.
+
+COMPONENT STYLE
+
+Cards
+
+• White background
+• Rounded 14px corners
+• Soft shadow
+• Thin border
+• Spacious padding
+
+Buttons
+
+Primary
+
+Deep Navy background
+
+White text
+
+Secondary
+
+White background
+
+Navy border
+
+Danger
+
+Red
+
+Gold should not be used for primary buttons.
+
+Inputs
+
+Large height
+
+Rounded corners
+
+Clear labels
+
+Comfortable spacing
+
+Accessible validation
+
+Tables
+
+Modern enterprise tables.
+
+Include
+
+Search
+
+Sorting
+
+Filters
+
+Pagination
+
+Status badges
+
+Row actions
+
+Comfortable row height
+
+NAVIGATION
+
+Landing Page
+
+Top navigation.
+
+Dashboard
+
+Left sidebar.
+
+Top application header.
+
+Navigation should remain consistent across the system.
+
+SIDEBAR
+
+Dashboard
+
+Certificates
+
+Issue Certificate
+
+Students
+
+Verification
+
+Blockchain Records
+
+Audit Logs
+
+Settings
+
+TOP HEADER
+
+Page title
+
+Search
+
+Notifications
+
+Institution selector
+
+Profile menu
+
+Responsive layout
+
+LANDING PAGE
+
+The landing page should communicate institutional trust rather than blockchain hype.
+
+Include:
+
+Hero Section
+
+Trust Indicators
+
+Features
+
+How It Works
+
+Why Blockchain
+
+Supported Users
+
+Statistics
+
+Call To Action
+
+Footer
+
+The primary public action should be:
+
+Verify Certificate
+
+Institution Sign In should remain available for authorized institutional users.
+
+DASHBOARD
+
+Use spacious enterprise cards.
+
+Dashboard should include:
+
+Statistics
+
+Recent Activity
+
+Quick Actions
+
+Recent Certificates
+
+Verification Requests
+
+Blockchain Status
+
+Audit Summary
+
+FORMS
+
+Forms should be clean.
+
+Use grouped sections.
+
+Use multi-step workflows where appropriate.
+
+Large inputs.
+
+Minimal distractions.
+
+TABLES
+
+Use enterprise data tables.
+
+Certificate status colors
+
+Draft
+
+Gray
+
+Pending
+
+Amber
+
+Issued
+
+Blue
+
+Verified On-Chain
+
+Green
+
+Revoked
+
+Red
+
+BLOCKCHAIN REPRESENTATION
+
+Blockchain should not dominate the UI.
+
+Represent blockchain through:
+
+Verification badges
+
+Transaction hashes
+
+Network status
+
+Block numbers
+
+Hash identifiers
+
+QR verification
+
+Proof indicators
+
+Avoid crypto coin imagery.
+
+ILLUSTRATIONS
+
+Use clean flat or subtle 3D illustrations.
+
+Focus on
+
+Certificates
+
+Universities
+
+Digital trust
+
+Verification
+
+Security
+
+QR codes
+
+Academic achievement
+
+Avoid:
+
+Bitcoin
+
+Ethereum coins
+
+Mining graphics
+
+NFT artwork
+
+Wallet illustrations on public pages
+
+ICONS
+
+Use Lucide Icons.
+
+Maintain a single icon family.
+
+ACCESSIBILITY
+
+High contrast
+
+Keyboard friendly
+
+Large click targets
+
+Readable typography
+
+Consistent spacing
+
+Visible focus states
+
+Responsive on desktop, tablet, and mobile.
+
+RESPONSIVE DESIGN
+
+Desktop-first.
+
+Fully responsive.
+
+Use collapsible navigation.
+
+Responsive tables.
+
+Responsive cards.
+
+Touch-friendly controls.
+
+ANIMATIONS
+
+Use subtle animations.
+
+Hover elevation.
+
+Smooth transitions.
+
+Fade-in sections.
+
+Soft micro-interactions.
+
+Avoid flashy motion.
+
+TECHNOLOGY CONTEXT
+
+Frontend
+
+Next.js (App Router)
+
+TypeScript
+
+Tailwind CSS
+
+Backend
+
+Django
+
+Django REST Framework
+
+PostgreSQL
+
+Blockchain
+
+Ethereum Smart Contracts
+
+Hardhat
+
+MetaMask (Institutional users only)
+
+IPFS (Pinata)
+
+Students and employers should never be required to understand blockchain or cryptocurrency concepts to use the application.
+
+OVERALL EXPERIENCE
+
+Every page should feel like a polished enterprise product used by universities and government institutions.
+
+The interface should inspire confidence, reduce cognitive load, and clearly communicate that academic certificates are secured by blockchain technology while keeping blockchain in the background.
+
+Users should immediately perceive CREDENCE as a trusted institutional certificate platform rather than a cryptocurrency application.
+
+Maintain consistency in layout, spacing, typography, colors, navigation, and component design across all pages so the application feels cohesive, scalable, and production-ready.
