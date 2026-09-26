@@ -1,0 +1,449 @@
+/* ══════════════════════════════════════════════════════════════
+   CERTIFICATE CARD — Complete Section
+   Portrait orientation, seal in footer center
+   Based on credence-hero-portrait.html
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Certificate card ───────────────────────────────────────── */
+.cred-cert {
+  position: relative;
+  width: 100%;
+  max-width: 410px;
+  aspect-ratio: 4 / 5.65;
+  overflow: hidden;
+  padding: 24px 25px 21px;
+  background: #fffefa;
+  border: 1px solid #d2ccbd;
+  border-radius: 18px;
+  box-shadow:
+    0 22px 52px rgba(20,43,65,.12),
+    0 5px 16px rgba(20,43,65,.045);
+  animation: cred-certFloat 8s ease-in-out infinite;
+}
+
+/* Inner gold inset border */
+.cred-cert::before {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  border: 1px solid rgba(197,154,58,.55);
+  border-radius: 9px;
+  pointer-events: none;
+  z-index: -1;
+}
+/* Second inset — faint navy */
+.cred-cert::after {
+  content: "";
+  position: absolute;
+  inset: 16px;
+  border: 1px solid rgba(20,43,65,.07);
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* ── Scan line ──────────────────────────────────────────────── */
+.cred-cert-scan {
+  position: absolute;
+  z-index: 5;
+  left: 18px; top: 18px; bottom: 18px;
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, rgba(197,154,58,.78), transparent);
+  box-shadow: 0 0 12px rgba(197,154,58,.55);
+  animation: cred-scanLine 5s ease-in-out infinite;
+}
+
+/* ── Preview badge (top-right) ──────────────────────────────── */
+.cred-cert-preview-badge {
+  position: absolute;
+  top: 20px; right: 20px;
+  z-index: 6;
+  padding: 5px 8px;
+  border-radius: 5px;
+  border: 1px solid rgba(197,154,58,.3);
+  background: #fbf8ed;
+  color: #85651d;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+}
+
+/* ── PREVIEW watermark ──────────────────────────────────────── */
+.cred-cert-watermark {
+  position: absolute;
+  left: 50%; top: 54%;
+  transform: translate(-50%, -50%);
+  color: rgba(20,43,65,.025);
+  font: 700 35px Georgia,"Times New Roman",serif;
+  letter-spacing: 3px;
+  pointer-events: none;
+  z-index: 0;
+  white-space: nowrap;
+}
+
+/* ── Header ─────────────────────────────────────────────────── */
+.cred-cert-header {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  padding-top: 13px;
+}
+
+.cred-cert-top-rule {
+  height: 2px;
+  background: #08283F;
+  margin-bottom: 15px;
+}
+
+/* ── Logo mark (shield shape) ───────────────────────────────── */
+.cred-cert-logo-wrap {
+  width: 40px;
+  height: 48px;
+  margin: 0 auto 9px;
+  display: grid;
+  place-items: center;
+}
+
+.cred-cert-logo-mark {
+  width: 40px;
+  height: 48px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  border: 2px solid #08283F;
+  border-radius: 10px 10px 15px 15px;
+  background: #fffefa;
+  box-shadow: inset 0 0 0 2px rgba(197,154,58,.20);
+}
+
+.cred-cert-logo-mark::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 1px solid rgba(197,154,58,.55);
+  border-radius: 6px 6px 11px 11px;
+}
+
+.cred-cert-logo-mark::after {
+  content: "";
+  position: absolute;
+  left: 7px; right: 7px; bottom: 8px;
+  height: 8px;
+  border-top: 1px solid #B98A28;
+  border-bottom: 1px solid #B98A28;
+  transform: skewX(-10deg);
+}
+
+.cred-cert-logo-mark span {
+  position: relative;
+  z-index: 1;
+  width: 21px; height: 21px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #B98A28;
+  border-radius: 50%;
+  background: #fffefa;
+  color: #987124;
+  font: 700 12px Georgia,"Times New Roman",serif;
+}
+
+.cred-cert-university {
+  color: #08283F;
+  font: 700 16px/1.18 Georgia,"Times New Roman",serif;
+  letter-spacing: .15px;
+  text-transform: uppercase;
+}
+
+.cred-cert-type {
+  margin-top: 5px;
+  color: #B98A28;
+  font-size: 7px;
+  font-weight: 780;
+  letter-spacing: 2.1px;
+  text-transform: uppercase;
+}
+
+/* Divider */
+.cred-cert-divider {
+  height: 1px;
+  background: #ded8cb;
+  margin: 14px 0 18px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Content ─────────────────────────────────────────────────── */
+.cred-cert-content {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  max-width: 270px;
+  margin: 0 auto;
+}
+
+.cred-cert-statement {
+  color: #718195;
+  font-size: 9.2px;
+}
+
+.cred-cert-student {
+  margin: 6px 0 9px;
+  color: #08283F;
+  font: 500 italic 29px/1.08 Georgia,"Times New Roman",serif;
+  overflow-wrap: anywhere;
+}
+
+.cred-cert-support {
+  color: #65778a;
+  font-size: 9.2px;
+  line-height: 1.5;
+}
+
+.cred-cert-degree {
+  margin-top: 7px;
+  color: #08283F;
+  font: 700 18px/1.18 Georgia,"Times New Roman",serif;
+  overflow-wrap: anywhere;
+}
+
+.cred-cert-dept {
+  margin-top: 6px;
+  color: #6d7e90;
+  font-size: 8.8px;
+}
+
+.cred-cert-honours {
+  margin-top: 7px;
+  color: #ad7c29;
+  font-size: 9.2px;
+  font-weight: 750;
+}
+
+/* ── Footer ─────────────────────────────────────────────────── */
+.cred-cert-footer {
+  position: absolute;
+  left: 25px;
+  right: 25px;
+  bottom: 20px;
+  z-index: 2;
+}
+
+/* Signature blocks — 3-col grid */
+.cred-cert-sigs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 7px;
+}
+
+.cred-cert-sig {
+  min-width: 0;
+  text-align: left;
+}
+
+.cred-cert-sig-line {
+  height: 1px;
+  margin-bottom: 5px;
+  background: #92928c;
+}
+
+.cred-cert-sig-name {
+  color: #08283F;
+  font-size: 8px;
+  font-weight: 750;
+}
+
+.cred-cert-sig-role,
+.cred-cert-sig-note {
+  margin-top: 2px;
+  color: #718195;
+  font-size: 6.4px;
+  line-height: 1.25;
+}
+
+.cred-cert-sig-note {
+  color: #8a969f;
+  font-style: italic;
+}
+
+/* Footer metadata — 3-col grid: QR | Seal | Cert ID */
+.cred-cert-footer-meta {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+
+/* Left — QR + copy */
+.cred-cert-verify {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cred-cert-qr {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border: 4px solid #08283F;
+  position: relative;
+  background:
+    linear-gradient(90deg, transparent 34%, #08283F 34%, #08283F 62%, transparent 62%),
+    linear-gradient(transparent 34%, #08283F 34%, #08283F 62%, transparent 62%),
+    #fff;
+}
+
+.cred-cert-qr-copy strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #08283F;
+  font-size: 7.3px;
+}
+
+.cred-cert-qr-copy span {
+  color: #718195;
+  font-size: 6.3px;
+  line-height: 1.35;
+}
+
+/* Center — Seal */
+.cred-cert-body-seal {
+  justify-self: center;
+  width: 64px;
+  height: 64px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  border: 2px solid #B98A28;
+  border-radius: 50%;
+  background: #fffefa;
+  color: #987124;
+}
+
+.cred-cert-body-seal::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border: 1px solid #B98A28;
+  border-radius: 50%;
+}
+
+.cred-cert-body-seal::after {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border: 1px dashed rgba(152,113,36,.46);
+  border-radius: 50%;
+}
+
+.cred-cert-seal-center {
+  position: relative;
+  z-index: 1;
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border: 1.2px solid #B98A28;
+  border-radius: 50%;
+  background: #fffefa;
+  font: 700 13px Georgia,"Times New Roman",serif;
+}
+
+.cred-cert-seal-caption {
+  position: absolute;
+  bottom: 11px;
+  z-index: 2;
+  padding: 0 4px;
+  background: #fffefa;
+  font-size: 4.5px;
+  font-weight: 780;
+  letter-spacing: .35px;
+  text-transform: uppercase;
+}
+
+/* Right — Cert ID */
+.cred-cert-meta {
+  justify-self: end;
+  text-align: right;
+}
+
+.cred-cert-meta-label {
+  color: #8a97a3;
+  font-size: 6.3px;
+  font-weight: 780;
+  letter-spacing: .9px;
+  text-transform: uppercase;
+}
+
+.cred-cert-meta-value {
+  margin-top: 2px;
+  color: #08283F;
+  font: 600 7.3px/1 "SFMono-Regular",Consolas,"Liberation Mono",monospace;
+}
+
+/* Status dot below footer */
+.cred-cert-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #3f7658;
+  font-size: 7.3px;
+  font-weight: 750;
+}
+
+.cred-cert-status-dot {
+  width: 6px;
+  height: 6px;
+  border: 1px solid rgba(63,118,88,.38);
+  border-radius: 50%;
+  background: #eef6f0;
+  flex-shrink: 0;
+}
+
+/* ── Animations ─────────────────────────────────────────────── */
+@keyframes cred-certFloat {
+  0%,100% { transform: translateY(2px);  }
+  50%     { transform: translateY(-5px); }
+}
+
+@keyframes cred-scanLine {
+  0%,12%  { transform: translateX(0);     opacity: 0;   }
+  18%     {                               opacity: .85; }
+  68%     {                               opacity: .85; }
+  80%,100%{ transform: translateX(500px); opacity: 0;   }
+}
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 430px) {
+  .cred-cert {
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+  
+  .cred-cert-footer {
+    left: 22px;
+    right: 22px;
+  }
+  
+  .cred-cert-body-seal {
+    width: 60px;
+    height: 60px;
+  }
+  
+  .cred-cert-seal-center {
+    width: 24px;
+    height: 24px;
+    font-size: 12px;
+  }
+  
+  .cred-cert-seal-caption {
+    bottom: 10px;
+    font-size: 4.3px;
+  }
+  
+  .cred-cert-sigs {
+    gap: 8px;
+  }
+}

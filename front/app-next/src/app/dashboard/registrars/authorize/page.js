@@ -46,8 +46,15 @@ export default function AuthorizeRegistrarPage() {
   async function callChain(fnName, walletAddress) {
     if (!window.ethereum) throw new Error("MetaMask not found.");
     const { ethers } = await import("ethers");
-    const provider   = new ethers.BrowserProvider(window.ethereum);
-    const signer     = await provider.getSigner();
+    const providers = Array.isArray(window.ethereum.providers)
+      ? window.ethereum.providers
+      : [window.ethereum];
+    const ethereum = providers.find(provider => provider?.isMetaMask);
+    if (!ethereum) throw new Error("MetaMask provider not detected. Enable the MetaMask extension and reload.");
+    const accounts = await ethereum.request({ method: "eth_requestAccounts" });
+    if (!accounts?.[0]) throw new Error("No MetaMask account selected.");
+    const provider   = new ethers.BrowserProvider(ethereum);
+    const signer     = await provider.getSigner(accounts[0]);
 
     const addr = process.env.NEXT_PUBLIC_ISSUER_REGISTRY_ADDRESS;
     if (!addr) throw new Error("NEXT_PUBLIC_ISSUER_REGISTRY_ADDRESS not set.");
@@ -103,7 +110,7 @@ export default function AuthorizeRegistrarPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 max-w-[900px]">
+    <div className="flex flex-col gap-6 w-full">
       <div>
         <h2 className="text-[#022448] font-bold text-2xl">Registrar On-Chain Authorization</h2>
         <p className="text-[#43474e] text-sm mt-0.5">

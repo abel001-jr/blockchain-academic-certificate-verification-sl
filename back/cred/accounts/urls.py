@@ -19,11 +19,15 @@ from .officer_setup import (
     OfficerSetupPasswordView,
 )
 from .signature_views import OfficerSignatureView
+from .student_invite_views import StudentInviteClaimView
+from .google_auth_views import GoogleAuthView
 
 urlpatterns = [
     # Auth
-    path("auth/login/",          CredenceTokenObtainView.as_view(), name="token-obtain"),
-    path("auth/refresh/",        TokenRefreshView.as_view(),        name="token-refresh"),
+    path("auth/login/",                   CredenceTokenObtainView.as_view(),  name="token-obtain"),
+    path("auth/refresh/",                 TokenRefreshView.as_view(),         name="token-refresh"),
+    path("auth/google/",                  GoogleAuthView.as_view(),           name="google-auth"),
+    path("auth/student-invite/claim/",    StudentInviteClaimView.as_view(),   name="student-invite-claim"),
 
     # Profile
     path("auth/me/",             MeView.as_view(),                  name="me"),

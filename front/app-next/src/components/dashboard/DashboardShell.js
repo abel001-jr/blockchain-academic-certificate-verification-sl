@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar";
 import TopHeader from "./TopHeader";
+import DashboardLoader from "./DashboardLoader";
 import { jwtPayload } from "@/lib/api";
 
 export default function DashboardShell({ children }) {
@@ -22,15 +23,18 @@ export default function DashboardShell({ children }) {
   }, []);
 
   if (!allowed) {
+    return <DashboardLoader label="Checking dashboard session" />;
+    /*
     return (
-      <div className="min-h-screen bg-[#FAF7F2] flex items-center justify-center text-[#43474e] text-sm">
+      <div className="min-h-screen bg-[#F8F7F2] flex items-center justify-center text-[#4A5A68] text-sm">
         Checking session…
       </div>
     );
+    */
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF7F2] flex">
+    <div className="min-h-screen bg-[#F8F7F2] flex">
 
       {/* Sidebar */}
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
@@ -38,15 +42,15 @@ export default function DashboardShell({ children }) {
       {/* Overlay for mobile */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-30 lg:hidden"
+          className="fixed inset-0 bg-black/25 backdrop-blur-sm z-30 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* Main area */}
-      <div className="flex-1 flex flex-col min-w-0 lg:ml-64 min-h-screen">
+      <div className="flex-1 flex flex-col min-w-0 lg:ml-72 min-h-screen">
         <TopHeader onMenuClick={() => setSidebarOpen(true)} />
-        <main className="flex-1 px-6 md:px-8 pt-10 pb-8 md:pt-12 md:pb-10">
+        <main className="flex-1 px-6 md:px-10 py-8 w-full">
           {children}
         </main>
       </div>

@@ -22,7 +22,7 @@ class UserSerializer(serializers.ModelSerializer):
         model  = User
         fields = [
             "id", "email", "first_name", "last_name", "full_name",
-            "role", "institution", "student_id", "wallet_address",
+            "role", "institution", "student_id", "wallet_address", "phone_number",
             "is_active", "date_joined",
             "must_change_password", "wallet_verified", "on_chain_authorized",
             "officer_status", "needs_officer_setup",
@@ -58,7 +58,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         model  = User
         fields = [
             "email", "password", "first_name", "last_name",
-            "role", "institution", "student_id", "wallet_address",
+            "role", "institution", "student_id", "wallet_address", "phone_number",
         ]
 
     def validate_role(self, value):
@@ -74,8 +74,24 @@ class UserCreateSerializer(serializers.ModelSerializer):
         ):
             if value not in (Role.VC, Role.CHANCELLOR, Role.STUDENT):
                 raise serializers.ValidationError(
-                    "Registrars may only create VC, Chancellor, or Student accounts."
+                    "Registrars may only create VC, Dean, or Student accounts."
                 )
+            
+            # Enforce max 2 officers (VC + Dean) per institution
+            if value in (Role.VC, Role.CHANCELLOR):
+                institution = getattr(actor, "institution", None)
+                if institution:
+                    officer_count = User.objects.filter(
+                        institution=institution,
+                        role__in=[Role.VC, Role.CHANCELLOR],
+                        is_active=True,
+                    ).count()
+                    
+                    if officer_count >= 2:
+                        raise serializers.ValidationError(
+                            "Maximum 2 officers (VC + Dean) allowed per institution. "
+                            "Current count: {}. Deactivate an existing officer before adding a new one.".format(officer_count)
+                        )
         return value
 
     def create(self, validated_data):
@@ -130,8 +146,15 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model  = User
         fields = [
-            "first_name", "last_name", "student_id", "wallet_address",
+            "first_name", "last_name", "student_id", "wallet_address", "phone_number",
         ]
+
+
+class UserStatusSerializer(serializers.ModelSerializer):
+    """Restricted status-only update used by the account management screen."""
+    class Meta:
+        model = User
+        fields = ["is_active"]
 
 
 class OfficerAdminUpdateSerializer(serializers.ModelSerializer):
@@ -154,7 +177,7 @@ class OfficerAdminUpdateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         officer = self.instance
         if not officer or not officer.is_officer:
-            raise serializers.ValidationError("Only VC / Chancellor officers can be edited here.")
+            raise serializers.ValidationError("Only VC / Dean officers can be edited here.")
         # Lock once MetaMask wallet ownership is proven (or fully authorized)
         if officer.wallet_verified or officer.on_chain_authorized:
             raise serializers.ValidationError(

@@ -84,8 +84,8 @@ export default function CertificateBrandingPanel() {
   return (
     <form onSubmit={handleSave} className="flex flex-col gap-6">
       <div>
-        <h3 className="text-[#022448] font-semibold text-base">Certificate Branding</h3>
-        <p className="text-[#43474e] text-sm mt-1">
+        <h3 className="text-[#08283F] font-semibold text-xl">Certificate Branding</h3>
+        <p className="text-[#4A5A68] text-base mt-1.5">
           Choose a theme and optional crest. Saved once — applies to every certificate from this institution.
         </p>
       </div>

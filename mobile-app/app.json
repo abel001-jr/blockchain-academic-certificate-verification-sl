@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "Credence",
+    "slug": "credence",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "credence",
+    "icon": "./assets/logo.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#08283F"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.credence.app"
+    },
+    "android": {
+      "package": "com.credence.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#08283F"
+      },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "credence"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
+    },
+    "web": {
+      "favicon": "./assets/fav.png",
+      "name": "Credence",
+      "shortName": "Credence",
+      "description": "Blockchain-backed academic certificate verification"
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}

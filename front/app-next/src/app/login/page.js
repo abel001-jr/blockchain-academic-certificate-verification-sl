@@ -3,204 +3,220 @@ import { useState } from "react";
 import { Eye, EyeOff, Loader2, ArrowLeft, Wallet } from "lucide-react";
 import Image from "next/image";
 import Link  from "next/link";
-import Navbar      from "@/components/Navbar";
-import Footer      from "@/components/Footer";
 import WalletSignIn from "@/components/WalletSignIn";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api";
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading,      setLoading]      = useState(false);
   const [form,         setForm]         = useState({ email: "", password: "" });
   const [error,        setError]        = useState("");
-  const [method,       setMethod]       = useState("password"); // "password" | "wallet"
+  const [method,       setMethod]       = useState("password");
+  const [autofillEnabled, setAutofillEnabled] = useState(false);
+
+  function enableBrowserAutofill() {
+    setAutofillEnabled(true);
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
-    setLoading(true);
-    setError("");
+    // Read the form controls directly so browser password-manager autofill is
+    // submitted even when Chrome does not dispatch React's change event.
+    const submitted = new FormData(e.currentTarget);
+    const email = String(submitted.get("email") || "").trim().toLowerCase();
+    const password = String(submitted.get("password") || "");
+    setForm({ email, password });
+    setLoading(true); setError("");
     try {
-      const payload = {
-        email: form.email.trim().toLowerCase(),
-        password: form.password,
-      };
-      const res  = await fetch("http://127.0.0.1:8000/api/auth/login/", {
+      const res  = await fetch(`${API_BASE}/auth/login/`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(payload),
+        body:    JSON.stringify({ email, password }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.detail || "Invalid credentials. Please try again.");
-        return;
-      }
-      if (!data.access) {
-        setError("Login succeeded but no token was returned.");
-        return;
-      }
+      if (!res.ok) { setError(data.detail || "Invalid credentials."); return; }
+      if (!data.access) { setError("Login succeeded but no token was returned."); return; }
+
       localStorage.setItem("access_token",  data.access);
       localStorage.setItem("refresh_token", data.refresh);
 
-      // Confirm JWT carries a role, then enter setup gate or dashboard
       try {
-        const part = data.access.split(".")[1];
-        const b64  = part.replace(/-/g, "+").replace(/_/g, "/");
+        const part   = data.access.split(".")[1];
+        const b64    = part.replace(/-/g, "+").replace(/_/g, "/");
         const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
         const claims = JSON.parse(atob(padded));
-        if (!claims.role) {
-          setError("Account has no CREDENCE role. Set Role in Django Admin.");
-          return;
-        }
+        if (!claims.role)  { setError("Account has no CREDENCE role."); return; }
         if (data.setup_required || claims.token_use === "officer_setup") {
-          window.location.href = "/setup";
-          return;
+          window.location.href = "/setup"; return;
         }
-      } catch {
-        // Still redirect — dashboard will re-check the token
-      }
+      } catch { /* redirect anyway */ }
       window.location.href = "/dashboard";
-    } catch {
-      setError("Unable to reach the server. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    } catch { setError("Unable to reach the server. Please try again."); }
+    finally  { setLoading(false); }
   }
-
-  function handleWalletSuccess() {
-    window.location.href = "/dashboard";
-  }
-
-  const inp = "w-full bg-[#eef4ff] border border-transparent focus:border-[#022448] focus:bg-white rounded-[10px] px-4 py-3.5 text-sm text-[#121c28] outline-none transition-all placeholder:text-[#74777f]";
-  const lbl = "text-[#022448] text-xs font-semibold uppercase tracking-widest";
 
   return (
-    <div className="min-h-screen bg-[#FAF7F2] flex flex-col">
-      <Navbar />
+    /* Full-viewport split: left brand panel + right form */
+    <div className="min-h-screen bg-[#F8F7F2] flex">
 
-      <main className="flex-1 flex flex-col items-center justify-center px-4 pt-28 pb-16">
+      {/* ── Left brand panel (hidden on mobile) ── */}
+      <div className="hidden lg:flex w-[420px] shrink-0 bg-[#08283F] flex-col justify-between px-10 py-12 relative overflow-hidden">
+        <div className="absolute -right-16 -bottom-16 w-64 h-64 bg-[#B98A28]/20 rounded-full blur-3xl" />
+        <div className="relative z-10">
+          <div className="flex items-center gap-2.5 mb-14">
+            <Image src="/logo.png" alt="Credence" width={32} height={32} className="rounded-lg" />
+            <span className="text-white font-bold text-xl tracking-tight">Credence</span>
+          </div>
+          <h2 className="text-white font-bold text-3xl leading-snug mb-4">
+            Academic Credential Verification
+          </h2>
+          <p className="text-white/65 text-base leading-relaxed">
+            Blockchain-anchored credentials that anyone can verify independently — no phone calls, no waiting.
+          </p>
 
-        {/* Back */}
-        <div className="w-full max-w-md mb-6">
-          <Link href="/" className="inline-flex items-center gap-2 text-[#43474e] text-sm font-medium hover:text-[#022448] transition-colors group">
-            <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
+          <div className="mt-10 flex flex-col gap-3">
+            {[
+              "Institutionally issued",
+              "Tamper-evident fingerprint",
+              "Independently verifiable",
+            ].map(item => (
+              <div key={item} className="flex items-center gap-3 text-white/80 text-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#B98A28] shrink-0" />
+                {item}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="relative z-10">
+          <p className="text-white/40 text-xs">Credence</p>
+        </div>
+      </div>
+
+      {/* ── Right form panel ── */}
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
+
+        {/* Back link */}
+        <div className="w-full max-w-sm mb-6">
+          <Link href="/" className="inline-flex items-center gap-2 text-[#4A5A68] text-sm font-medium hover:text-[#08283F] transition-colors group">
+            <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
             Back to home
           </Link>
         </div>
 
-        <div className="w-full max-w-md bg-white rounded-[14px] shadow-card border border-[#c4c6cf]/10 p-8">
+        <div className="w-full max-w-sm">
 
-          {/* Logo */}
-          <div className="flex items-center gap-3 mb-7">
-            <div className="w-11 h-11 rounded-[10px] overflow-hidden shrink-0 shadow-sm">
-              <Image src="/logo.png" alt="CREDENCE" width={44} height={44} className="w-full h-full object-cover" />
-            </div>
-            <div>
-              <h1 className="text-[#022448] font-bold text-xl leading-tight">Sign In</h1>
-              <p className="text-[#43474e] text-xs mt-0.5">
-                Existing accounts only — there is no public Super Admin signup
-              </p>
-            </div>
+          {/* Mobile logo */}
+          <div className="flex lg:hidden items-center gap-2.5 mb-7">
+            <Image src="/logo.png" alt="Credence" width={32} height={32} className="rounded-lg" />
+            <span className="text-[#08283F] font-bold text-xl">Credence</span>
           </div>
 
-          <div className="h-px bg-[#c4c6cf]/20 mb-6" />
+          <h1 className="text-[#08283F] font-bold text-2xl mb-1">Sign in</h1>
+          <p className="text-[#4A5A68] text-sm mb-4">Institutional accounts only</p>
+
+          {/* Which credential is which — the two methods are not interchangeable
+              for long-term use, so say so before the user picks a tab. */}
+          <div className="bg-[#EAF2FB] border border-[#CFE1F2] rounded-xl px-4 py-3 mb-5">
+            <p className="text-[#08283F] text-sm leading-relaxed">
+              <span className="font-semibold">Email and password</span> are a temporary login,
+              issued to newly registered users so they can get in the first time.
+            </p>
+            <p className="text-[#08283F] text-sm leading-relaxed mt-1.5">
+              <span className="font-semibold">MetaMask</span> is the main system authentication
+              for regular users — your wallet is what proves who you are when you sign
+              a credential on-chain.
+            </p>
+          </div>
 
           {/* Method toggle */}
-          <div className="flex gap-1 bg-[#eef4ff] p-1 rounded-[12px] mb-6">
-            <button
-              onClick={() => { setMethod("password"); setError(""); }}
-              className={`flex-1 py-2 rounded-[10px] text-sm font-medium transition-all ${
-                method === "password" ? "bg-white text-[#022448] font-semibold shadow-sm" : "text-[#43474e]"
-              }`}
-            >
+          <div className="flex gap-1 bg-[#EAF2FB] p-1 rounded-xl mb-5">
+            <button onClick={() => { setMethod("password"); setError(""); }}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+                method === "password" ? "bg-white text-[#08283F] font-semibold shadow-sm" : "text-[#4A5A68]"
+              }`}>
               Email & Password
             </button>
-            <button
-              onClick={() => { setMethod("wallet"); setError(""); }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-[10px] text-sm font-medium transition-all ${
-                method === "wallet" ? "bg-white text-[#022448] font-semibold shadow-sm" : "text-[#43474e]"
-              }`}
-            >
-              <Wallet size={14} /> MetaMask
+            <button onClick={() => { setMethod("wallet"); setError(""); }}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-all ${
+                method === "wallet" ? "bg-white text-[#08283F] font-semibold shadow-sm" : "text-[#4A5A68]"
+              }`}>
+              <Wallet size={13} /> MetaMask
             </button>
           </div>
 
+          {/* Error */}
           {error && (
-            <div className="bg-[#ffdad6] text-[#93000a] text-sm px-4 py-3 rounded-lg mb-5 flex items-start gap-2">
-              <span className="mt-0.5 shrink-0">⚠</span>
-              <span>{error}</span>
+            <div className="bg-[#F5E5E3] text-[#A23B34] text-sm px-4 py-3 rounded-lg mb-4 flex items-start gap-2">
+              <span className="shrink-0 mt-0.5">⚠</span><span>{error}</span>
             </div>
           )}
 
-          {/* ── Password method ── */}
+          {/* Email + Password form */}
           {method === "password" && (
-            <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-              <div className="flex flex-col gap-1.5">
-                <label className={lbl}>Email Address</label>
-                <input type="email" required autoComplete="email"
+            <form
+              onSubmit={handleSubmit}
+              onPointerDownCapture={enableBrowserAutofill}
+              onFocusCapture={enableBrowserAutofill}
+              className="flex flex-col gap-4"
+            >
+              <div>
+                <label className="cd-label">Email address</label>
+                <input type="email" name="email" required readOnly={!autofillEnabled}
+                  autoComplete={autofillEnabled ? "username" : "off"}
                   value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
-                  placeholder="admin@institution.edu" className={inp}
-                />
+                  placeholder="admin@institution.edu" className="cd-input" />
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className={lbl}>Password</label>
+              <div>
+                <label className="cd-label">Password</label>
                 <div className="relative">
-                  <input type={showPassword ? "text" : "password"} required autoComplete="current-password"
+                  <input type={showPassword ? "text" : "password"} name="password" required readOnly={!autofillEnabled}
+                    autoComplete={autofillEnabled ? "current-password" : "off"}
                     value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
-                    placeholder="••••••••"
-                    className={inp + " pr-12"}
-                  />
+                    placeholder="••••••••" className="cd-input pr-11" />
                   <button type="button" onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#74777f] hover:text-[#022448] transition-colors p-1"
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                  >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8A929C] hover:text-[#08283F] p-1">
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 </div>
               </div>
-              <button type="submit" disabled={loading}
-                className="bg-[#022448] text-white py-4 rounded-[14px] font-semibold text-sm hover:opacity-90 transition-all active:scale-95 flex items-center justify-center gap-2 mt-1 disabled:opacity-60"
-              >
-                {loading && <Loader2 size={16} className="animate-spin" />}
-                {loading ? "Signing in…" : "Sign In"}
+              <button type="submit" disabled={loading} className="cd-btn-primary w-full mt-1">
+                {loading && <Loader2 size={15} className="animate-spin" />}
+                {loading ? "Signing in…" : "Sign in"}
               </button>
             </form>
           )}
 
-          {/* ── Wallet method ── */}
+          {/* MetaMask form */}
           {method === "wallet" && (
             <div>
-              <div className="bg-[#eef4ff] rounded-[10px] p-3 mb-5">
-                <p className="text-[#022448] text-xs font-semibold mb-1">Wallet sign-in is for:</p>
-                <ul className="text-[#43474e] text-xs leading-relaxed space-y-0.5">
+              <div className="bg-[#EAF2FB] border border-[#CFE1F2] rounded-xl px-4 py-3 mb-4">
+                <p className="text-[#08283F] text-sm font-semibold mb-1">Who uses wallet sign-in?</p>
+                <ul className="text-[#4A5A68] text-sm space-y-0.5">
                   <li>• Registrars (after on-chain anchor)</li>
-                  <li>• VC / Chancellor (after setup + on-chain authorization)</li>
+                  <li>• VC / Dean (after setup)</li>
                 </ul>
               </div>
-              <WalletSignIn onSuccess={handleWalletSuccess} onError={setError} />
+              <WalletSignIn onSuccess={() => { window.location.href = "/dashboard"; }} onError={setError} />
             </div>
           )}
 
-          <div className="h-px bg-[#c4c6cf]/20 mt-7 mb-5" />
-          <div className="flex flex-col gap-2 text-center">
-            <p className="text-[#43474e] text-xs">
+          {/* Footer links */}
+          <div className="mt-6 pt-5 border-t border-[#E4E1D6] flex flex-col gap-2 text-center">
+            <p className="text-[#4A5A68] text-sm">
               Institution seeking access?{" "}
-              <Link href="/apply" className="text-[#7b5900] font-semibold hover:underline">
-                Apply to join the network
-              </Link>
+              <Link href="/apply" className="text-[#B98A28] font-semibold hover:underline">Apply to join</Link>
             </p>
-            <p className="text-[#74777f] text-[11px] leading-relaxed">
-              Super Admin accounts are created by the platform operator in Django Admin — not via this form.
+            <p className="text-[#4A5A68] text-sm">
+              Verify a certificate?{" "}
+              <Link href="/#verify" className="text-[#B98A28] font-semibold hover:underline">Go here</Link>
             </p>
-            <p className="text-[#43474e] text-xs">
-              To verify a certificate,{" "}
-              <Link href="/#verify" className="text-[#7b5900] font-semibold hover:underline">
-                go here
-              </Link>
+            <p className="text-[#8A929C] text-xs mt-1 leading-relaxed">
+              Super Admin accounts are created via Django Admin — not this form.
             </p>
           </div>
         </div>
-      </main>
-
-      <Footer />
+      </div>
     </div>
   );
 }

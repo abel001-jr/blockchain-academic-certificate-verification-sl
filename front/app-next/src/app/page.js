@@ -1,33 +1,33 @@
 import Navbar from "@/components/Navbar";
 import HeroSection from "@/components/HeroSection";
-import TrustIndicators from "@/components/TrustIndicators";
-import HowItWorks from "@/components/HowItWorks";
-import Features from "@/components/Features";
-import Comparison from "@/components/Comparison";
+import FeatureStrip from "@/components/FeatureStrip";
+import WhyCredence from "@/components/WhyCredence";
+import LifecycleTrack from "@/components/LifecycleTrack";
+import FeaturedInstitutions from "@/components/FeaturedInstitutions";
 import UserRoles from "@/components/UserRoles";
-import Stats from "@/components/Stats";
+import VerifySection from "@/components/VerifySection";
 import CallToAction from "@/components/CallToAction";
 import Footer from "@/components/Footer";
 
 export const metadata = {
-  title: "CREDENCE | Blockchain-Powered Academic Certificate Platform",
+  title: "Credence — Issue and verify academic credentials",
   description:
-    "Issue, manage and verify academic certificates with cryptographic blockchain trust. Built for higher education institutions.",
+    "Credence lets universities issue blockchain-anchored academic credentials that employers and institutions can verify independently — no records office, no waiting.",
 };
 
 export default function Home() {
   return (
     <>
       <Navbar />
-      <main className="pt-20">
+      <main>
         <HeroSection />
-        <TrustIndicators />
-        <HowItWorks />
-        <Features />
-        <Comparison />
-        <UserRoles />
-        <Stats />
+        <FeatureStrip />
+        <WhyCredence />
+        <LifecycleTrack />
+        <FeaturedInstitutions />
         <CallToAction />
+        <UserRoles />
+        <VerifySection />
       </main>
       <Footer />
     </>

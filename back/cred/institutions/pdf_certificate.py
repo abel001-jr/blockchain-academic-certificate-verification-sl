@@ -8,11 +8,26 @@ from .branding import get_preset
 from .qualification_wording import award_parts
 
 
-def generate_certificate_pdf(certificate, *, template=None, verification_base_url: str = "") -> bytes:
+def generate_certificate_pdf(
+    certificate,
+    *,
+    template=None,
+    verification_base_url: str = "",
+    include_attestations: bool = True,
+) -> bytes:
     """
     Render a landscape A4-ish PDF for the given certificate.
     Includes institution branding, academic fields, optional VC/Chancellor
     signature blocks, and a verification QR code.
+
+    include_attestations=False renders the review copy: the signature images,
+    approver names, approval dates and approval transaction hashes are all
+    omitted, because none of them exist yet when the officers are asked to
+    review. That is what makes the review copy's bytes stable — it can be
+    rendered, hashed and committed before any approval, so the hash the
+    officers approve is the hash of the document they were actually shown.
+    The document issued later is the same rendering with the signature block
+    filled in, and is committed separately as the sealed hash.
     """
     try:
         from reportlab.lib.pagesizes import landscape, A4
@@ -42,7 +57,14 @@ def generate_certificate_pdf(certificate, *, template=None, verification_base_ur
     buf = BytesIO()
     page = landscape(A4)
     width, height = page
-    c = canvas.Canvas(buf, pagesize=page)
+    # invariant=1 is required, not an optimisation. By default ReportLab writes
+    # the current time and a random document ID into the PDF trailer, so two
+    # renders of identical content produce different bytes and therefore
+    # different SHA-256 hashes. That would make the review document's hash
+    # impossible to reproduce, defeating the whole point of fixing the hash
+    # before officer review: the officers would approve bytes that could never
+    # be rendered again. Invariant mode pins the timestamp and the ID.
+    c = canvas.Canvas(buf, pagesize=page, invariant=1)
 
     # Background
     c.setFillColor(theme["bg"])
@@ -130,7 +152,7 @@ def generate_certificate_pdf(certificate, *, template=None, verification_base_ur
     y -= 14 * mm
 
     # Signature blocks — Registrar | VC | Chancellor
-    # Layout leaves room above the line for cosmetic signature images (VC / Chancellor).
+    # Layout leaves room above the line for cosmetic signature images.
     c.setStrokeColor(primary)
     c.setLineWidth(0.6)
     sig_y = 42 * mm
@@ -157,44 +179,57 @@ def generate_certificate_pdf(certificate, *, template=None, verification_base_ur
         except Exception:
             pass
 
-    _draw_sig_image(getattr(certificate, "vc_signature_image", None), mid_x)
-    _draw_sig_image(getattr(certificate, "chancellor_signature_image", None), right_x)
+    if include_attestations:
+        _draw_sig_image(getattr(certificate, "registrar_signature_image", None), left_x)
+        _draw_sig_image(getattr(certificate, "vc_signature_image", None), mid_x)
+        _draw_sig_image(getattr(certificate, "chancellor_signature_image", None), right_x)
 
     for x in (left_x, mid_x, right_x):
         c.line(x, sig_y, x + sig_w, sig_y)
 
-    reg_name = certificate.registrar_signer_name or "Registrar"
-    vc_name = certificate.vc_approver_name or "Vice Chancellor"
-    ch_name = certificate.chancellor_approver_name or "Chancellor"
+    if include_attestations:
+        reg_name = certificate.registrar_signer_name or "Registrar"
+        vc_name = certificate.vc_approver_name or "Vice Chancellor"
+        ch_name = certificate.chancellor_approver_name or "Dean"
 
-    c.setFillColor(primary)
-    c.setFont("Helvetica-Bold", 9)
-    c.drawString(left_x, sig_y - 5 * mm, reg_name[:28])
-    c.drawString(mid_x, sig_y - 5 * mm, vc_name[:28])
-    c.drawString(right_x, sig_y - 5 * mm, ch_name[:28])
+        c.setFillColor(primary)
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(left_x, sig_y - 5 * mm, reg_name[:28])
+        c.drawString(mid_x, sig_y - 5 * mm, vc_name[:28])
+        c.drawString(right_x, sig_y - 5 * mm, ch_name[:28])
 
     c.setFillColor(theme["muted"])
     c.setFont("Helvetica", 8)
     c.drawString(left_x, sig_y - 9 * mm, "Registrar")
     c.drawString(mid_x, sig_y - 9 * mm, "Vice Chancellor")
-    c.drawString(right_x, sig_y - 9 * mm, "Chancellor")
+    c.drawString(right_x, sig_y - 9 * mm, "Dean")
 
-    c.setFont("Helvetica", 6.5)
-    y_meta = sig_y - 13 * mm
-    if certificate.registrar_signed_at:
-        c.drawString(left_x, y_meta, f"Digitally Verified — {certificate.registrar_signed_at.strftime('%b %d, %Y')}")
-    if certificate.vc_approved_at:
-        c.drawString(mid_x, y_meta, f"Digitally Verified — {certificate.vc_approved_at.strftime('%b %d, %Y')}")
-        if certificate.vc_approval_tx_hash:
-            tx = certificate.vc_approval_tx_hash
-            short = f"{tx[:8]}…{tx[-4:]}" if len(tx) > 14 else tx
-            c.drawString(mid_x, y_meta - 3.5 * mm, f"Tx: {short}")
-    if certificate.chancellor_approved_at:
-        c.drawString(right_x, y_meta, f"Digitally Verified — {certificate.chancellor_approved_at.strftime('%b %d, %Y')}")
-        if certificate.chancellor_approval_tx_hash:
-            tx = certificate.chancellor_approval_tx_hash
-            short = f"{tx[:8]}…{tx[-4:]}" if len(tx) > 14 else tx
-            c.drawString(right_x, y_meta - 3.5 * mm, f"Tx: {short}")
+    if not include_attestations:
+        # This rendering carries no signatures and is not the issued document.
+        # Marking it keeps a review copy from being mistaken for a diploma.
+        c.setFillColor(theme["muted"])
+        c.setFont("Helvetica-Oblique", 7.5)
+        c.drawCentredString(
+            width / 2, sig_y - 9 * mm, "Review copy — unsigned, not yet issued"
+        )
+
+    if include_attestations:
+        c.setFont("Helvetica", 6.5)
+        y_meta = sig_y - 13 * mm
+        if certificate.registrar_signed_at:
+            c.drawString(left_x, y_meta, f"Digitally Verified — {certificate.registrar_signed_at.strftime('%b %d, %Y')}")
+        if certificate.vc_approved_at:
+            c.drawString(mid_x, y_meta, f"Digitally Verified — {certificate.vc_approved_at.strftime('%b %d, %Y')}")
+            if certificate.vc_approval_tx_hash:
+                tx = certificate.vc_approval_tx_hash
+                short = f"{tx[:8]}…{tx[-4:]}" if len(tx) > 14 else tx
+                c.drawString(mid_x, y_meta - 3.5 * mm, f"Tx: {short}")
+        if certificate.chancellor_approved_at:
+            c.drawString(right_x, y_meta, f"Digitally Verified — {certificate.chancellor_approved_at.strftime('%b %d, %Y')}")
+            if certificate.chancellor_approval_tx_hash:
+                tx = certificate.chancellor_approval_tx_hash
+                short = f"{tx[:8]}…{tx[-4:]}" if len(tx) > 14 else tx
+                c.drawString(right_x, y_meta - 3.5 * mm, f"Tx: {short}")
 
     # QR + certificate id
     base = verification_base_url.rstrip("/") or getattr(settings, "FRONTEND_URL", "http://localhost:3000").rstrip("/")

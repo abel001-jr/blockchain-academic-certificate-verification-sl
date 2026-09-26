@@ -1,75 +1,43 @@
-import { X, CheckCircle2, History, Sparkles } from "lucide-react";
-
-const traditional = [
-  "Paper certificates prone to physical damage, loss, and forgery.",
-  "Verification requires 5–10 business days via manual institutional inquiry.",
-  "Centralized databases are single points of failure and manipulation.",
-  "No audit trail — no way to know if a certificate was verified or by whom.",
-];
-
-const blockchain = [
-  "Certificates are cryptographically hashed and anchored to Ethereum.",
-  "Instant verification via QR code — directly from the blockchain, no login needed.",
-  "Verification remains possible even if the issuing institution goes offline.",
-  "Every issuance, revocation, and verification is permanently logged on-chain.",
-];
-
 export default function Comparison() {
   return (
-    <section className="py-20 px-4 md:px-10" id="why-blockchain">
-      <div className="max-w-[1280px] mx-auto">
-        <div className="text-center mb-14">
-          <h2 className="text-[#022448] font-bold text-4xl md:text-[48px] leading-tight tracking-tight">
-            Why Blockchain?
+    <section className="scroll-anchor py-24 bg-[#EAF2FB] border-t border-b border-[#CFE1F2]" id="why">
+      <div className="landing-wrap">
+        <div className="max-w-[560px] mb-14">
+          <h2 className="font-serif text-[2.1rem] font-medium text-[#08283F] leading-[1.22]">
+            Why this replaces a phone call to the registrar
           </h2>
-          <p className="text-[#43474e] text-lg mt-3">
-            The difference between trusting a server and trusting mathematics.
+          <p className="mt-3.5 text-[#4A5A68] text-[1.02rem] max-w-[52ch]">
+            The difference isn&apos;t complexity. It&apos;s who has to be reached, and how long it takes.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Traditional */}
-          <div className="bg-[#dfe9fa]/50 border border-[#c4c6cf]/30 rounded-[14px] p-8">
-            <div className="flex items-center gap-3 mb-8">
-              <History size={22} className="text-[#43474e]" />
-              <h3 className="text-[#022448] font-semibold text-xl">Traditional System</h3>
-            </div>
-            <ul className="flex flex-col gap-5">
-              {traditional.map((item) => (
-                <li key={item} className="flex items-start gap-3">
-                  <X size={16} className="text-[#ba1a1a] mt-1 shrink-0" />
-                  <p className="text-[#43474e] text-base leading-relaxed">{item}</p>
-                </li>
-              ))}
-            </ul>
+        <div className="flex flex-col gap-7 max-w-[720px]">
+          <div className="flex items-center gap-3.5 flex-wrap text-[1.06rem]">
+            <span className="text-[0.78rem] font-semibold text-[#08283F] bg-white px-2.5 py-1 rounded-full border border-[#CFE1F2]">
+              Today
+            </span>
+            <span className="text-[#1B2734]">A certificate is presented</span>
+            <span className="text-[#4A5A68] text-[0.9rem]">→</span>
+            <span className="text-[#1B2734]">the institution is contacted</span>
+            <span className="text-[#4A5A68] text-[0.9rem]">→</span>
+            <span className="text-[#1B2734]">a records office responds, days later</span>
           </div>
 
-          {/* Blockchain */}
-          <div className="bg-[#022448] rounded-[14px] p-8 shadow-xl">
-            <div className="flex items-center gap-3 mb-8">
-              <Sparkles size={22} className="text-[#ffdea4]" />
-              <h3 className="text-white font-semibold text-xl">CREDENCE + Blockchain</h3>
-            </div>
-            <ul className="flex flex-col gap-5">
-              {blockchain.map((item) => (
-                <li key={item} className="flex items-start gap-3">
-                  <CheckCircle2 size={16} className="text-[#ffdea4] mt-1 shrink-0" />
-                  <p className="text-white/90 text-base leading-relaxed">{item}</p>
-                </li>
-              ))}
-            </ul>
+          <div className="flex items-center gap-3.5 flex-wrap text-[1.06rem]">
+            <span className="text-[0.78rem] font-semibold text-white bg-[#08283F] px-2.5 py-1 rounded-full border border-[#08283F]">
+              With Credence
+            </span>
+            <span className="text-[#1B2734]">A certificate ID is entered or scanned</span>
+            <span className="text-[#4A5A68] text-[0.9rem]">→</span>
+            <span className="text-[#1B2734]">the record is checked directly</span>
+            <span className="text-[#4A5A68] text-[0.9rem]">→</span>
+            <span className="text-[#1B2734]">a confirmed result, immediately</span>
           </div>
         </div>
 
-        {/* Guiding principle */}
-        <div className="mt-10 bg-white border border-[#c4c6cf]/30 rounded-[14px] p-8 text-center shadow-card">
-          <p className="text-[#022448] text-base md:text-lg leading-relaxed max-w-3xl mx-auto italic">
-            "Blockchain is the trust layer. PostgreSQL is the application data layer. Django orchestrates business logic.
-            IPFS stores certificate documents. Users interact with a professional academic platform while blockchain
-            operates transparently in the background."
-          </p>
-          <p className="text-[#7b5900] text-sm font-semibold mt-4 uppercase tracking-widest">CREDENCE Guiding Principle</p>
-        </div>
+        <p className="mt-9 pt-7 border-t border-[#CFE1F2] text-[#4A5A68] text-[0.96rem] max-w-[62ch] leading-relaxed">
+          The blockchain holds a tamper-evident fingerprint of every credential — issued once, readable by anyone, alterable by no one. That record is what makes verification instant and independent, with no institution's word required.
+        </p>
       </div>
     </section>
   );

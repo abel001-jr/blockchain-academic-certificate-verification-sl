@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Credence Footer — Social Card</title>
+
+  <style>
+    :root {
+      --navy: #142b41;
+      --navy-2: #1c3b54;
+      --cream: #f7f5ef;
+      --white: #ffffff;
+      --gold: #c59a3a;
+      --gold-light: #e9d8a8;
+      --muted: #aebbc7;
+      --line: rgba(255,255,255,.11);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--cream);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .page {
+      flex: 1;
+    }
+
+    /* =========================================
+       CREDENCE FOOTER
+       ========================================= */
+    footer {
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(135deg, var(--navy), var(--navy-2));
+      color: var(--white);
+      padding: 44px 7vw 24px;
+    }
+
+    footer::before {
+      content: "";
+      position: absolute;
+      width: 380px;
+      height: 380px;
+      right: -190px;
+      bottom: -250px;
+      border: 1px solid rgba(197,154,58,.10);
+      border-radius: 50%;
+    }
+
+    footer::after {
+      content: "";
+      position: absolute;
+      width: 250px;
+      height: 250px;
+      left: -170px;
+      top: -180px;
+      border: 1px solid rgba(255,255,255,.05);
+      border-radius: 50%;
+    }
+
+    .footer-inner {
+      position: relative;
+      z-index: 1;
+      max-width: 1240px;
+      margin: 0 auto;
+    }
+
+    .footer-main {
+      display: grid;
+      grid-template-columns: 1.7fr 1fr 1fr 1.15fr;
+      gap: 42px;
+      padding-bottom: 36px;
+    }
+
+    /* Brand */
+    .footer-brand {
+      max-width: 355px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 15px;
+    }
+
+    .shield {
+      width: 31px;
+      height: 36px;
+      border: 1px solid rgba(197,154,58,.82);
+      border-radius: 5px 5px 10px 10px;
+      position: relative;
+    }
+
+    .shield::before {
+      content: "✓";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -54%);
+      color: var(--gold);
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .brand-name {
+      font-size: 23px;
+      font-weight: 750;
+      letter-spacing: -.4px;
+    }
+
+    .brand-copy {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.72;
+      max-width: 335px;
+    }
+
+    .footer-heading {
+      margin: 3px 0 15px;
+      font-size: 10.5px;
+      font-weight: 750;
+      text-transform: uppercase;
+      letter-spacing: 1.35px;
+      color: rgba(255,255,255,.94);
+    }
+
+    .footer-links {
+      display: grid;
+      gap: 9px;
+    }
+
+    .footer-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 12.5px;
+      transition: color .25s ease, transform .25s ease;
+    }
+
+    .footer-links a:hover {
+      transform: translateX(2px);
+    }
+
+    .footer-links a:hover {
+      color: var(--gold-light);
+    }
+
+    /* =========================================
+       SOCIAL CARD
+       Based on the supplied expanding card
+       animation, redesigned for Credence.
+       ========================================= */
+    .social-card {
+      position: relative;
+      width: 226px;
+      height: 150px;
+      overflow: hidden;
+      border-radius: 19px;
+      border: 1px solid rgba(255,255,255,.13);
+      background: var(--navy);
+      box-shadow: 0 16px 34px rgba(0,0,0,.16);
+      transition: transform .65s ease, box-shadow .65s ease;
+      isolation: isolate;
+    }
+
+    .social-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 22px 42px rgba(0,0,0,.22);
+    }
+
+    .social-card-bg {
+      position: absolute;
+      inset: 0;
+      background: #193850;
+      z-index: -2;
+    }
+
+    /* Subtle Credence pattern instead of the original gradient */
+    .social-card-bg::before,
+    .social-card-bg::after {
+      content: "";
+      position: absolute;
+      border: 1px solid rgba(197,154,58,.11);
+      border-radius: 50%;
+    }
+
+    .social-card-bg::before {
+      width: 175px;
+      height: 175px;
+      right: -82px;
+      top: -105px;
+    }
+
+    .social-card-bg::after {
+      width: 135px;
+      height: 135px;
+      left: -78px;
+      bottom: -90px;
+    }
+
+    .social-logo {
+      position: absolute;
+      left: 24px;
+      top: 23px;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 750;
+      letter-spacing: 1.8px;
+      transition: all .55s ease;
+      z-index: 2;
+    }
+
+    .social-caption {
+      position: absolute;
+      left: 24px;
+      top: 50px;
+      width: 145px;
+      color: rgba(255,255,255,.58);
+      font-size: 10px;
+      line-height: 1.55;
+      transition: opacity .4s ease;
+      z-index: 2;
+    }
+
+    .social-card:hover .social-logo {
+      transform: translate(75px, -4px);
+      letter-spacing: 0;
+    }
+
+    .social-card:hover .social-caption {
+      opacity: .08;
+    }
+
+    /* =========================================
+       FAN / CASCADING EXPANSION
+       The layers open from the bottom-left
+       corner into a diagonal fan, matching
+       the supplied reference orientation.
+       ========================================= */
+    .social-box {
+      position: absolute;
+      pointer-events: none;
+      left: 0;
+      bottom: 0;
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-end;
+      padding: 11px;
+      background: rgba(255,255,255,.055);
+      border-top: 1px solid rgba(197,154,58,.62);
+      border-right: 1px solid rgba(255,255,255,.13);
+      border-radius: 10% 18% 52% 0% / 10% 14% 78% 0%;
+      box-shadow: -7px 7px 25px rgba(0,0,0,.18);
+      transform-origin: bottom left;
+      transition:
+        width 1s cubic-bezier(.2,.75,.25,1),
+        height 1s cubic-bezier(.2,.75,.25,1),
+        background-color .45s ease,
+        box-shadow .45s ease;
+      z-index: 3;
+      text-decoration: none;
+    }
+
+    .social-box::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: rgba(197,154,58,.18);
+      opacity: 0;
+      transition: opacity .35s ease;
+    }
+
+    .social-box:has(.social-icon:hover)::before {
+      opacity: 1;
+    }
+
+    .social-box-1 {
+      width: 58px;
+      height: 54px;
+      z-index: 6;
+      transition-delay: 0s;
+    }
+
+    .social-box-2 {
+      width: 43px;
+      height: 40px;
+      z-index: 5;
+      transition-delay: .10s;
+    }
+
+    .social-box-3 {
+      width: 29px;
+      height: 28px;
+      z-index: 4;
+      transition-delay: .20s;
+    }
+
+    .social-box-4 {
+      width: 17px;
+      height: 17px;
+      z-index: 3;
+      transition-delay: .30s;
+    }
+
+    /* Fan opens diagonally: each layer occupies more
+       of the card while retaining a common lower-left
+       anchor, rather than forming a vertical column. */
+    .social-card:hover .social-box-1 {
+      width: 194px;
+      height: 121px;
+    }
+
+    .social-card:hover .social-box-2 {
+      width: 149px;
+      height: 94px;
+    }
+
+    .social-card:hover .social-box-3 {
+      width: 103px;
+      height: 67px;
+    }
+
+    .social-card:hover .social-box-4 {
+      width: 59px;
+      height: 40px;
+    }
+
+    .social-icon:hover .social-svg {
+      color: var(--gold-light);
+      filter: drop-shadow(0 0 5px rgba(197,154,58,.35));
+    }
+
+    .social-icon {
+      position: relative;
+      pointer-events: auto;
+      cursor: pointer;
+      width: 23px;
+      height: 23px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      z-index: 2;
+    }
+
+    .social-svg {
+      width: 18px;
+      height: 18px;
+      color: rgba(255,255,255,.84);
+      transition: all .35s ease;
+    }
+
+    /* Each social icon stays independently reachable in the fan. */
+    .social-box-1 .social-icon { margin-top: 4px; }
+    .social-box-2 .social-icon { margin-top: 3px; }
+    .social-box-3 .social-icon { margin-top: 2px; }
+    .social-box-4 .social-icon { margin-top: 1px; }
+
+    .social-box-1 { z-index: 6; }
+    .social-box-2 { z-index: 5; }
+    .social-box-3 { z-index: 4; }
+    .social-box-4 { z-index: 3; }
+
+    /* Only the icon itself catches the pointer; this prevents the
+       overlapping fan layers from blocking one another. */
+    .social-box .social-tooltip {
+      pointer-events: none;
+    }
+
+        /* =========================================
+       Tooltips for the expanded fan
+       ========================================= */
+    .social-tooltip {
+      position: absolute;
+      left: 43px;
+      top: 10px;
+      transform: translateX(-6px);
+      padding: 5px 8px;
+      border-radius: 5px;
+      border: 1px solid rgba(255,255,255,.09);
+      background: #0c2033;
+      color: #fff;
+      font-size: 9px;
+      font-weight: 600;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      visibility: hidden;
+      transition: all .28s ease;
+      z-index: 20;
+      box-shadow: 0 7px 16px rgba(0,0,0,.2);
+    }
+
+    .social-icon:hover + .social-tooltip {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(0);
+    }
+
+        /* A small independent info tooltip, borrowing the
+       supplied question-tip behavior but matching Credence. */
+    .info-button {
+      position: relative;
+      width: 32px;
+      height: 32px;
+      display: inline-grid;
+      place-items: center;
+      margin-top: 16px;
+      border: 1px solid rgba(255,255,255,.13);
+      border-radius: 50%;
+      background: rgba(255,255,255,.07);
+      color: var(--gold-light);
+      cursor: pointer;
+      transition: all .3s ease;
+    }
+
+    .info-button:hover {
+      background: var(--gold);
+      color: var(--navy);
+      transform: translateY(-2px);
+    }
+
+    .info-tooltip {
+      position: absolute;
+      left: 40px;
+      top: 50%;
+      transform: translateY(-50%) translateX(-5px);
+      padding: 6px 9px;
+      border-radius: 5px;
+      background: #0c2033;
+      color: #fff;
+      font-size: 10px;
+      white-space: nowrap;
+      opacity: 0;
+      visibility: hidden;
+      transition: all .3s ease;
+      pointer-events: none;
+    }
+
+    .info-button:hover .info-tooltip {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(-50%) translateX(0);
+    }
+
+    .footer-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+      border-top: 1px solid var(--line);
+      padding-top: 18px;
+      color: #8497a8;
+      font-size: 10.5px;
+    }
+
+    .legal {
+      display: flex;
+      gap: 18px;
+    }
+
+    .legal a {
+      color: #8497a8;
+      text-decoration: none;
+    }
+
+    .legal a:hover {
+      color: var(--gold-light);
+    }
+
+    .footer-note {
+      color: var(--gold-light);
+      opacity: .78;
+    }
+
+    @media (max-width: 900px) {
+      .footer-main {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 600px) {
+      footer {
+        padding: 35px 24px 20px;
+      }
+
+      .footer-main {
+        grid-template-columns: 1fr;
+        gap: 28px;
+      }
+
+      .footer-bottom {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .social-card {
+        width: 226px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="page"></div>
+
+  <footer>
+    <div class="footer-inner">
+
+      <div class="footer-main">
+
+        <section class="footer-brand">
+          <div class="brand">
+            <div class="shield"></div>
+            <div class="brand-name">Credence</div>
+          </div>
+
+          <p class="brand-copy">
+            Secure academic credentials with institutional issuance,
+            transparent verification and independently verifiable records.
+          </p>
+
+          <button class="info-button" type="button" aria-label="About Credence">
+            <svg viewBox="0 0 320 512" width="10" height="16" fill="currentColor">
+              <path d="M80 160c0-35.3 28.7-64 64-64h32c35.3 0 64 28.7 64 64v3.6c0 21.8-11.1 42.1-29.4 53.8l-42.2 27.1c-25.2 16.2-40.4 44.1-40.4 74V320c0 17.7 14.3 32 32 32s32-14.3 32-32v-1.4c0-8.2 4.2-15.8 11-20.2l42.2-27.1c36.6-23.6 58.8-64.1 58.8-107.7V160c0-70.7-57.3-128-128-128H144C73.3 32 16 89.3 16 160c0 17.7 14.3 32 32 32s32-14.3 32-32zm80 320a40 40 0 1 0 0-80 40 40 0 1 0 0 80z"/>
+            </svg>
+            <span class="info-tooltip">About credential verification</span>
+          </button>
+        </section>
+
+        <section>
+          <div class="footer-heading">Platform</div>
+          <div class="footer-links">
+            <a href="#">Verify a Certificate</a>
+            <a href="#">Institution Access</a>
+            <a href="#">Certificate Status</a>
+            <a href="#">Verification Guide</a>
+          </div>
+        </section>
+
+        <section>
+          <div class="footer-heading">Support</div>
+          <div class="footer-links">
+            <a href="#">Help Centre</a>
+            <a href="#">Security</a>
+            <a href="#">Contact</a>
+            <a href="#">Report an Issue</a>
+          </div>
+        </section>
+
+        <section>
+          <div class="footer-heading">Connect</div>
+
+          <div style="font-size:11px;color:rgba(255,255,255,.52);margin:-7px 0 11px;">
+            Follow Credence
+          </div>
+
+          <div class="social-card">
+
+            <div class="social-card-bg"></div>
+
+            <div class="social-logo">CREDENCE</div>
+            <div class="social-caption">
+              Connect with the platform and stay informed.
+            </div>
+
+            <!-- LinkedIn -->
+            <a href="#" class="social-box social-box-1" aria-label="LinkedIn">
+              <span class="social-icon">
+                <svg class="social-svg" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854zm4.943 12.248V6.169H2.542v7.225zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248S2.4 3.226 2.4 3.934c0 .694.521 1.248 1.327 1.248zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193v.025h-.016l.016-.025V6.169h-2.4c.03.678 0 7.225 0 7.225z"/>
+                </svg>
+              </span>
+              <span class="social-tooltip">LinkedIn</span>
+            </a>
+
+            <!-- GitHub -->
+            <a href="#" class="social-box social-box-2" aria-label="GitHub">
+              <span class="social-icon">
+                <svg class="social-svg" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8"/>
+                </svg>
+              </span>
+              <span class="social-tooltip">GitHub</span>
+            </a>
+
+            <!-- Instagram -->
+            <a href="#" class="social-box social-box-3" aria-label="Instagram">
+              <span class="social-icon">
+                <svg class="social-svg" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M8 0C5.829 0 5.556.01 4.703.048 3.85.088 3.269.222 2.76.42a3.9 3.9 0 0 0-1.417.923A3.9 3.9 0 0 0 .42 2.76C.222 3.268.087 3.85.048 4.7.01 5.555 0 5.827 0 8.001c0 2.172.01 2.444.048 3.297.04.852.174 1.433.372 1.942.205.526.478.972.923 1.417.444.445.89.719 1.416.923.51.198 1.09.333 1.942.372C5.555 15.99 5.827 16 8 16s2.444-.01 3.298-.048c.851-.04 1.434-.174 1.943-.372a3.9 3.9 0 0 0 1.416-.923c.445-.445.718-.891.923-1.417.197-.509.332-1.09.372-1.942C15.99 10.445 16 10.173 16 8s-.01-2.445-.048-3.299c-.04-.851-.175-1.433-.372-1.941a3.9 3.9 0 0 0-.923-1.417A3.9 3.9 0 0 0 13.24.42c-.51-.198-1.092-.333-1.943-.372C10.443.01 10.172 0 7.998 0zm-.717 1.442h.718c2.136 0 2.389.007 3.232.046.78.035 1.204.166 1.486.275.373.145.64.319.92.599s.453.546.598.92c.11.281.24.705.275 1.485.039.843.047 1.096.047 3.231s-.008 2.389-.047 3.232c-.035.78-.166 1.203-.275 1.485a2.5 2.5 0 0 1-.599.919c-.28.28-.546.453-.92.598-.28.11-.704.24-1.485.276-.843.038-1.096.047-3.232.047s-2.39-.009-3.233-.047c-.78-.036-1.203-.166-1.485-.276a2.5 2.5 0 0 1-.92-.598 2.5 2.5 0 0 1-.6-.92c-.109-.281-.24-.705-.275-1.485-.038-.843-.046-1.096-.046-3.233s.008-2.388.046-3.231c.036-.78.166-1.204.276-1.486.145-.373.319-.64.599-.92s.546-.453.92-.598c.282-.11.705-.24 1.485-.276.738-.034 1.024-.044 2.515-.045zm4.988 1.328a.96.96 0 1 0 0 1.92.96.96 0 0 0 0-1.92m-4.27 1.122a4.109 4.109 0 1 0 0 8.217 4.109 4.109 0 0 0 0-8.217m0 1.441a2.667 2.667 0 1 1 0 5.334 2.667 2.667 0 0 1 0-5.334"/>
+                </svg>
+              </span>
+              <span class="social-tooltip">Instagram</span>
+            </a>
+
+            <!-- YouTube -->
+            <a href="#" class="social-box social-box-4" aria-label="YouTube">
+              <span class="social-icon">
+                <svg class="social-svg" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M8.051 1.999h.089c.822.003 4.987.033 6.11.335a2.01 2.01 0 0 1 1.415 1.42c.101.38.172.883.22 1.402l.01.104.022.26.008.104c.065.914.073 1.77.074 1.957v.075c-.001.194-.01 1.108-.082 2.06l-.008.105-.009.104c-.05.572-.124 1.14-.235 1.558a2.01 2.01 0 0 1-1.415 1.42c-1.16.312-5.569.334-6.18.335h-.142c-.309 0-1.587-.006-2.927-.052l-.17-.006-.087-.004-.171-.007-.171-.007c-1.11-.049-2.167-.128-2.654-.26a2.01 2.01 0 0 1-1.415-1.419c-.111-.417-.185-.986-.235-1.558L.09 9.82l-.008-.104A31 31 0 0 1 0 7.68v-.123c.002-.215.01-.958.064-1.778l.007-.103.003-.052.008-.104.022-.26.01-.104c.048-.519.119-1.023.22-1.402a2.01 2.01 0 0 1 1.415-1.42c.487-.13 1.544-.21 2.654-.26l.17-.007.172-.006.086-.003.171-.007A100 100 0 0 1 7.858 2zM6.4 5.209v4.818l4.157-2.408z"/>
+                </svg>
+              </span>
+              <span class="social-tooltip">YouTube</span>
+            </a>
+
+          </div>
+        </section>
+
+      </div>
+
+      <div class="footer-bottom">
+        <div>© 2026 Credence · Academic Credential Verification Platform</div>
+
+        <div class="legal">
+          <a href="#">Privacy</a>
+          <a href="#">Terms</a>
+          <a href="#">Security</a>
+        </div>
+
+        <div class="footer-note">Trusted credentials. Independent verification.</div>
+      </div>
+
+    </div>
+  </footer>
+
+</body>
+</html>

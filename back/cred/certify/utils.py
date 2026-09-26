@@ -6,15 +6,29 @@ Utilities for certificate ID generation and SHA-256 hashing.
 
 import hashlib
 import json
+import secrets
 from datetime import datetime
 
 
-def generate_certificate_id(institution_short: str, year: int, sequence: int) -> str:
+def generate_certificate_id(institution_short: str, year: int) -> str:
     """
-    Generates a human-readable certificate ID.
-    e.g.  CR-2026-CUSL-0042
+    Generate a high-entropy, non-guessable certificate ID.
+
+    Format:  CR-{year}-{INSTITUTION}-{8-hex-chars}
+    Example: CR-2026-CUSL-A3F92C01
+
+    The 8-hex suffix is drawn from os.urandom via secrets.token_hex(4),
+    giving 2^32 (~4.3 billion) values per institution per year.  With a
+    typical cohort of a few hundred graduates the probability of a random
+    guess being a valid ID is < 0.00001 %, making enumeration attacks
+    impractical even without rate limiting.
+
+    A sequential ``sequence`` parameter is no longer accepted — callers
+    that passed one should be updated (the perform_create view is the only
+    caller and is updated alongside this change).
     """
-    return f"CR-{year}-{institution_short.upper()}-{sequence:04d}"
+    suffix = secrets.token_hex(4).upper()   # 8 uppercase hex chars
+    return f"CR-{year}-{institution_short.upper()}-{suffix}"
 
 
 def compute_sha256_bytes(data: bytes) -> str:

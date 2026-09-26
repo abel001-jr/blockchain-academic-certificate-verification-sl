@@ -1,58 +1,70 @@
-import { Gavel, Building2, ClipboardEdit, GraduationCap, Briefcase } from "lucide-react";
+"use client";
 
-const roles = [
-  {
-    icon: Gavel,
-    title: "Super Admin",
-    desc: "System governance, institution onboarding, platform monitoring and configuration.",
-  },
-  {
-    icon: Building2,
-    title: "Institutional Admin",
-    desc: "Manages institutional settings, registrar accounts, roles and institutional profile.",
-  },
-  {
-    icon: ClipboardEdit,
-    title: "Registrar",
-    desc: "Issues certificates, uploads documents, initiates blockchain transactions and handles revocations.",
-  },
-  {
-    icon: GraduationCap,
-    title: "Student",
-    desc: "Views, downloads and shares issued certificates via QR codes and verification links.",
-  },
-  {
-    icon: Briefcase,
-    title: "Employer / Verifier",
-    desc: "Verifies certificates by scanning a QR code or entering a Certificate ID — no account required.",
-  },
+import { useEffect, useState } from "react";
+import StakeholderCarousel from "@/components/StakeholderCarousel";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api";
+
+/**
+ * Static fallbacks shown while the fetch is in-flight or if it fails.
+ * The fixed values (roles, lifecycle stages, verification methods) never
+ * change — only the live counts (certificates issued, verifications) animate in.
+ */
+const STATIC_STATS = [
+  { key: "certificates_issued",  label: "Certificates issued",         fallback: "—"  },
+  { key: "verifications_total",  label: "Public verifications",        fallback: "—"  },
+  { key: "institutions_active",  label: "Institutions onboarded",      fallback: "—"  },
+  { key: null,                   label: "Verification methods",        fallback: "2"  },
 ];
 
-export default function UserRoles() {
+function StatBlock({ value, label }) {
   return (
-    <section className="bg-[#eef4ff] py-20 px-4 md:px-10" id="institutions">
-      <div className="max-w-[1280px] mx-auto">
-        <div className="text-center mb-14">
-          <h2 className="text-[#022448] font-bold text-4xl md:text-[48px] leading-tight tracking-tight">
-            Designed for Every Stakeholder
+    <div className="min-w-[140px]">
+      <div className="font-serif text-[2.2rem] text-[#08283F] font-medium leading-none">
+        {value}
+      </div>
+      <div className="text-[0.85rem] text-[#4A5A68] mt-1">{label}</div>
+    </div>
+  );
+}
+
+export default function UserRoles() {
+  const [liveStats, setLiveStats] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/public/stats/`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data) setLiveStats(data); })
+      .catch(() => {/* silent — fallbacks stay visible */});
+  }, []);
+
+  const stats = STATIC_STATS.map((s) => ({
+    label:    s.label,
+    value:    s.key && liveStats ? (liveStats[s.key] ?? s.fallback) : s.fallback,
+    loading:  s.key !== null && liveStats === null,
+  }));
+
+  return (
+    <section className="scroll-anchor py-24" id="stakeholders">
+      <div className="landing-wrap">
+        <div className="max-w-[560px] mb-14">
+          <h2 className="font-serif text-[2.1rem] font-medium text-[#08283F] leading-[1.22]">
+            Five roles, one shared credential
           </h2>
-          <p className="text-[#43474e] text-lg mt-3">
-            Each role has a purpose-built interface exposing only what they need.
+          <p className="mt-3.5 text-[#4A5A68] text-[1.02rem] max-w-[52ch]">
+            Each stakeholder sees only what their role needs — connected by the same underlying record.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {roles.map(({ icon: Icon, title, desc }) => (
-            <div
-              key={title}
-              className="bg-white p-6 rounded-[14px] shadow-card flex flex-col items-center text-center gap-3"
-            >
-              <div className="w-12 h-12 rounded-full bg-[#022448]/5 flex items-center justify-center">
-                <Icon size={22} className="text-[#022448]" strokeWidth={1.8} />
-              </div>
-              <h4 className="text-[#022448] font-semibold text-sm">{title}</h4>
-              <p className="text-[#43474e] text-xs leading-relaxed">{desc}</p>
-            </div>
+        <StakeholderCarousel />
+
+        <div className="flex justify-between flex-wrap gap-8 py-10 mt-6 border-t border-b border-[#E4E1D6]">
+          {stats.map(({ value, label, loading }) => (
+            <StatBlock
+              key={label}
+              label={label}
+              value={loading ? <span className="text-[#B9C6D2]">…</span> : value}
+            />
           ))}
         </div>
       </div>

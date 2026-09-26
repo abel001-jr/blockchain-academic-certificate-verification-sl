@@ -5,7 +5,12 @@ django-cors-headers==4.7.0
 django-filter==25.1
 python-dotenv==1.1.0
 Pillow==11.2.1
+# PDF text/layout extraction and page rendering (OCR fallback uses rendered pages).
+PyMuPDF==1.28.2
+# Python wrapper for the separately installed Tesseract OCR executable.
+pytesseract==0.3.13
 requests==2.32.3
+cryptography==50.0.1
 eth-account==0.13.4
 reportlab==4.4.0
 qrcode==8.2

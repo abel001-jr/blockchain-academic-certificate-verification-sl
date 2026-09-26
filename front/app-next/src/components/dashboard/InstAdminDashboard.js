@@ -76,26 +76,26 @@ export default function InstAdminDashboard() {
   }
 
   return (
-    <div className="flex flex-col gap-8 max-w-[1280px]">
+    <div className="flex flex-col gap-8 w-full">
 
       {/* Institution status */}
-      <div className="bg-white rounded-[14px] shadow-card p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-[#c4c6cf]/10">
+      <div className="bg-white rounded-xl shadow-card p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-[#E4E1D6]/50">
         <div>
-          <h2 className="text-[#022448] font-bold text-xl mb-0.5">
+          <h2 className="text-[#08283F] font-bold text-xl mb-0.5">
             {inst?.name ?? "Your Institution"}
           </h2>
-          <p className="text-[#43474e] text-sm">ID: {inst?.institution_id ?? "—"}</p>
-          <div className="flex items-center gap-2 mt-2 text-sm text-[#43474e]">
+          <p className="text-[#4A5A68] text-sm">ID: {inst?.institution_id ?? "—"}</p>
+          <div className="flex items-center gap-2 mt-2 text-sm text-[#4A5A68]">
             <Link2 size={14} />
-            <span>Blockchain: <span className="text-[#022448] font-medium">Ethereum</span></span>
+            <span>Blockchain: <span className="text-[#08283F] font-medium">Ethereum</span></span>
           </div>
         </div>
         {inst?.is_chain_active ? (
-          <span className="inline-flex items-center gap-1.5 bg-[#7b5900]/10 text-[#7b5900] text-xs font-bold px-3 py-1.5 rounded-full border border-[#7b5900]/20 self-start sm:self-auto">
+          <span className="inline-flex items-center gap-1.5 bg-[#B98A28]/10 text-[#B98A28] text-xs font-semibold px-3 py-1.5 rounded-full border border-[#B98A28]/20 self-start sm:self-auto">
             <ShieldCheck size={12} /> Verified On-Chain
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1.5 bg-[#ED8A19]/10 text-[#ED8A19] text-xs font-bold px-3 py-1.5 rounded-full border border-[#ED8A19]/20 self-start sm:self-auto">
+          <span className="inline-flex items-center gap-1.5 bg-[#F5EBDB] text-[#A9721F] text-xs font-semibold px-3 py-1.5 rounded-full border border-[#A9721F]/20 self-start sm:self-auto">
             Awaiting on-chain anchor
           </span>
         )}
@@ -111,27 +111,27 @@ export default function InstAdminDashboard() {
 
       {/* Quick actions */}
       <div>
-        <h3 className="text-[#022448] font-semibold text-sm uppercase tracking-widest mb-4">Quick Actions</h3>
+        <h3 className="text-[#08283F] font-semibold text-sm uppercase tracking-wider mb-4">Quick Actions</h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {canAddRegistrar && (
             <Link href="/dashboard/registrars"
-              className="bg-[#022448] text-white h-12 rounded-[12px] flex items-center justify-center gap-2 text-sm font-semibold hover:opacity-90 transition-all active:scale-95 shadow-card"
+              className="bg-[#08283F] text-white h-12 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold hover:opacity-90 transition-all active:scale-95 shadow-card"
             >
               <UserPlus size={16} /> Add Registrar
             </Link>
           )}
           <Link href="/dashboard/certificates"
-            className="border border-[#022448] text-[#022448] h-12 rounded-[12px] flex items-center justify-center gap-2 text-sm font-semibold hover:bg-[#022448]/5 transition-all"
+            className="border border-[#08283F] text-[#08283F] h-12 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold hover:bg-[#EAF2FB] transition-all"
           >
             <Eye size={16} /> Certificates
           </Link>
           <Link href="/dashboard/blockchain"
-            className="border border-[#022448] text-[#022448] h-12 rounded-[12px] flex items-center justify-center gap-2 text-sm font-semibold hover:bg-[#022448]/5 transition-all"
+            className="border border-[#08283F] text-[#08283F] h-12 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold hover:bg-[#EAF2FB] transition-all"
           >
             <Database size={16} /> Blockchain
           </Link>
           <Link href="/dashboard/reports"
-            className="border border-[#022448] text-[#022448] h-12 rounded-[12px] flex items-center justify-center gap-2 text-sm font-semibold hover:bg-[#022448]/5 transition-all"
+            className="border border-[#08283F] text-[#08283F] h-12 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold hover:bg-[#EAF2FB] transition-all"
           >
             <FileText size={16} /> Reports
           </Link>
@@ -141,31 +141,31 @@ export default function InstAdminDashboard() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
         {/* Recent certificates */}
-        <div className="xl:col-span-2 bg-white rounded-[14px] shadow-card border border-[#c4c6cf]/10 overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-[#c4c6cf]/15">
-            <h3 className="text-[#022448] font-semibold text-sm">Recent Certificates</h3>
-            <Link href="/dashboard/certificates" className="text-[#7b5900] text-xs font-semibold flex items-center gap-1 hover:underline">
+        <div className="xl:col-span-2 bg-white rounded-xl shadow-card border border-[#E4E1D6]/50 overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-[#E4E1D6]/40">
+            <h3 className="text-[#08283F] font-semibold text-base">Recent Certificates</h3>
+            <Link href="/dashboard/certificates" className="text-[#B98A28] text-sm font-semibold flex items-center gap-1 hover:underline">
               View all <ArrowRight size={12} />
             </Link>
           </div>
-          <div className="divide-y divide-[#c4c6cf]/15">
+          <div className="divide-y divide-[#E4E1D6]/40">
             {certs.length === 0 && (
-              <p className="px-6 py-8 text-[#43474e] text-sm text-center">No certificates yet.</p>
+              <p className="px-6 py-8 text-[#4A5A68] text-sm text-center">No certificates yet.</p>
             )}
             {certs.map(cert => (
-              <div key={cert.id} className="flex items-center justify-between px-6 py-4 hover:bg-[#FAF7F2] transition-colors">
+              <div key={cert.id} className="flex items-center justify-between px-6 py-4 hover:bg-[#F8F7F2] transition-colors">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-lg bg-[#022448]/5 flex items-center justify-center shrink-0">
-                    <ScrollText size={16} className="text-[#022448]" />
+                  <div className="w-9 h-9 rounded-lg bg-[#08283F]/5 flex items-center justify-center shrink-0">
+                    <ScrollText size={16} className="text-[#08283F]" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[#022448] text-sm font-semibold truncate">{cert.student_name}</p>
-                    <p className="text-[#43474e] text-xs truncate">{cert.degree_title}</p>
+                    <p className="text-[#08283F] text-sm font-semibold truncate">{cert.student_name}</p>
+                    <p className="text-[#4A5A68] text-xs truncate">{cert.degree_title}</p>
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0 ml-4">
                   <StatusBadge status={cert.status} />
-                  <span className="text-[#74777f] text-[11px]">
+                  <span className="text-[#8A929C] text-xs">
                     {cert.created_at ? new Date(cert.created_at).toLocaleDateString() : "—"}
                   </span>
                 </div>
@@ -178,46 +178,48 @@ export default function InstAdminDashboard() {
         <div className="flex flex-col gap-6">
 
           {/* Blockchain status */}
-          <div className="bg-[#022448] rounded-[14px] p-6 shadow-card relative overflow-hidden">
-            <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-[#7b5900]/20 rounded-full blur-2xl" />
+          <div className="bg-[#08283F] rounded-xl p-6 shadow-card relative overflow-hidden">
+            <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-[#B98A28]/20 rounded-full blur-2xl" />
             <div className="relative z-10">
               <div className="flex items-center gap-2 mb-3">
-                <ShieldCheck size={16} className="text-[#ffdea4]" />
-                <span className="text-white/70 text-xs font-semibold uppercase tracking-widest">Network Status</span>
+                <ShieldCheck size={16} className="text-[#E9DAB8]" />
+                <span className="text-white/75 text-xs font-semibold uppercase tracking-widest">Network Status</span>
               </div>
               <p className="text-white text-xl font-bold">Ethereum</p>
-              <p className="text-white/60 text-xs mt-0.5">Development Network</p>
+              <p className="text-white/70 text-sm mt-0.5">Development Network</p>
               <div className="mt-4 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-[#2E7D32] animate-pulse" />
-                <span className="text-white/70 text-xs">Node Active</span>
+                <span className="w-2 h-2 rounded-full bg-[#2F6F4E] animate-pulse" />
+                <span className="text-white/75 text-sm">Node Active</span>
               </div>
             </div>
           </div>
 
           {/* Audit timeline */}
-          <div className="bg-white rounded-[14px] shadow-card border border-[#c4c6cf]/10 p-6">
+          <div className="bg-white rounded-xl shadow-card border border-[#E4E1D6]/50 p-6">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-[#022448] font-semibold text-sm">Recent Activity</h3>
-              <Link href="/dashboard/audit" className="text-[#7b5900] text-xs font-semibold hover:underline">View all</Link>
+              <h3 className="text-[#08283F] font-semibold text-base">Recent Activity</h3>
+              <Link href="/dashboard/audit" className="text-[#B98A28] text-sm font-semibold hover:underline">View all</Link>
             </div>
             <div className="flex flex-col gap-0 relative">
-              <div className="absolute left-[5px] top-0 bottom-0 w-px bg-[#c4c6cf]/30" />
-              {audit.length === 0 && <p className="pl-6 text-[#43474e] text-sm">No activity yet.</p>}
+              <div className="absolute left-[5px] top-0 bottom-0 w-px bg-[#E4E1D6]" />
+              {audit.length === 0 && <p className="pl-6 text-[#4A5A68] text-sm">No activity yet.</p>}
               {audit.map((item, i) => (
                 <div key={i} className="flex gap-4 pb-5 last:pb-0">
                   <div className="mt-1.5 shrink-0">
                     <div className={`w-3 h-3 rounded-full ring-4 ${
-                      dotColor(item.action) === "gold" ? "bg-[#7b5900] ring-[#7b5900]/10"
-                        : dotColor(item.action) === "navy" ? "bg-[#022448] ring-[#022448]/10"
-                        : "bg-[#c4c6cf] ring-[#c4c6cf]/20"
+                      dotColor(item.action) === "gold"
+                        ? "bg-[#B98A28] ring-[#B98A28]/10"
+                        : dotColor(item.action) === "navy"
+                        ? "bg-[#08283F] ring-[#08283F]/10"
+                        : "bg-[#E4E1D6] ring-[#E4E1D6]/20"
                     }`} />
                   </div>
                   <div>
-                    <p className="text-[#43474e] text-xs font-medium mb-0.5">
+                    <p className="text-[#4A5A68] text-xs font-medium mb-0.5">
                       {item.timestamp ? new Date(item.timestamp).toLocaleString() : "—"}
                     </p>
-                    <p className="text-[#022448] text-sm font-semibold">{item.action}</p>
-                    <p className="text-[#74777f] text-xs mt-0.5 truncate max-w-[180px]">{item.detail}</p>
+                    <p className="text-[#08283F] text-sm font-semibold">{item.action}</p>
+                    <p className="text-[#8A929C] text-xs mt-0.5 truncate max-w-[220px]">{item.detail}</p>
                   </div>
                 </div>
               ))}

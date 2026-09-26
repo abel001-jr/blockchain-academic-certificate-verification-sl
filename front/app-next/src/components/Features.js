@@ -43,7 +43,7 @@ const features = [
 export default function Features() {
   return (
     <section className="bg-[#e5eeff] py-20" id="features">
-      <div className="max-w-[1280px] mx-auto px-4 md:px-10">
+      <div className="max-w-[1920px] mx-auto px-4 md:px-10">
         <div className="text-center mb-14">
           <h2 className="text-[#022448] font-bold text-4xl md:text-[48px] leading-tight tracking-tight">
             Built for the Full Certificate Lifecycle

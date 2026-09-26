@@ -49,7 +49,7 @@ def send_officer_temp_password(*, officer, temp_password: str, institution_name:
     from_email = _from_address()
     frontend = getattr(settings, "FRONTEND_URL", "http://localhost:3000").rstrip("/")
     login_url = f"{frontend}/login"
-    role_label = "Vice Chancellor" if officer.role == "vc" else "Chancellor"
+    role_label = "Vice Chancellor" if officer.role == "vc" else "Dean"
     inst = institution_name or (
         officer.institution.name if officer.institution_id else "your institution"
     )

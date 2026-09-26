@@ -8,7 +8,7 @@ const stats = [
 export default function Stats() {
   return (
     <section className="py-16 px-4 md:px-10">
-      <div className="max-w-[1280px] mx-auto">
+      <div className="max-w-[1920px] mx-auto">
         <div className="bg-[#022448] rounded-[14px] py-14 px-6 grid grid-cols-2 lg:grid-cols-4 gap-10 text-center shadow-modal">
           {stats.map((stat, i) => (
             <div key={i} className="flex flex-col items-center gap-2">

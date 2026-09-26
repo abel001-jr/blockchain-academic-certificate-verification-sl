@@ -8,12 +8,13 @@
  * | Officer form / set password                 | Off-chain       | No               |
  * | Officer setup: connect + prove wallet       | Signature       | Yes (free sign)  |
  * | Session login (wallet roles)                | Signature       | Yes (free sign)  |
- * | Registrar authorize VC / Chancellor         | On-chain tx     | Yes (gas)        |
- * | Registrar revoke VC / Chancellor            | On-chain tx     | Yes (gas)        |
+ * | Registrar authorize VC / Dean               | On-chain tx     | Yes (gas)        |
+ * | Registrar revoke VC / Dean                  | On-chain tx     | Yes (gas)        |
  * | Prepare cert (dataHash) / branding preview  | Off-chain       | No               |
  * | Submit for approval (dataHash)              | On-chain tx     | Yes (gas)        |
- * | VC / Chancellor review (preview)            | Off-chain       | No               |
- * | VC approve / Chancellor approve             | On-chain tx     | Yes (gas)        |
+ * | Submit uploaded doc (+ transcript) hashes   | On-chain tx     | Yes (gas)        |
+ * | VC / Dean review (preview)                  | Off-chain       | No               |
+ * | VC approve / Dean approve                   | On-chain tx     | Yes (gas)        |
  * | Finalize PDF + IPFS                         | Off-chain       | No               |
  * | Finalize certificate on-chain               | On-chain tx     | Yes (gas)        |
  * | Employer verify                             | Public read     | Never            |
@@ -21,9 +22,44 @@
  *
  * Officer authorize/revoke use authorizeVC / authorizeChancellor /
  * revokeVC / revokeChancellor (not authorizeRegistrar).
+ *
+ * Document locations are never sent to the chain. finalizeCertificate anchors
+ * the PDF hash only, and submitCredentialForApproval / finalizeCredential carry
+ * the certificate and transcript hashes without any CID, so the encrypted
+ * blobs stay retrievable only through an unexpired graduate share.
+ *
+ * Every path commits its document hashes before officer review, because an
+ * approval of a record whose docHash is still zero is an approval of no
+ * document:
+ *   - uploaded certificate + transcript → submitCredentialForApproval
+ *   - uploaded certificate only          → submitDocumentForApproval
+ *   - submitForApproval (data hash only) → the legacy preview flow, whose
+ *     document is produced afterwards and committed at finalize
+ *
+ * The system-designed flow uses submitForSealedReview / finalizeWithSealedDocument
+ * instead. Its document is generated, so a review rendering is committed before
+ * approval and the issued rendering — which adds the signature block — is
+ * committed after. Only hashes cross the chain in either case.
+ *
+ * Prefer submitUploadedCredentialForApprovalOnChain / finalizeUploadedCredentialOnChain
+ * in the upload flows: they pick the right function from the hashes on record.
  */
 
 const ISSUER_ABI = [
+  {
+    inputs: [{ name: "registrarAddr", type: "address" }],
+    name: "isAuthorizedRegistrar",
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [{ name: "institutionAdmin", type: "address" }],
+    name: "isActiveIssuer",
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function",
+  },
   {
     inputs: [{ name: "vcAddr", type: "address" }],
     name: "authorizeVC",
@@ -59,6 +95,46 @@ const CERT_ABI = [
     inputs: [
       { name: "certificateId", type: "string" },
       { name: "dataHash", type: "bytes32" },
+      { name: "certificateDocHash", type: "bytes32" },
+      { name: "transcriptDocHash", type: "bytes32" },
+    ],
+    name: "submitCredentialForApproval",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [{ name: "certificateId", type: "string" }],
+    name: "finalizeCredential",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      { name: "certificateId", type: "string" },
+      { name: "dataHash", type: "bytes32" },
+      { name: "reviewDocHash", type: "bytes32" },
+    ],
+    name: "submitForSealedReview",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      { name: "certificateId", type: "string" },
+      { name: "sealedDocHash", type: "bytes32" },
+    ],
+    name: "finalizeWithSealedDocument",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      { name: "certificateId", type: "string" },
+      { name: "dataHash", type: "bytes32" },
     ],
     name: "submitForApproval",
     outputs: [],
@@ -68,10 +144,20 @@ const CERT_ABI = [
   {
     inputs: [
       { name: "certificateId", type: "string" },
+      { name: "dataHash", type: "bytes32" },
+      { name: "docHash", type: "bytes32" },
+    ],
+    name: "submitDocumentForApproval",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+
+  {
+    inputs: [
+      { name: "certificateId", type: "string" },
       { name: "certHash", type: "bytes32" },
       { name: "docHash", type: "bytes32" },
-      { name: "ipfsCidJson", type: "string" },
-      { name: "ipfsCidPdf", type: "string" },
     ],
     name: "submitCertificate",
     outputs: [],
@@ -83,8 +169,6 @@ const CERT_ABI = [
       { name: "certificateId", type: "string" },
       { name: "certHash", type: "bytes32" },
       { name: "docHash", type: "bytes32" },
-      { name: "ipfsCidJson", type: "string" },
-      { name: "ipfsCidPdf", type: "string" },
     ],
     name: "registerCertificate",
     outputs: [],
@@ -109,8 +193,6 @@ const CERT_ABI = [
     inputs: [
       { name: "certificateId", type: "string" },
       { name: "docHash", type: "bytes32" },
-      { name: "ipfsCidJson", type: "string" },
-      { name: "ipfsCidPdf", type: "string" },
     ],
     name: "finalizeCertificate",
     outputs: [],
@@ -133,10 +215,24 @@ function requireEthereum() {
   if (typeof window === "undefined" || !window.ethereum) {
     throw new Error("MetaMask is not installed.");
   }
-  return window.ethereum;
+
+  // Chrome extensions can each inject an EIP-1193 provider. Prefer MetaMask
+  // rather than whichever extension last assigned window.ethereum; this avoids
+  // non-wallet extensions intercepting a transaction request.
+  const providers = Array.isArray(window.ethereum.providers)
+    ? window.ethereum.providers
+    : [window.ethereum];
+  const metaMask = providers.find(provider => provider?.isMetaMask);
+  if (!metaMask) throw new Error("MetaMask provider not detected. Enable the MetaMask extension and reload.");
+  return metaMask;
 }
 
-/** Connect MetaMask and return lowercase address (no signature). */
+/** 
+ * Connect MetaMask and return the CURRENTLY SELECTED account address.
+ * Uses eth_requestAccounts which always returns the active account first.
+ * If the wrong account is shown, the user should switch in MetaMask first
+ * then retry — or call wallet_requestPermissions to force the account picker.
+ */
 export async function connectWallet() {
   const eth = requireEthereum();
   const accounts = await eth.request({ method: "eth_requestAccounts" });
@@ -159,12 +255,33 @@ export async function signMessage(message, address) {
 }
 
 async function getSignerContract(registryAddress, abi) {
-  requireEthereum();
+  const ethereum = requireEthereum();
   if (!registryAddress) throw new Error("Registry contract address is not configured.");
   const { ethers } = await import("ethers");
-  const provider = new ethers.BrowserProvider(window.ethereum);
-  await provider.send("eth_requestAccounts", []);
-  const signer = await provider.getSigner();
+
+  // Request the account directly from MetaMask so issuance and approvals always
+  // use the wallet's current authenticated account, even with other extensions installed.
+  const accounts = await ethereum.request({ method: "eth_requestAccounts" });
+  if (!accounts?.[0]) throw new Error("No MetaMask account selected.");
+
+  const provider = new ethers.BrowserProvider(ethereum);
+  const signer = await provider.getSigner(accounts[0]);
+
+  // Guard: verify the contract exists at the given address before sending gas.
+  // After a Hardhat node restart the chain is empty — contracts need redeploying.
+  const code = await provider.getCode(registryAddress);
+  if (!code || code === "0x") {
+    throw new Error(
+      `No contract found at ${registryAddress}.\n\n` +
+      `The Hardhat node was likely restarted without redeploying.\n\n` +
+      `Fix:\n` +
+      `  1. Keep the Hardhat node running (npm run node)\n` +
+      `  2. In the chain/ directory run:  bash scripts/redeploy-local.sh\n` +
+      `     (or: npm run deploy:local  after deleting ignition/deployments/chain-31337/)\n` +
+      `  3. Refresh this page — the contract addresses stay the same.`
+    );
+  }
+
   return {
     ethers,
     signer,
@@ -185,10 +302,33 @@ function certAddress() {
   return process.env.NEXT_PUBLIC_CERTIFICATE_REGISTRY_ADDRESS;
 }
 
-/** On-chain: Registrar authorizes VC or Chancellor wallet (gas). */
-export async function authorizeOfficerOnChain(officer) {
-  const { contract } = await getSignerContract(issuerAddress(), ISSUER_ABI);
+/** On-chain: Registrar authorizes VC or Chancellor wallet (gas).
+ *
+ * @param officer              Officer user object with wallet_address and role.
+ * @param expectedSignerAddress Optional — if provided, verifies MetaMask is on
+ *                             this account (the institution admin wallet) before
+ *                             sending the tx. Pass institution.wallet_address.
+ */
+export async function authorizeOfficerOnChain(officer, expectedSignerAddress) {
+  const { signer, contract } = await getSignerContract(issuerAddress(), ISSUER_ABI);
   if (!officer?.wallet_address) throw new Error("Officer has no verified wallet.");
+
+  // Verify the connected account is the institution admin wallet
+  if (expectedSignerAddress) {
+    const connected = (await signer.getAddress()).toLowerCase();
+    const expected  = expectedSignerAddress.toLowerCase();
+    if (connected !== expected) {
+      throw new Error(
+        `Wrong MetaMask account.\n\n` +
+        `IssuerRegistry.authorizeVC/authorizeChancellor can only be called ` +
+        `by the institution admin wallet.\n\n` +
+        `Expected: ${expected}\n` +
+        `Connected: ${connected}\n\n` +
+        `Switch to the correct account in MetaMask and try again.`
+      );
+    }
+  }
+
   const tx =
     officer.role === "vc"
       ? await contract.authorizeVC(officer.wallet_address)
@@ -196,10 +336,28 @@ export async function authorizeOfficerOnChain(officer) {
   return waitTx(tx);
 }
 
-/** On-chain: Registrar revokes VC or Chancellor (gas). */
-export async function revokeOfficerOnChain(officer) {
-  const { contract } = await getSignerContract(issuerAddress(), ISSUER_ABI);
+/** On-chain: Registrar revokes VC or Chancellor (gas).
+ *
+ * @param officer              Officer user object.
+ * @param expectedSignerAddress Optional — institution admin wallet address check.
+ */
+export async function revokeOfficerOnChain(officer, expectedSignerAddress) {
+  const { signer, contract } = await getSignerContract(issuerAddress(), ISSUER_ABI);
   if (!officer?.wallet_address) throw new Error("Officer has no wallet to revoke.");
+
+  if (expectedSignerAddress) {
+    const connected = (await signer.getAddress()).toLowerCase();
+    const expected  = expectedSignerAddress.toLowerCase();
+    if (connected !== expected) {
+      throw new Error(
+        `Wrong MetaMask account.\n\n` +
+        `Expected institution admin wallet: ${expected}\n` +
+        `Connected: ${connected}\n\n` +
+        `Switch to the correct account in MetaMask and try again.`
+      );
+    }
+  }
+
   const tx =
     officer.role === "vc"
       ? await contract.revokeVC(officer.wallet_address)
@@ -209,49 +367,153 @@ export async function revokeOfficerOnChain(officer) {
 
 /**
  * On-chain: Registrar submits structured dataHash for dual approval (gas).
- * Prefer submitForApproval; falls back to legacy full submit if needed.
+ * Submit the certificate data hash before VC and Dean approvals.
  */
 export async function submitForApprovalOnChain(certData) {
   const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI);
   const dataHashBytes = ethers.hexlify(certData.cert_hash);
-  try {
-    const tx = await contract.submitForApproval(
-      certData.certificate_id,
-      dataHashBytes,
-    );
-    return waitTx(tx);
-  } catch (err) {
-    // Legacy deployments without submitForApproval
-    if (!certData.doc_hash) throw err;
-    const docHashBytes = ethers.hexlify(certData.doc_hash);
-    const tx = await contract.submitCertificate(
-      certData.certificate_id,
-      dataHashBytes,
-      docHashBytes,
-      certData.ipfs_cid_json || "",
-      certData.ipfs_cid_pdf || "",
-    );
-    return waitTx(tx);
-  }
+  const tx = await contract.submitForApproval(
+    certData.certificate_id,
+    dataHashBytes,
+  );
+  return waitTx(tx);
 }
 
-/** @deprecated Prefer submitForApprovalOnChain for the branding flow. */
+/** Submit the fixed certificate/transcript hash pair for officer review. */
+export async function submitCredentialForApprovalOnChain(credentialData) {
+  const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI);
+  const tx = await contract.submitCredentialForApproval(
+    credentialData.certificate_id,
+    ethers.hexlify(credentialData.cert_hash),
+    ethers.hexlify(credentialData.doc_hash),
+    ethers.hexlify(credentialData.transcript_hash),
+  );
+  return waitTx(tx);
+}
+
+/**
+ * Commit a single uploaded document before officer review (gas).
+ *
+ * An uploaded document is already final, so its hash is fixed here and the
+ * officers approve exactly these bytes. finalizeRequired on the contract keeps
+ * this path off the legacy auto-issue branch, so the registrar still runs the
+ * final anchoring transaction.
+ */
+export async function submitDocumentForApprovalOnChain(certData) {
+  const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI);
+  const tx = await contract.submitDocumentForApproval(
+    certData.certificate_id,
+    ethers.hexlify(certData.cert_hash),
+    ethers.hexlify(certData.doc_hash),
+  );
+  return waitTx(tx);
+}
+
+/**
+ * Submit an uploaded credential for review, committing every document hash the
+ * credential already has.
+ *
+ * The upload flows used to call submitForApproval, which puts only the data hash
+ * on-chain. The officers then approved a record whose document hash was still
+ * zero, so their approval referred to no document at all, and the hash only
+ * appeared on-chain at finalize — after both signatures. Both branches here fix
+ * the hashes up front:
+ *   - certificate + transcript → submitCredentialForApproval (the paired path)
+ *   - certificate only          → submitDocumentForApproval
+ *
+ * @param credentialData certificate_id, cert_hash, doc_hash and optionally
+ *                         transcript_hash.
+ */
+export async function submitUploadedCredentialForApprovalOnChain(credentialData) {
+  if (!credentialData?.doc_hash) {
+    throw new Error(
+      "No document hash to commit. Upload and hash the certificate before submitting it for review."
+    );
+  }
+  return credentialData.transcript_hash
+    ? submitCredentialForApprovalOnChain(credentialData)
+    : submitDocumentForApprovalOnChain(credentialData);
+}
+
+
+/** @deprecated Unused alias kept for callers outside this repo. Do not use it for
+ *  an upload flow: it commits the data hash alone, which is the defect the
+ *  submitDocumentForApproval / submitCredentialForApproval paths exist to fix.
+ *  For a generated certificate use submitForSealedReviewOnChain. */
 export async function submitCertificateOnChain(certData) {
   return submitForApprovalOnChain(certData);
 }
 
-/** On-chain: Registrar finalizes after dual approval + PDF/IPFS (gas). */
+/**
+ * On-chain: Registrar finalizes after dual approval (gas).
+ * Only the document hash is anchored. Document locations stay off-chain in
+ * the backend so a graduate's sharing window can actually revoke access.
+ */
 export async function finalizeCertificateOnChain(certData) {
   const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI);
   const docHashBytes = ethers.hexlify(certData.doc_hash);
   const tx = await contract.finalizeCertificate(
     certData.certificate_id,
     docHashBytes,
-    certData.ipfs_cid_json,
-    certData.ipfs_cid_pdf,
   );
   return waitTx(tx);
 }
+
+/** Complete issuance after both approvals; document hashes stay unchanged. */
+export async function finalizeCredentialOnChain(certificateId) {
+  const { contract } = await getSignerContract(certAddress(), CERT_ABI);
+  const tx = await contract.finalizeCredential(certificateId);
+  return waitTx(tx);
+}
+
+/**
+ * Issue an uploaded credential after both officers approved it.
+ *
+ * Paired credentials anchor through finalizeCredential, which takes no hash
+ * because both were committed at submit. Single-document credentials go through
+ * finalizeCertificate, which re-sends the hash it committed; the contract now
+ * rejects any other value, so a mismatch cannot be issued by accident.
+ */
+export async function finalizeUploadedCredentialOnChain(credentialData) {
+  if (credentialData?.transcript_hash) {
+    return finalizeCredentialOnChain(credentialData.certificate_id);
+  }
+  if (!credentialData?.doc_hash) {
+    throw new Error("No document hash on record to anchor.");
+  }
+  return finalizeCertificateOnChain(credentialData);
+}
+
+/**
+ * Commit the review document so officers approve fixed bytes.
+ * Used by the system-designed flow, whose issued document cannot exist until
+ * the approvals are in. The review rendering carries no signature block, so
+ * hashing it here is stable.
+ */
+export async function submitForSealedReviewOnChain(certData) {
+  const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI);
+  const tx = await contract.submitForSealedReview(
+    certData.certificate_id,
+    ethers.hexlify(certData.cert_hash),
+    ethers.hexlify(certData.doc_hash),
+  );
+  return waitTx(tx);
+}
+
+/**
+ * Anchor the issued document's hash and issue, after both approvals.
+ * The reviewed hash is left untouched on-chain, so the two documents stay
+ * distinguishable and the relationship between them remains auditable.
+ */
+export async function finalizeWithSealedDocumentOnChain(certData) {
+  const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI);
+  const tx = await contract.finalizeWithSealedDocument(
+    certData.certificate_id,
+    ethers.hexlify(certData.sealed_doc_hash),
+  );
+  return waitTx(tx);
+}
+
 
 /** On-chain: VC or Chancellor approval (gas). Reviewing stays off-chain. */
 export async function approveCertificateOnChain(certificateId, asRole) {

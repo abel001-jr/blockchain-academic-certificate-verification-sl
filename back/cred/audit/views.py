@@ -32,7 +32,7 @@ class AuditLogListView(generics.ListAPIView):
             return qs
 
         # Others see only logs for their institution's certificates
-        from certificates.models import Certificate
+        from certify.models import Certificate
         cert_ids = Certificate.objects.filter(
             institution=user.institution
         ).values_list("id", flat=True)

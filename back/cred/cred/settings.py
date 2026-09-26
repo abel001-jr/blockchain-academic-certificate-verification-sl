@@ -41,6 +41,7 @@ LOCAL_APPS = [
     "certify",
     "verification",
     "audit",
+    "notifications",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -149,6 +150,19 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ],
+    # ── Throttling ──────────────────────────────────────────────────────────
+    # Applied globally; the public verify endpoint uses its own tighter scope.
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "60/minute",
+        "user": "200/minute",
+        # Tighter scope used exclusively by VerifyCertificateView
+        "public_verify_anon": "20/minute",
+        "public_verify_user": "60/minute",
+    },
 }
 
 # ── SimpleJWT ──────────────────────────────────────────────────────────────
@@ -173,6 +187,7 @@ PINATA_API_KEY        = os.getenv("PINATA_API_KEY", "")
 PINATA_SECRET_API_KEY = os.getenv("PINATA_SECRET_API_KEY", "")
 PINATA_JWT            = os.getenv("PINATA_JWT", "")
 PINATA_GATEWAY        = os.getenv("PINATA_GATEWAY", "https://gateway.pinata.cloud")
+CREDENTIAL_DOCUMENT_ENCRYPTION_KEY = os.getenv("CREDENTIAL_DOCUMENT_ENCRYPTION_KEY", "")
 
 # ── Blockchain ─────────────────────────────────────────────────────────────
 ETH_RPC_URL                      = os.getenv("ETH_RPC_URL", "http://127.0.0.1:8545")
@@ -197,3 +212,35 @@ EMAIL_ALWAYS_RETURN_TEMP_PASSWORD = (
     os.getenv("EMAIL_ALWAYS_RETURN_TEMP_PASSWORD", "True") == "True"
 )
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+# ── WhatsApp / Twilio ──────────────────────────────────────────────────────
+# Set WHATSAPP_ENABLED=True and supply credentials to send issuance
+# notifications and consent requests via WhatsApp.
+# Sandbox FROM: whatsapp:+14155238886  (no approval needed for testing)
+# Production FROM: whatsapp:+<your approved Twilio number>
+WHATSAPP_ENABLED        = os.getenv("WHATSAPP_ENABLED", "False") == "True"
+TWILIO_ACCOUNT_SID      = os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN       = os.getenv("TWILIO_AUTH_TOKEN", "")
+TWILIO_WHATSAPP_FROM    = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+
+# Student invite token TTL in hours (default 24)
+STUDENT_INVITE_TTL_HOURS = int(os.getenv("STUDENT_INVITE_TTL_HOURS", "24"))
+
+# Employer live consent request TTL in minutes (default 30)
+CONSENT_REQUEST_TTL_MINUTES = int(os.getenv("CONSENT_REQUEST_TTL_MINUTES", "30"))
+
+# ── hCaptcha — public verify endpoint ─────────────────────────────────────
+# When True, anonymous callers on GET /api/verify/<id>/ must include a valid
+# hCaptcha token in the X-Captcha-Token request header.
+# Authenticated callers (logged-in dashboard users / mobile app) are exempt.
+# Obtain keys at https://dashboard.hcaptcha.com/
+HCAPTCHA_ENABLED    = os.getenv("HCAPTCHA_ENABLED", "False") == "True"
+HCAPTCHA_SECRET_KEY = os.getenv("HCAPTCHA_SECRET_KEY", "")
+
+# ── Google OAuth ───────────────────────────────────────────────────────────
+# Used by POST /api/auth/google/ to verify ID tokens from the mobile app.
+# Web client ID from Google Cloud Console / Credence-Web.json
+GOOGLE_CLIENT_ID = os.getenv(
+    "GOOGLE_CLIENT_ID",
+    "335667631038-vouui7i0uqde3v04jcs2lb1l9sk9h0pr.apps.googleusercontent.com",
+)

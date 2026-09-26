@@ -64,7 +64,7 @@ export const SAMPLE_CERT = {
   grade: "First Class Honours",
   graduation_year: 2026,
   certificate_id: "CR-2026-CUSL-0000",
-  registrar_signer_name: "Jane Registrar",
+  registrar_signer_name: "Registrar",
   registrar_signed_at: null,
   vc_approver_name: "",
   chancellor_approver_name: "",

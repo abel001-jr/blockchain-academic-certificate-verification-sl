@@ -2,7 +2,7 @@
 Officer cosmetic digital signature API.
 
 IMPORTANT: The signature image is display-only. Authenticity is the on-chain
-approveAsVC / approveAsChancellor transaction — always show image with tx hash.
+submission or approval transaction — always show the image with its chain record.
 """
 
 from django.core.files.base import ContentFile
@@ -53,15 +53,17 @@ class OfficerSignatureView(APIView):
     POST /api/auth/signature/  — upload / replace (multipart: signature_image)
     DELETE /api/auth/signature/ — clear (rare; prefer replace)
 
-    Allowed for VC / Chancellor during full session or officer setup JWT.
+    Allowed for Registrar / VC / Chancellor during a full session.
     """
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def _ensure_officer(self, request):
-        if request.user.role not in (Role.VC, Role.CHANCELLOR):
+        if request.user.role not in (
+            Role.REGISTRAR, Role.INSTITUTIONAL_ADMIN, Role.VC, Role.CHANCELLOR,
+        ):
             return Response(
-                {"detail": "Only Vice Chancellor and Chancellor may manage a signature."},
+                {"detail": "Only institution signers may manage a signature."},
                 status=status.HTTP_403_FORBIDDEN,
             )
         return None
@@ -120,7 +122,7 @@ class OfficerSignatureView(APIView):
             detail=(
                 f"{'Updated' if previous else 'Set'} cosmetic signature for "
                 f"{user.full_name} ({user.role}). "
-                f"Certificates already approved keep their snapshotted image."
+                f"Certificates already signed keep their snapshotted image."
             ),
         )
 
@@ -132,7 +134,7 @@ class OfficerSignatureView(APIView):
             "user": UserSerializer(user, context={"request": request}).data,
             "notice": (
                 "This image is cosmetic only. Authenticity comes from on-chain "
-                "approveAsVC / approveAsChancellor transactions."
+                "submission and approval transactions."
             ),
         })
 

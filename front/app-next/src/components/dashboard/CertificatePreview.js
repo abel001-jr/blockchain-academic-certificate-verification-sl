@@ -28,7 +28,7 @@ function SignerBlock({
         ) : null}
         <div className="border-t pt-2" style={{ borderColor: theme.primary }}>
           <p className="text-xs font-semibold truncate" style={{ color: theme.primary }}>
-            {name || title}
+            {name && name !== title ? name : title}
           </p>
           <p className="text-[10px]" style={{ color: theme.muted }}>{title}</p>
           {verified ? (
@@ -154,6 +154,7 @@ export default function CertificatePreview({
             name={regName}
             title="Registrar"
             signedAt={certificate?.registrar_signed_at}
+            signatureUrl={certificate?.registrar_signature_url}
             theme={theme}
           />
           <SignerBlock
@@ -166,7 +167,7 @@ export default function CertificatePreview({
           />
           <SignerBlock
             name={chName}
-            title="Chancellor"
+            title="Dean"
             signedAt={certificate?.chancellor_approved_at}
             signatureUrl={certificate?.chancellor_signature_url}
             txHash={certificate?.chancellor_approval_tx_hash}

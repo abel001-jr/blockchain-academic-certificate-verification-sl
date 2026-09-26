@@ -1,45 +1,48 @@
-import { BadgeCheck, Lock, Zap, FileSearch } from "lucide-react";
+function ShieldIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-[15px] h-[15px] text-[#08283F]">
+      <path d="M12 2 4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6l-8-4z" />
+    </svg>
+  );
+}
 
-const cards = [
-  {
-    icon: BadgeCheck,
-    title: "Cryptographic Issuance",
-    body: "Every certificate is hashed with SHA-256 and anchored to the Ethereum blockchain by the issuing institution.",
-  },
-  {
-    icon: Lock,
-    title: "Tamper-Proof Records",
-    body: "Once recorded on-chain, certificate data is immutable — no entity, including the issuing university, can alter it.",
-  },
-  {
-    icon: Zap,
-    title: "Instant Verification",
-    body: "Employers verify certificates in seconds by scanning a QR code — no login, no waiting, no manual inquiry.",
-  },
-  {
-    icon: FileSearch,
-    title: "IPFS Document Storage",
-    body: "Certificate PDFs and JSON records are stored on IPFS via Pinata, with their CIDs permanently registered on-chain.",
-  },
+function LockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-[15px] h-[15px] text-[#08283F]">
+      <rect x="4" y="10" width="16" height="10" rx="1.5" />
+      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+    </svg>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-[15px] h-[15px] text-[#08283F]">
+      <path d="M4 12a8 8 0 1 1 3 6.2" />
+      <path d="M4 18v-4h4" />
+    </svg>
+  );
+}
+
+const items = [
+  { icon: ShieldIcon, label: "Institutionally issued" },
+  { icon: LockIcon, label: "Tamper evident" },
+  { icon: RefreshIcon, label: "Independently verifiable" },
 ];
 
 export default function TrustIndicators() {
   return (
-    <section className="bg-[#eef4ff] py-16">
-      <div className="max-w-[1280px] mx-auto px-4 md:px-10">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {cards.map(({ icon: Icon, title, body }) => (
-            <div
-              key={title}
-              className="bg-white p-6 rounded-[14px] shadow-card flex flex-col gap-4"
-            >
-              <Icon size={32} className="text-[#7b5900]" strokeWidth={1.8} />
-              <h3 className="text-[#022448] font-semibold text-xl">{title}</h3>
-              <p className="text-[#43474e] text-base leading-relaxed">{body}</p>
-            </div>
-          ))}
-        </div>
+    <div className="border-t border-b border-[#E4E1D6] py-5">
+      <div className="landing-wrap flex justify-center gap-12 flex-wrap">
+        {items.map(({ icon: Icon, label }) => (
+          <div key={label} className="flex items-center gap-2.5 text-[0.88rem] text-[#4A5A68] font-medium">
+            <span className="trust-icon-well">
+              <Icon />
+            </span>
+            {label}
+          </div>
+        ))}
       </div>
-    </section>
+    </div>
   );
 }

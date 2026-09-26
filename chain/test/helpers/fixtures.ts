@@ -32,6 +32,8 @@ export async function deployFixture(ethers: HardhatEthersHelpers) {
 
   const dataHash = ethers.toBeHex(1, 32);
   const docHash = ethers.toBeHex(2, 32);
+  const transcriptHash = ethers.toBeHex(3, 32);
+  const sealedHash = ethers.toBeHex(4, 32);
 
   return {
     issuerRegistry,
@@ -44,8 +46,8 @@ export async function deployFixture(ethers: HardhatEthersHelpers) {
     stranger,
     dataHash,
     docHash,
-    ipfsJson: "QmTestJson",
-    ipfsPdf: "QmTestPdf",
+    transcriptHash,
+    sealedHash,
   };
 }
 

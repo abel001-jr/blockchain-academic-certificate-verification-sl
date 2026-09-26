@@ -14,6 +14,7 @@ from .serializers import (
     UserSerializer,
     UserCreateSerializer,
     UserUpdateSerializer,
+    UserStatusSerializer,
     ChangePasswordSerializer,
     CredenceTokenObtainSerializer,
     OfficerAdminUpdateSerializer,
@@ -109,6 +110,24 @@ class UserListCreateView(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        
+        # Validate officer limit: maximum 2 officers (VC + Chancellor) per institution
+        creating_role = serializer.validated_data.get("role")
+        if creating_role in (Role.VC, Role.CHANCELLOR):
+            user = request.user
+            institution = user.institution if hasattr(user, 'institution') else None
+            if institution:
+                existing_officers_count = User.objects.filter(
+                    institution=institution,
+                    role__in=[Role.VC, Role.CHANCELLOR],
+                    is_active=True
+                ).count()
+                if existing_officers_count >= 2:
+                    return Response(
+                        {"detail": "Maximum of 2 active officers (VC and Dean) allowed per institution. Deactivate an existing officer to add a new one."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+        
         user = serializer.save()
         headers = self.get_success_headers(UserSerializer(user).data)
         body = UserSerializer(user).data
@@ -137,12 +156,14 @@ class UserListCreateView(generics.ListCreateAPIView):
         return Response(body, status=status.HTTP_201_CREATED, headers=headers)
 
 
-class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """GET / PATCH / DELETE a specific user."""
+class UserDetailView(generics.RetrieveUpdateAPIView):
+    """GET / PATCH a specific user. Records are deactivated, never deleted."""
     permission_classes = [IsAdminOrAbove]
 
     def get_serializer_class(self):
         if self.request.method in ("PATCH", "PUT"):
+            if "is_active" in self.request.data:
+                return UserStatusSerializer
             obj = self.get_object()
             if obj.is_officer:
                 return OfficerAdminUpdateSerializer
@@ -158,9 +179,33 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
+        new_is_active = request.data.get("is_active")
+        status_changing = isinstance(new_is_active, bool) and new_is_active != instance.is_active
+        if status_changing:
+            reason = str(request.data.get("reason", "")).strip()
+            if not reason:
+                raise ValidationError("A reason is required to activate or deactivate a user.")
+            if not new_is_active and instance.pk == request.user.pk:
+                raise ValidationError("You cannot deactivate your own Super Admin account.")
+        if (
+            instance.role == Role.SUPER_ADMIN
+            and new_is_active is False
+            and User.objects.filter(role=Role.SUPER_ADMIN, is_active=True)
+                .exclude(pk=instance.pk).count() == 0
+        ):
+            raise ValidationError("Cannot deactivate the last Super Admin.")
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        if status_changing:
+            log_action(
+                actor=request.user,
+                action="user.activated" if new_is_active else "user.deactivated",
+                target_type="User",
+                target_id=str(user.id),
+                detail=f"{user.full_name} ({user.email}): {reason}",
+                ip_address=request.META.get("REMOTE_ADDR"),
+            )
         body = UserSerializer(user).data
         if user.is_officer:
             emailed = getattr(user, "_temp_password_emailed", False)
@@ -185,18 +230,6 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
                     body["detail"] = "Officer updated."
         return Response(body)
 
-    def perform_destroy(self, instance):
-        if instance.is_officer and instance.on_chain_authorized:
-            raise ValidationError(
-                "Cannot delete an officer who is already authorized on-chain."
-            )
-        if instance.role == Role.SUPER_ADMIN:
-            remaining = User.objects.filter(
-                role=Role.SUPER_ADMIN, is_active=True
-            ).exclude(pk=instance.pk).count()
-            if remaining == 0:
-                raise ValidationError("Cannot delete the last Super Admin.")
-        instance.delete()
 
 
 class ResendOfficerInviteView(APIView):

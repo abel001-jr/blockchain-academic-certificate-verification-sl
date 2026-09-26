@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Credence — Hero with Portrait Certificate</title>
+<style>
+:root {
+  --navy: #142b41;
+  --navy-soft: #28465e;
+  --cream: #f8f7f2;
+  --paper: #fffefa;
+  --gold: #c59a3a;
+  --gold-dark: #987124;
+  --slate: #718195;
+  --line: #ded8cb;
+  --green: #3f7658;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  padding: 42px;
+  display: grid;
+  place-items: center;
+  color: var(--navy);
+  background:
+    radial-gradient(circle at 88% 10%, rgba(197,154,58,.12), transparent 27%),
+    radial-gradient(circle at 5% 92%, rgba(20,43,65,.06), transparent 30%),
+    var(--cream);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.hero {
+  width: min(1180px, 100%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 430px);
+  align-items: center;
+  gap: clamp(34px, 5vw, 72px);
+}
+
+.hero-copy { max-width: 590px; }
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 18px;
+  color: var(--gold-dark);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.eyebrow::before {
+  content: "";
+  width: 30px;
+  height: 2px;
+  background: var(--gold);
+}
+
+.hero h1 {
+  max-width: 620px;
+  margin: 0;
+  color: var(--navy);
+  font-size: clamp(40px, 4.6vw, 66px);
+  font-weight: 780;
+  line-height: 1.03;
+  letter-spacing: -2.2px;
+}
+
+.hero h1 em {
+  color: var(--gold-dark);
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  letter-spacing: -2px;
+}
+
+.hero-description {
+  max-width: 500px;
+  margin: 22px 0 0;
+  color: var(--slate);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 26px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 10px;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 750;
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+
+.button:hover { transform: translateY(-2px); }
+
+.button-primary {
+  color: #fff;
+  background: var(--navy);
+  box-shadow: 0 10px 22px rgba(20,43,65,.16);
+}
+
+.button-secondary {
+  color: var(--navy);
+  border: 1px solid rgba(20,43,65,.18);
+  background: rgba(255,255,255,.45);
+}
+
+.hero-proof {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 28px;
+  color: var(--slate);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.hero-proof span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.hero-proof span::before {
+  content: "✓";
+  color: var(--green);
+  font-weight: 900;
+}
+
+.certificate-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 410px;
+  justify-self: end;
+}
+
+.certificate-wrap::before {
+  content: "";
+  position: absolute;
+  inset: 18px -16px -18px 16px;
+  border: 1px solid rgba(197,154,58,.22);
+  border-radius: 22px;
+  transform: rotate(5deg);
+  pointer-events: none;
+}
+
+.preview-label {
+  position: relative;
+  z-index: 2;
+  width: fit-content;
+  margin: 0 auto 10px;
+  padding: 7px 11px;
+  border: 1px solid rgba(197,154,58,.35);
+  border-radius: 999px;
+  background: #fbf8ed;
+  color: #86661d;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+}
+
+.certificate {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  aspect-ratio: 4 / 5.65;
+  overflow: hidden;
+  padding: 24px 25px 21px;
+  background: var(--paper);
+  border: 1px solid #d2ccbd;
+  border-radius: 18px;
+  box-shadow: 0 22px 52px rgba(20,43,65,.12), 0 5px 16px rgba(20,43,65,.045);
+}
+
+.certificate::before,
+.certificate::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.certificate::before {
+  inset: 10px;
+  border: 1px solid rgba(197,154,58,.55);
+  border-radius: 9px;
+}
+
+.certificate::after {
+  inset: 16px;
+  border: 1px solid rgba(20,43,65,.07);
+  border-radius: 6px;
+}
+
+.preview-badge {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  padding: 5px 8px;
+  border: 1px solid rgba(197,154,58,.3);
+  border-radius: 5px;
+  background: #fbf8ed;
+  color: #85651d;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+}
+
+.header {
+  position: relative;
+  text-align: center;
+  padding-top: 13px;
+}
+
+.top-rule {
+  width: 100%;
+  height: 2px;
+  margin-bottom: 15px;
+  background: var(--navy);
+}
+
+.logo-mark {
+  position: relative;
+  width: 40px;
+  height: 48px;
+  margin: 0 auto 9px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--navy);
+  border-radius: 10px 10px 15px 15px;
+  background: var(--paper);
+  box-shadow: inset 0 0 0 2px rgba(197,154,58,.2);
+}
+
+.logo-mark::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 1px solid rgba(197,154,58,.55);
+  border-radius: 6px 6px 11px 11px;
+}
+
+.logo-mark::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  right: 7px;
+  bottom: 8px;
+  height: 8px;
+  border-top: 1px solid var(--gold);
+  border-bottom: 1px solid var(--gold);
+  transform: skewX(-10deg);
+}
+
+.logo-mark span {
+  position: relative;
+  z-index: 1;
+  width: 21px;
+  height: 21px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--gold);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--gold-dark);
+  font: 700 12px Georgia, "Times New Roman", serif;
+}
+
+.brand {
+  margin: 0;
+  color: var(--navy);
+  font: 700 clamp(14px, 2.2vw, 18px)/1.18 Georgia, "Times New Roman", serif;
+  letter-spacing: .15px;
+  text-transform: uppercase;
+}
+
+.certificate-type {
+  margin-top: 5px;
+  color: var(--gold);
+  font-size: 7px;
+  font-weight: 780;
+  letter-spacing: 2.1px;
+  text-transform: uppercase;
+}
+
+.rule {
+  height: 1px;
+  margin: 14px 0 18px;
+  background: var(--line);
+}
+
+.content { text-align: center; }
+
+.statement {
+  color: var(--slate);
+  font-size: 9.2px;
+}
+
+.student {
+  margin: 6px 0 9px;
+  color: var(--navy);
+  font: 500 italic clamp(25px, 4.5vw, 31px)/1.08 Georgia, "Times New Roman", serif;
+  overflow-wrap: anywhere;
+}
+
+.support {
+  max-width: 270px;
+  margin: 0 auto;
+  color: #65778a;
+  font-size: 9.2px;
+  line-height: 1.5;
+}
+
+.degree {
+  margin-top: 7px;
+  color: var(--navy);
+  font: 700 clamp(16px, 3.4vw, 20px)/1.18 Georgia, "Times New Roman", serif;
+  overflow-wrap: anywhere;
+}
+
+.additional {
+  margin-top: 6px;
+  color: #6d7e90;
+  font-size: 8.8px;
+}
+
+.honours {
+  margin-top: 7px;
+  color: #ad7c29;
+  font-size: 9.2px;
+  font-weight: 750;
+}
+
+.body-seal {
+  width: 64px;
+  height: 64px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  border: 2px solid var(--gold);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--gold-dark);
+}
+
+.body-seal::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border: 1px solid var(--gold);
+  border-radius: 50%;
+}
+
+.body-seal::after {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border: 1px dashed rgba(152,113,36,.46);
+  border-radius: 50%;
+}
+
+.seal-center {
+  position: relative;
+  z-index: 1;
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border: 1.2px solid var(--gold);
+  border-radius: 50%;
+  background: var(--paper);
+  font: 700 13px Georgia, "Times New Roman", serif;
+}
+
+.seal-caption {
+  position: absolute;
+  bottom: 11px;
+  z-index: 2;
+  padding: 0 4px;
+  background: var(--paper);
+  font-size: 4.5px;
+  font-weight: 780;
+  letter-spacing: .35px;
+  text-transform: uppercase;
+}
+
+.preview-note {
+  position: absolute;
+  left: 50%;
+  top: 54%;
+  transform: translate(-50%, -50%);
+  color: rgba(20,43,65,.025);
+  font: 700 35px Georgia, "Times New Roman", serif;
+  letter-spacing: 3px;
+  pointer-events: none;
+}
+
+.footer {
+  position: absolute;
+  left: 25px;
+  right: 25px;
+  bottom: 20px;
+}
+
+.signatures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.signature-line {
+  height: 1px;
+  margin-bottom: 5px;
+  background: #92928c;
+}
+
+.signature-name {
+  color: var(--navy);
+  font-size: 8px;
+  font-weight: 750;
+}
+
+.signature-role,
+.signature-note {
+  margin-top: 2px;
+  color: var(--slate);
+  font-size: 6.4px;
+  line-height: 1.25;
+}
+
+.signature-note { color: #8a969f; font-style: italic; }
+
+.footer-meta {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  margin-top: 7px;
+}
+
+.footer-meta .body-seal {
+  justify-self: center;
+}
+
+
+.verify { display: flex; align-items: center; gap: 8px; }
+
+.qr {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border: 4px solid var(--navy);
+  background:
+    linear-gradient(90deg, transparent 34%, var(--navy) 34%, var(--navy) 62%, transparent 62%),
+    linear-gradient(transparent 34%, var(--navy) 34%, var(--navy) 62%, transparent 62%),
+    #fff;
+}
+
+.qr-copy strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--navy);
+  font-size: 7.3px;
+}
+
+.qr-copy span {
+  color: var(--slate);
+  font-size: 6.3px;
+  line-height: 1.35;
+}
+
+.meta { text-align: right; justify-self: end; }
+
+.meta-label {
+  color: #8a97a3;
+  font-size: 6.3px;
+  font-weight: 780;
+  letter-spacing: .9px;
+  text-transform: uppercase;
+}
+
+.meta-value {
+  margin-top: 2px;
+  color: var(--navy);
+  font: 600 7.3px "SFMono-Regular", Consolas, monospace;
+}
+
+.preview-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 9px;
+  color: var(--green);
+  font-size: 7.3px;
+  font-weight: 750;
+}
+
+.preview-status .dot {
+  width: 6px;
+  height: 6px;
+  border: 1px solid rgba(63,118,88,.38);
+  border-radius: 50%;
+  background: #eef6f0;
+}
+
+@media (max-width: 900px) {
+  body { padding: 28px; }
+  .hero { grid-template-columns: minmax(0, 1fr) 370px; gap: 38px; }
+  .hero h1 { font-size: clamp(40px, 5.5vw, 58px); letter-spacing: -2px; }
+  .hero-description { font-size: 14px; }
+}
+
+@media (max-width: 720px) {
+  body { padding: 24px; }
+  .hero { grid-template-columns: 1fr; gap: 48px; }
+  .hero-copy { max-width: 600px; }
+  .certificate-wrap { justify-self: center; }
+  .hero h1 { max-width: 600px; font-size: clamp(44px, 10vw, 68px); }
+}
+
+@media (max-width: 430px) {
+  body { padding: 16px; }
+  .hero { gap: 36px; }
+  .hero h1 { font-size: 42px; letter-spacing: -1.5px; }
+  .hero-description { font-size: 14px; line-height: 1.65; }
+  .certificate { padding-left: 25px; padding-right: 25px; }
+  .footer { left: 25px; right: 25px; }
+  .body-seal { width: 60px; height: 60px; }
+  .seal-center { width: 24px; height: 24px; font-size: 12px; }
+  .seal-caption { bottom: 10px; font-size: 4.3px; }
+  .signatures { gap: 8px; }
+  .certificate-wrap::before { inset: 18px -8px -18px 8px; }
+}
+</style>
+</head>
+<body>
+<main class="hero" aria-label="Credence hero section">
+  <section class="hero-copy">
+    <div class="eyebrow">Trusted digital credentials</div>
+    <h1>Certificates that are <em>easy to trust.</em></h1>
+    <p class="hero-description">
+      Credence helps institutions issue, manage, and verify academic certificates through a secure and transparent digital credential experience.
+    </p>
+    <div class="hero-actions">
+      <a class="button button-primary" href="#certificate-preview">Explore Credence ↗</a>
+      <a class="button button-secondary" href="#certificate-preview">View certificate</a>
+    </div>
+    <div class="hero-proof" aria-label="Credence benefits">
+      <span>Secure records</span>
+      <span>Fast verification</span>
+      <span>Institution-ready</span>
+    </div>
+  </section>
+
+  <section class="certificate-wrap" id="certificate-preview" aria-label="Certificate preview">
+    <div class="preview-label">Credence certificate preview · generic system template</div>
+
+    <article class="certificate">
+      <div class="preview-badge">Design Preview</div>
+
+      <header class="header">
+        <div class="top-rule"></div>
+        <div class="logo-mark" aria-label="University logo placeholder"><span>U</span></div>
+        <h2 class="brand">University / Institution Name</h2>
+        <div class="certificate-type">Academic Certificate</div>
+      </header>
+
+      <div class="rule"></div>
+
+      <section class="content">
+        <div class="statement">This is to certify that</div>
+        <div class="student">Student Name</div>
+        <div class="support">has successfully completed the programme of study and has been awarded the</div>
+        <div class="degree">Degree / Programme Name</div>
+        <div class="additional">Faculty / School / Department</div>
+        <div class="honours">Classification / Award · Year</div>
+      </section>
+
+      <div class="preview-note">PREVIEW</div>
+
+      <footer class="footer">
+        <div class="signatures">
+          <div class="signature">
+            <div class="signature-line"></div>
+            <div class="signature-name">Registrar</div>
+            <div class="signature-role">Institutional approval</div>
+            <div class="signature-note">Signature / approval</div>
+          </div>
+          <div class="signature">
+            <div class="signature-line"></div>
+            <div class="signature-name">Vice Chancellor</div>
+            <div class="signature-role">Institutional approval</div>
+            <div class="signature-note">Signature / approval</div>
+          </div>
+          <div class="signature">
+            <div class="signature-line"></div>
+            <div class="signature-name">Chancellor</div>
+            <div class="signature-role">Institutional approval</div>
+            <div class="signature-note">Signature / approval</div>
+          </div>
+        </div>
+
+        <div class="footer-meta">
+          <div class="verify">
+            <div class="qr" aria-label="QR code placeholder"></div>
+            <div class="qr-copy">
+              <strong>Scan to verify</strong>
+              <span>Verification QR<br>for credential record</span>
+            </div>
+          </div>
+
+          <div class="body-seal" aria-label="Institution official seal placeholder">
+            <div class="seal-center">C</div>
+            <div class="seal-caption">Official Seal</div>
+          </div>
+
+          <div class="meta">
+            <div class="meta-label">Certificate ID</div>
+            <div class="meta-value">CR-YYYY-INST-0000</div>
+          </div>
+        </div>
+
+        <div class="preview-status"><span class="dot"></span>Credential preview</div>
+      </footer>
+    </article>
+  </section>
+</main>
+</body>
+</html>

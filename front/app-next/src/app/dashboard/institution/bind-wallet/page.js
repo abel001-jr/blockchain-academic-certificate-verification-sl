@@ -54,7 +54,7 @@ export default function BindWalletPage() {
 
   if (user?.wallet_address) {
     return (
-      <div className="max-w-[600px]">
+      <div className="w-full">
         <div className="bg-white rounded-[14px] shadow-card border border-[#c4c6cf]/10 p-8 text-center">
           <CheckCircle2 size={40} className="text-[#2E7D32] mx-auto mb-4" />
           <h2 className="text-[#022448] font-bold text-xl mb-2">Wallet Already Bound</h2>
@@ -75,7 +75,7 @@ export default function BindWalletPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-[600px]">
+    <div className="flex flex-col gap-6 w-full">
       <div>
         <h2 className="text-[#022448] font-bold text-2xl">Bind Your Wallet</h2>
         <p className="text-[#43474e] text-sm mt-0.5">

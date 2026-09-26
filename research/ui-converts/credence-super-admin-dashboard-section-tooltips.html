@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Credence — Governance Console</title>
+<style>
+:root{
+  --navy:#142b41;
+  --navy-2:#1e4059;
+  --cream:#f8f7f2;
+  --paper:#fff;
+  --gold:#c59a3a;
+  --gold-soft:#f2e8d2;
+  --green:#3f7658;
+  --green-soft:#e6efe9;
+  --red:#a6423a;
+  --red-soft:#f3e4e2;
+  --slate:#687b8e;
+  --slate-2:#93a0ab;
+  --line:#e4e0d5;
+  --soft:#f5f3ed;
+  --shadow:0 7px 24px rgba(20,43,65,.045);
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--cream);color:var(--navy);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+button,a,input{font:inherit}
+button,a{text-decoration:none}
+.app{min-height:100vh;display:grid;grid-template-columns:252px minmax(0,1fr)}
+/* Sidebar */
+.sidebar{background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column}
+.brand{height:66px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:0 20px}
+.brand-mark{width:30px;height:30px;border-radius:8px;background:var(--navy);display:grid;place-items:center;color:var(--gold);font-size:14px;font-weight:800}
+.brand-name{font:700 19px Georgia,"Times New Roman",serif;letter-spacing:-.25px}
+.profile{margin:15px 14px 13px;padding:11px 12px;border-radius:10px;background:var(--cream);display:flex;gap:10px;align-items:center}
+.avatar{width:37px;height:37px;border-radius:50%;background:var(--navy);color:#fff;display:grid;place-items:center;font-size:11px;font-weight:800}
+.profile-name{font-size:12px;font-weight:700}.profile-role{font-size:10px;color:var(--slate);margin-top:2px}
+.role{margin-left:auto;padding:4px 7px;border-radius:999px;background:var(--gold-soft);color:#8a6a22;font-size:8px;font-weight:800}
+.nav{padding:0 11px;flex:1}.nav-group{margin:10px 12px 6px;font-size:8.5px;font-weight:800;letter-spacing:1.1px;color:#a0aab3;text-transform:uppercase}
+.nav-item{width:100%;border:0;background:none;color:var(--slate);display:flex;align-items:center;gap:10px;padding:9px 12px;margin:2px 0;border-radius:8px;text-align:left;font-size:12px;cursor:pointer}
+.nav-item:hover{background:#faf9f6;color:var(--navy)}.nav-item.active{background:var(--gold-soft);color:var(--navy);font-weight:700}.nav-icon{width:17px;text-align:center;font-size:13px}.nav-item.active .nav-icon{color:var(--gold)}
+.signout{border-top:1px solid var(--line);padding:11px}.signout button{width:100%;border:0;background:none;text-align:left;padding:10px 12px;color:var(--red);font-size:12px;cursor:pointer}
+/* Main header */
+.main{min-width:0}.topbar{height:66px;background:rgba(255,255,255,.96);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 30px;gap:16px}
+.top-heading{min-width:210px}.top-title{font-size:17px;font-weight:700}.top-role{font-size:10px;color:var(--slate);margin-top:2px}
+.search{margin-left:auto;width:min(360px,34vw);position:relative}.search input{width:100%;height:37px;border:1px solid transparent;background:#edf2f7;border-radius:9px;outline:none;padding:0 13px 0 34px;color:var(--navy);font-size:11px}.search input:focus{border-color:#d7bf83;background:#fff}.search:before{content:"⌕";position:absolute;left:12px;top:7px;z-index:1;color:var(--slate);font-size:16px}
+.top-actions{display:flex;align-items:center;gap:15px}.sync{font-size:10px;color:var(--slate)}.bell{font-size:17px;color:var(--navy);position:relative}.bell:after{content:"";position:absolute;width:6px;height:6px;border-radius:50%;background:var(--gold);right:-1px;top:1px;border:1px solid #fff}.user{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:650}.chevron{font-size:10px;color:var(--slate)}
+/* Page */
+.content{padding:27px 30px 34px;max-width:1500px;display:grid;gap:18px}
+.page-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px}.eyebrow{font-size:9px;font-weight:800;letter-spacing:1.25px;text-transform:uppercase;color:var(--slate)}.title{margin-top:4px;font:700 30px/1.06 Georgia,"Times New Roman",serif;letter-spacing:-.55px}.subtitle{margin-top:6px;color:var(--slate);font-size:11px;line-height:1.45}
+.actions{display:flex;gap:9px}.btn{height:38px;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--navy);font-size:10.5px;font-weight:700;cursor:pointer;transition:.2s}.btn:hover{transform:translateY(-1px);box-shadow:var(--shadow)}.btn.primary{background:var(--navy);border-color:var(--navy);color:#fff}.btn.gold{background:var(--gold-soft);border-color:#d8bf84;color:#795a18}
+/* Metrics */
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.metric{position:relative;display:block;min-height:111px;background:#fff;border:1px solid var(--line);border-radius:11px;padding:16px 18px;box-shadow:var(--shadow);transition:.2s}.metric:hover{transform:translateY(-2px);border-color:#d6c69f;box-shadow:0 11px 26px rgba(20,43,65,.07)}.metric-icon{width:29px;height:29px;border-radius:8px;background:#eff3f6;display:grid;place-items:center;font-size:12px;color:var(--navy);margin-bottom:10px}.metric:nth-child(2) .metric-icon{background:var(--green-soft);color:var(--green)}.metric:nth-child(3) .metric-icon{background:var(--gold-soft);color:#8a6a22}.metric:nth-child(4) .metric-icon{background:#eef2f6}.metric-value{font:700 27px Georgia,serif}.metric-label{font-size:12px;font-weight:650;margin-top:2px}.metric-sub{font-size:9.5px;color:var(--slate);margin-top:5px}.metric-arrow{position:absolute;right:16px;bottom:13px;color:var(--gold);font-size:13px}
+/* Shared panel */
+.panel{background:#fff;border:1px solid var(--line);border-radius:11px;box-shadow:var(--shadow);overflow:hidden}.panel-head{display:flex;justify-content:space-between;align-items:flex-start;gap:15px;padding:15px 18px;border-bottom:1px solid var(--line)}.panel-title{font:700 16px Georgia,"Times New Roman",serif}.panel-sub{margin-top:3px;color:var(--slate);font-size:9.5px}.panel-link{color:var(--gold);font-size:9.5px;font-weight:750}.panel-link:hover{text-decoration:underline}
+/* Main analytics */
+.analytics-grid{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.35fr);gap:15px}
+.donut-body{padding:18px}.donut-wrap{display:flex;align-items:center;justify-content:center;gap:31px;min-height:217px}.donut-chart{
+  position:relative;
+  width:164px;
+  height:164px;
+  flex:0 0 auto;
+  border-radius:50%;
+  background:conic-gradient(
+    var(--green) 0 50%,
+    var(--gold) 50% 83.333%,
+    #9aa8b4 83.333% 100%
+  );
+  overflow:hidden;
+}
+.donut-hole{
+  position:absolute;
+  inset:31px;
+  z-index:4;
+  background:#fff;
+  border-radius:50%;
+  pointer-events:none;
+}
+.donut-slice{
+  position:absolute;
+  inset:0;
+  z-index:2;
+  border:0;
+  background:transparent;
+  padding:0;
+  cursor:help;
+}
+.issued-slice{
+  clip-path:polygon(50% 50%,50% 0,86% 4%,100% 50%,86% 96%,50% 100%);
+}
+.pending-slice{
+  clip-path:polygon(50% 50%,86% 96%,50% 100%,18% 96%,0 83%,0 50%,14% 19%,50% 0,86% 4%);
+  /* The chart uses the underlying conic-gradient for the actual color;
+     this transparent hit area captures the pending section only. */
+}
+.draft-slice{
+  clip-path:polygon(50% 50%,18% 96%,0 83%,0 50%,14% 19%,50% 0);
+}
+.revoked-slice{
+  clip-path:polygon(50% 50%,0 50%,50% 0);
+}
+.donut-slice:hover{background:rgba(255,255,255,.12);}
+.donut-slice:active{background:rgba(255,255,255,.16);}
+.donut-slice:focus-visible{
+  outline:2px solid var(--gold);
+  outline-offset:-5px;
+  border-radius:50%;
+}
+.donut-center{
+position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center}.donut-center strong{font:700 29px Georgia,serif}.donut-center span{font-size:9px;color:var(--slate);margin-top:3px}.legend{display:grid;gap:11px;min-width:120px}.legend-row{display:flex;justify-content:space-between;gap:16px;align-items:center;font-size:10px}.legend-name{display:flex;align-items:center;gap:7px;color:var(--slate)}.legend-row b{color:var(--navy)}.legend-dot{width:7px;height:7px;border-radius:50%}.rate{border-top:1px solid var(--line);padding-top:10px;display:flex;justify-content:space-between;font-size:9.5px;color:var(--slate)}.rate strong{color:var(--green);font-size:11px}
+/* Verification activity chart */
+.chart-body{padding:14px 18px 16px}.activity-chart{height:220px;position:relative;border-bottom:1px solid var(--line);margin:0 5px;background:repeating-linear-gradient(to bottom,transparent 0,transparent 41px,rgba(228,224,213,.75) 42px,rgba(228,224,213,.75) 43px)}.yaxis{position:absolute;left:0;top:1px;bottom:28px;width:23px;display:flex;flex-direction:column;justify-content:space-between;color:var(--slate);font-size:8.5px}.plot{position:absolute;left:29px;right:5px;top:9px;bottom:28px}.line{position:absolute;height:2px;background:var(--navy);transform-origin:left center}.l1{left:3%;bottom:24%;width:19.5%;transform:rotate(-17deg)}.l2{left:22.5%;bottom:38%;width:20.5%;transform:rotate(11deg)}.l3{left:43%;bottom:30%;width:19.5%;transform:rotate(-17deg)}.l4{left:62.5%;bottom:51%;width:20%;transform:rotate(-14deg)}.l5{left:82.5%;bottom:69%;width:17%;transform:rotate(-16deg)}.point{position:absolute;width:8px;height:8px;border-radius:50%;background:var(--navy);border:2px solid #fff;box-shadow:0 0 0 1px rgba(20,43,65,.12);transform:translate(-50%,50%)}.q1{left:3%;bottom:24%}.q2{left:22.5%;bottom:38%}.q3{left:43%;bottom:30%}.q4{left:62.5%;bottom:51%}.q5{left:82.5%;bottom:69%}.q6{left:99%;bottom:87%}.xaxis{display:grid;grid-template-columns:repeat(6,1fr);margin:7px 7px 0 30px;text-align:center;color:var(--slate);font-size:8.5px}.data-point{position:absolute;width:1px;height:1px}
+.data-point b{
+  position:absolute;
+  left:0;
+  transform:translate(-50%,-17px);
+  color:var(--navy);
+  font-size:8.5px;
+  font-weight:700;
+  white-space:nowrap;
+}
+.d1{left:3%;bottom:24%}.d2{left:22.5%;bottom:38%}.d3{left:43%;bottom:30%}.d4{left:62.5%;bottom:51%}.d5{left:82.5%;bottom:69%}.d6{left:99%;bottom:87%}
+.axis-description{
+  display:flex;
+  justify-content:space-between;
+  margin:3px 7px 0 30px;
+  color:var(--slate-2);
+  font-size:8px;
+  letter-spacing:.1px;
+}.activity-summary{display:flex;gap:26px;margin-top:12px}.activity-summary strong{display:block;font:700 15px Georgia,serif}.activity-summary span{display:block;color:var(--slate);font-size:8.5px;margin-top:2px}
+/* Institution / blockchain */
+.secondary{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(310px,.85fr);gap:15px}.bars{padding:17px 19px}.bar-row{display:grid;grid-template-columns:160px minmax(0,1fr) 30px;align-items:center;gap:10px;margin:14px 0}.bar-name{font-size:10px;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bar-track{height:9px;border-radius:99px;background:#edf0f2;overflow:hidden}.bar-fill{height:100%;border-radius:inherit;background:var(--navy)}.bar-count{text-align:right;font-size:10px;font-weight:700}.health{padding:16px 19px}.health-top{display:flex;justify-content:space-between;align-items:center;padding-bottom:12px;border-bottom:1px solid var(--line)}.health-status{display:flex;align-items:center;gap:8px;font-size:10.5px;font-weight:700}.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px var(--green-soft)}.operational{font-size:9px;color:var(--green);font-weight:700}.health-list{display:grid;gap:10px;margin-top:13px}.health-row{display:flex;justify-content:space-between;font-size:9.5px}.health-row span:first-child{color:var(--slate)}.health-row span:last-child;font-weight:650
+
+.health-row span:last-child{font-weight:650;color:var(--navy)}
+/* Operations */
+.ops{display:grid;grid-template-columns:1fr 1fr;gap:15px}.empty{min-height:144px;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:24px}.empty-icon{width:36px;height:36px;border-radius:50%;background:var(--green-soft);color:var(--green);display:grid;place-items:center;font-size:14px}.empty-title{margin-top:9px;font-size:12px;font-weight:700}.empty-sub{margin-top:4px;max-width:260px;color:var(--slate);font-size:9.5px;line-height:1.45}.audit-list{padding:4px 18px 10px}.audit-row{display:grid;grid-template-columns:24px 1fr auto;gap:9px;padding:10px 0;border-bottom:1px solid var(--line);font-size:10px}.audit-row:last-child{border-bottom:0}.audit-icon{width:23px;height:23px;border-radius:50%;background:#f0f3f5;display:grid;place-items:center;font-size:10px}.audit-time{margin-top:2px;color:var(--slate);font-size:8.5px}.audit-tag{color:var(--slate);font-size:8px}
+/* Recent certificates */
+.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:11px 14px;text-align:left;border-top:1px solid var(--line);white-space:nowrap}th{background:#fcfbf8;color:var(--slate);font-size:8.5px;font-weight:700}td:first-child{font-weight:650}.mono{font:9px Consolas,"Liberation Mono",monospace;color:var(--slate)}.badge{display:inline-flex;padding:4px 7px;border-radius:99px;font-size:8px;font-weight:700}.badge.issued{background:var(--green-soft);color:var(--green)}.badge.pending{background:var(--gold-soft);color:#8a6a22}.foot{display:flex;justify-content:space-between;padding:9px 14px;border-top:1px solid var(--line);font-size:8.5px;color:var(--slate)}
+@media(max-width:1120px){.app{grid-template-columns:220px 1fr}.content{padding-left:22px;padding-right:22px}.analytics-grid,.secondary{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:800px){.sidebar{display:none}.app{grid-template-columns:1fr}.topbar{padding:0 18px}.top-heading{min-width:0}.sync,.user-name{display:none}.content{padding:18px}.page-head{flex-direction:column}.actions{width:100%}.btn{flex:1}.ops{grid-template-columns:1fr}}
+@media(max-width:560px){.metrics{grid-template-columns:1fr}.search{width:45vw}.title{font-size:25px}.donut-wrap{flex-direction:column;gap:20px}.activity-summary{gap:18px;flex-wrap:wrap}.bar-row{grid-template-columns:105px minmax(0,1fr) 24px}}
+
+/* Chart and metric tooltips */
+.chart-tooltip,
+.metric-tooltip{
+  position:fixed;
+  z-index:9999;
+  min-width:140px;
+  max-width:220px;
+  padding:9px 11px;
+  border:1px solid rgba(20,43,65,.12);
+  border-radius:8px;
+  background:rgba(20,43,65,.97);
+  color:#fff;
+  box-shadow:0 10px 24px rgba(20,43,65,.16);
+  font-size:9.5px;
+  line-height:1.4;
+  pointer-events:none;
+  opacity:0;
+  transform:translateY(5px);
+  transition:opacity .16s ease,transform .16s ease;
+}
+.chart-tooltip.show,
+.metric-tooltip.show{
+  opacity:1;
+  transform:translateY(0);
+}
+.chart-tooltip strong,
+.metric-tooltip strong{
+  display:block;
+  margin-bottom:3px;
+  color:#fff;
+  font-size:10.5px;
+}
+.chart-tooltip span,
+.metric-tooltip span{
+  color:#d8e0e7;
+}
+.metric-help{
+  position:absolute;
+  right:12px;
+  top:12px;
+  width:18px;
+  height:18px;
+  border:1px solid var(--line);
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  color:var(--slate);
+  font-size:9px;
+  opacity:.75;
+}
+.metric:hover .metric-help{opacity:1}
+.data-point,
+.point{
+  cursor:help;
+}
+.donut-chart{
+  cursor:help;
+}
+.bar-fill{
+  cursor:help;
+}
+
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><div class="brand-mark">✓</div><div class="brand-name">Credence</div></div>
+  <div class="profile"><div class="avatar">CC</div><div><div class="profile-name">credence credence</div><div class="profile-role">Super Admin</div></div><div class="role">Super Admin</div></div>
+  <nav class="nav">
+    <div class="nav-group">Governance</div>
+    <button class="nav-item active"><span class="nav-icon">◈</span>Overview</button>
+    <button class="nav-item"><span class="nav-icon">▥</span>Institutions</button>
+    <button class="nav-item"><span class="nav-icon">⌑</span>Applications</button>
+    <button class="nav-item"><span class="nav-icon">⚓</span>Anchor On-Chain</button>
+    <button class="nav-item"><span class="nav-icon">♧</span>All Users</button>
+    <button class="nav-item"><span class="nav-icon">▤</span>All Certificates</button>
+    <button class="nav-item"><span class="nav-icon">↔</span>Blockchain</button>
+    <button class="nav-item"><span class="nav-icon">◷</span>Audit Logs</button>
+    <div class="nav-group">System</div>
+    <button class="nav-item"><span class="nav-icon">⚙</span>Settings</button>
+  </nav>
+  <div class="signout"><button>↪ &nbsp; Sign out</button></div>
+</aside>
+
+<section class="main">
+<header class="topbar">
+  <div class="top-heading"><div class="top-title">Governance Console</div><div class="top-role">Super Admin</div></div>
+  <div class="search"><input placeholder="Search institution, certificate or user..."></div>
+  <div class="top-actions"><span class="sync">Synced 3 minutes ago</span><span class="bell">♧</span><div class="user"><div class="avatar">CC</div><span class="user-name">credence credence</span><span class="chevron">⌄</span></div></div>
+</header>
+
+<main class="content">
+
+<section class="page-head">
+  <div>
+    <div class="eyebrow">Super Admin · Platform Governance</div>
+    <div class="title">Credence Governance Console</div>
+    <div class="subtitle">Platform-wide oversight of institutions, credentials, verification activity and blockchain integrity.</div>
+  </div>
+  <div class="actions">
+    <button class="btn">⌑ &nbsp; Review applications</button>
+    <button class="btn gold">⚓ &nbsp; Anchor on-chain</button>
+  </div>
+</section>
+
+<section class="metrics">
+<a class="metric" href="institutions.html"><span class="metric-help">i</span><div class="metric-icon">▥</div><div class="metric-value">1</div><div class="metric-label">Institutions</div><div class="metric-sub">Active on Credence</div><div class="metric-arrow">→</div></a>
+<a class="metric" href="users.html"><span class="metric-help">i</span><div class="metric-icon">♧</div><div class="metric-value">8</div><div class="metric-label">System users</div><div class="metric-sub">Across platform roles</div><div class="metric-arrow">→</div></a>
+<a class="metric" href="certificates.html"><span class="metric-help">i</span><div class="metric-icon">▤</div><div class="metric-value">6</div><div class="metric-label">Total certificates</div><div class="metric-sub">3 issued · 2 pending · 1 draft</div><div class="metric-arrow">→</div></a>
+<a class="metric" href="verification.html"><span class="metric-help">i</span><div class="metric-icon">◈</div><div class="metric-value">128</div><div class="metric-label">Verification checks</div><div class="metric-sub">Platform-wide activity</div><div class="metric-arrow">→</div></a>
+</section>
+
+<section class="analytics-grid">
+<article class="panel">
+  <div class="panel-head"><div><div class="panel-title">Certificate status</div><div class="panel-sub">Current platform credential portfolio</div></div><a class="panel-link" href="certificates.html">View all →</a></div>
+  <div class="donut-body">
+    <div class="donut-wrap">
+      <div class="donut-chart" aria-label="Certificate status chart">
+  <button class="donut-slice issued-slice" type="button"
+    aria-label="Issued: 3 certificates"></button>
+  <button class="donut-slice pending-slice" type="button"
+    aria-label="Pending: 2 certificates"></button>
+  <button class="donut-slice draft-slice" type="button"
+    aria-label="Draft: 1 certificate"></button>
+  <button class="donut-slice revoked-slice" type="button"
+    aria-label="Revoked: 0 certificates"></button>
+  <div class="donut-hole"></div>
+  <div class="donut-center"><strong>6</strong><span>Certificates</span></div>
+</div>
+      <div class="legend">
+        <div class="legend-row" data-chart-section="issued"><span class="legend-name"><i class="legend-dot" style="background:var(--green)"></i>Issued</span><b>3</b></div>
+        <div class="legend-row" data-chart-section="pending"><span class="legend-name"><i class="legend-dot" style="background:var(--gold)"></i>Pending</span><b>2</b></div>
+        <div class="legend-row" data-chart-section="draft"><span class="legend-name"><i class="legend-dot" style="background:#9aa8b4"></i>Draft</span><b>1</b></div>
+        <div class="legend-row" data-chart-section="revoked"><span class="legend-name"><i class="legend-dot" style="background:var(--red)"></i>Revoked</span><b>0</b></div>
+      </div>
+    </div>
+    <div class="rate"><span>Issued rate</span><strong>50%</strong></div>
+  </div>
+</article>
+
+<article class="panel">
+  <div class="panel-head"><div><div class="panel-title">Verification activity</div><div class="panel-sub">Verification checks over the last 6 periods</div></div><a class="panel-link" href="verification.html">Open verification →</a></div>
+  <div class="chart-body">
+    <div class="activity-chart" aria-label="Verification activity line chart">
+      <div class="yaxis">
+        <span>40</span><span>30</span><span>20</span><span>10</span><span>0</span>
+      </div>
+
+      <div class="plot">
+        <div class="line l1"></div><div class="line l2"></div><div class="line l3"></div><div class="line l4"></div><div class="line l5"></div>
+
+        <div class="data-point d1">
+          <span class="point q1"></span><b>9</b>
+        </div>
+        <div class="data-point d2">
+          <span class="point q2"></span><b>14</b>
+        </div>
+        <div class="data-point d3">
+          <span class="point q3"></span><b>11</b>
+        </div>
+        <div class="data-point d4">
+          <span class="point q4"></span><b>16</b>
+        </div>
+        <div class="data-point d5">
+          <span class="point q5"></span><b>27</b>
+        </div>
+        <div class="data-point d6">
+          <span class="point q6"></span><b>34</b>
+        </div>
+      </div>
+    </div>
+
+    <div class="xaxis">
+      <span>Apr</span><span>May</span><span>Jun</span><span>Jul</span><span>Aug</span><span>Sep</span>
+    </div>
+
+    <div class="axis-description">
+      <span>Verification checks</span>
+      <span>Period</span>
+    </div>
+    <div class="activity-summary"><div><strong>128</strong><span>Total checks</span></div><div><strong>34</strong><span>Latest period</span></div><div><strong>+24%</strong><span>Recent change</span></div></div>
+  </div>
+</article>
+</section>
+
+<section class="secondary">
+<article class="panel">
+  <div class="panel-head"><div><div class="panel-title">Certificates by institution</div><div class="panel-sub">Credential volume across registered institutions</div></div><a class="panel-link" href="institutions.html">View institutions →</a></div>
+  <div class="bars">
+    <div class="bar-row"><div class="bar-name">Central University Sierra Leone</div><div class="bar-track"><div class="bar-fill" style="width:100%"></div></div><div class="bar-count">6</div></div>
+    <div class="bar-row"><div class="bar-name">Institution B</div><div class="bar-track"><div class="bar-fill" style="width:0%"></div></div><div class="bar-count">0</div></div>
+    <div class="bar-row"><div class="bar-name">Institution C</div><div class="bar-track"><div class="bar-fill" style="width:0%"></div></div><div class="bar-count">0</div></div>
+  </div>
+</article>
+
+<article class="panel">
+  <div class="panel-head"><div><div class="panel-title">Blockchain health</div><div class="panel-sub">Credential anchoring infrastructure</div></div><a class="panel-link" href="blockchain.html">Details →</a></div>
+  <div class="health">
+    <div class="health-top"><div class="health-status"><span class="status-dot"></span>Platform healthy</div><span class="operational">Operational</span></div>
+    <div class="health-list">
+      <div class="health-row"><span>Network</span><span>Ethereum</span></div>
+      <div class="health-row"><span>On-chain credentials</span><span>3</span></div>
+      <div class="health-row"><span>Pending anchors</span><span>0</span></div>
+      <div class="health-row"><span>Storage</span><span>IPFS · Pinata</span></div>
+      <div class="health-row"><span>Backend</span><span>Django REST</span></div>
+    </div>
+  </div>
+</article>
+</section>
+
+<section class="ops">
+<article class="panel">
+  <div class="panel-head"><div><div class="panel-title">Pending applications</div><div class="panel-sub">Institution applications awaiting governance review</div></div><a class="panel-link" href="applications.html">Review all →</a></div>
+  <div class="empty"><div class="empty-icon">✓</div><div class="empty-title">No pending applications</div><div class="empty-sub">New institution applications requiring review will appear here.</div></div>
+</article>
+
+<article class="panel">
+  <div class="panel-head"><div><div class="panel-title">Recent audit activity</div><div class="panel-sub">Platform-wide administrative events</div></div><a class="panel-link" href="audit-logs.html">Open logs →</a></div>
+  <div class="audit-list">
+    <div class="audit-row"><div class="audit-icon">✓</div><div>Credential anchored on-chain<div class="audit-time">Today · 10:42</div></div><div class="audit-tag">System</div></div>
+    <div class="audit-row"><div class="audit-icon">♧</div><div>Institution officer account created<div class="audit-time">Yesterday · 15:18</div></div><div class="audit-tag">Admin</div></div>
+    <div class="audit-row"><div class="audit-icon">◈</div><div>Certificate verification completed<div class="audit-time">Yesterday · 12:07</div></div><div class="audit-tag">Portal</div></div>
+  </div>
+</article>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><div class="panel-title">Recent certificates</div><div class="panel-sub">Latest credentials recorded across the platform</div></div><a class="panel-link" href="certificates.html">View all →</a></div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Student</th><th>Institution</th><th>Certificate ID</th><th>Programme</th><th>Status</th><th>Issued</th></tr></thead>
+    <tbody>
+      <tr><td>Lamin Sesay</td><td>Central University Sierra Leone</td><td class="mono">CUSL-2026-CS-0041</td><td>Computer Science</td><td><span class="badge issued">Issued</span></td><td>06 Sep 2026</td></tr>
+      <tr><td>Moses Brimah Conteh</td><td>Central University Sierra Leone</td><td class="mono">CUSL-2026-CS-0042</td><td>Computer Science</td><td><span class="badge pending">Pending Approval</span></td><td>08 Sep 2026</td></tr>
+      <tr><td>Sahid Isha</td><td>Central University Sierra Leone</td><td class="mono">CUSL-2026-CS-0043</td><td>Computer Science</td><td><span class="badge issued">Issued</span></td><td>09 Sep 2026</td></tr>
+      <tr><td>Fatmata Kamara</td><td>Central University Sierra Leone</td><td class="mono">CUSL-2026-CS-0044</td><td>Computer Science</td><td><span class="badge issued">Issued</span></td><td>10 Sep 2026</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="foot"><span>Governance dashboard preview</span><span>Credence Platform</span></div>
+</section>
+
+</main>
+</section>
+</div>
+
+<div id="chartTooltip" class="chart-tooltip" role="tooltip"></div>
+<div id="metricTooltip" class="metric-tooltip" role="tooltip"></div>
+
+<script>
+(function () {
+  const chartTip = document.getElementById('chartTooltip');
+  const metricTip = document.getElementById('metricTooltip');
+
+  function positionTip(tip, x, y) {
+    const gap = 12;
+    const rect = tip.getBoundingClientRect();
+    let left = x + gap;
+    let top = y + gap;
+
+    if (left + rect.width > window.innerWidth - 10) {
+      left = x - rect.width - gap;
+    }
+    if (top + rect.height > window.innerHeight - 10) {
+      top = y - rect.height - gap;
+    }
+
+    tip.style.left = Math.max(10, left) + 'px';
+    tip.style.top = Math.max(10, top) + 'px';
+  }
+
+  function showTip(tip, title, detail, event) {
+    tip.innerHTML = '<strong>' + title + '</strong><span>' + detail + '</span>';
+    tip.classList.add('show');
+    positionTip(tip, event.clientX, event.clientY);
+  }
+
+  function moveTip(tip, event) {
+    if (tip.classList.contains('show')) {
+      positionTip(tip, event.clientX, event.clientY);
+    }
+  }
+
+  function hideTip(tip) {
+    tip.classList.remove('show');
+  }
+
+  /* Summary / metric cards */
+  const metricMessages = [
+    ['Institutions', 'Number of institutions currently registered and active on Credence.'],
+    ['System users', 'Users across the platform and its institutional roles.'],
+    ['Total certificates', 'All certificates currently recorded across the platform.'],
+    ['Verification checks', 'Total verification requests or checks recorded platform-wide.']
+  ];
+
+  document.querySelectorAll('.metric').forEach((card, i) => {
+    const [title, detail] = metricMessages[i] || ['Metric', 'Dashboard metric'];
+    card.addEventListener('mouseenter', e => showTip(metricTip, title, detail, e));
+    card.addEventListener('mousemove', e => moveTip(metricTip, e));
+    card.addEventListener('mouseleave', () => hideTip(metricTip));
+  });
+
+  /* Certificate status donut — tooltip per chart section */
+const sectionTips = {
+  issued: ['Issued certificates', '3 certificates are currently issued (50% of the platform portfolio).'],
+  pending: ['Pending approval', '2 certificates are awaiting approval.'],
+  draft: ['Draft certificates', '1 certificate is currently in draft state.'],
+  revoked: ['Revoked certificates', 'There are currently no revoked certificates.']
+};
+
+document.querySelectorAll('.donut-slice').forEach(slice => {
+  const key = Array.from(slice.classList).find(c => c.endsWith('-slice')).replace('-slice','');
+  const data = sectionTips[key];
+  slice.addEventListener('mouseenter', e => showTip(chartTip, data[0], data[1], e));
+  slice.addEventListener('mousemove', e => moveTip(chartTip, e));
+  slice.addEventListener('mouseleave', () => hideTip(chartTip));
+  slice.addEventListener('focus', e => {
+    showTip(chartTip, data[0], data[1], {
+      clientX: e.target.getBoundingClientRect().left + 30,
+      clientY: e.target.getBoundingClientRect().top + 30
+    });
+  });
+  slice.addEventListener('blur', () => hideTip(chartTip));
+});
+
+/* Donut legend — one tooltip per status section */
+document.querySelectorAll('.legend-row[data-chart-section]').forEach(row => {
+  const data = sectionTips[row.dataset.chartSection];
+  row.addEventListener('mouseenter', e => showTip(chartTip, data[0], data[1], e));
+  row.addEventListener('mousemove', e => moveTip(chartTip, e));
+  row.addEventListener('mouseleave', () => hideTip(chartTip));
+});
+
+/* Verification line chart points */
+
+  const verificationPoints = [
+    ['April', '9 verification checks recorded.'],
+    ['May', '14 verification checks recorded.'],
+    ['June', '11 verification checks recorded.'],
+    ['July', '16 verification checks recorded.'],
+    ['August', '27 verification checks recorded.'],
+    ['September', '34 verification checks recorded.']
+  ];
+
+  document.querySelectorAll('.data-point').forEach((point, i) => {
+    const data = verificationPoints[i] || ['Period', ''];
+    point.addEventListener('mouseenter', e => showTip(chartTip, data[0], data[1], e));
+    point.addEventListener('mousemove', e => moveTip(chartTip, e));
+    point.addEventListener('mouseleave', () => hideTip(chartTip));
+  });
+
+  /* Institution bars */
+  const institutionData = [
+    ['Central University Sierra Leone', '6 certificates recorded.'],
+    ['Institution B', 'No certificates recorded in this preview.'],
+    ['Institution C', 'No certificates recorded in this preview.']
+  ];
+
+  document.querySelectorAll('.bar-fill').forEach((bar, i) => {
+    const data = institutionData[i] || ['Institution', ''];
+    bar.addEventListener('mouseenter', e => showTip(chartTip, data[0], data[1], e));
+    bar.addEventListener('mousemove', e => moveTip(chartTip, e));
+    bar.addEventListener('mouseleave', () => hideTip(chartTip));
+  });
+
+  /* Accessibility: focus-triggered tooltips */
+  document.querySelectorAll('.metric, .data-point, .legend-row, .bar-fill, .donut-chart').forEach(el => {
+    el.addEventListener('focus', e => {
+      e.target.dispatchEvent(new MouseEvent('mouseenter', {bubbles:false}));
+    });
+    el.addEventListener('blur', () => {
+      hideTip(chartTip);
+      hideTip(metricTip);
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

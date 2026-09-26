@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
 import { jwtPayload } from "@/lib/api";
 import { ROLES, isInstitutionHead } from "@/lib/useAuth";
 import SuperAdminDashboard from "@/components/dashboard/SuperAdminDashboard";
 import RegistrarDashboard  from "@/components/dashboard/RegistrarDashboard";
 import OfficerDashboard    from "@/components/dashboard/OfficerDashboard";
 import StudentDashboard    from "@/components/dashboard/StudentDashboard";
+import DashboardLoader     from "@/components/dashboard/DashboardLoader";
 
 export default function DashboardPage() {
   const [role,    setRole]    = useState(null);
@@ -23,11 +23,7 @@ export default function DashboardPage() {
   }, []);
 
   if (!mounted) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 size={28} className="text-[#022448] animate-spin" />
-      </div>
-    );
+    return <DashboardLoader label="Loading dashboard workspace" />;
   }
 
   if (role === ROLES.SUPER_ADMIN) return <SuperAdminDashboard />;

@@ -62,14 +62,14 @@ export default function InstitutionPage() {
 
   if (!inst) {
     return (
-      <div className="max-w-[900px]">
+      <div className="w-full">
         <p className="text-[#43474e] text-sm">{error || "No institution linked to your account."}</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-6 max-w-[900px]">
+    <div className="flex flex-col gap-6 w-full">
       <div>
         <h2 className="text-[#022448] font-bold text-2xl">Institution</h2>
         <p className="text-[#43474e] text-sm mt-0.5">Manage your institutional profile and blockchain registration</p>
@@ -94,18 +94,18 @@ export default function InstitutionPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
           {[
-            { icon: Globe, label: "Website", value: inst.website   || "—" },
-            { icon: Mail,  label: "Email",   value: inst.email     || "—" },
-            { icon: Phone, label: "Phone",   value: inst.phone     || "—" },
-            { icon: Link2, label: "Wallet",  value: inst.wallet_address ? inst.wallet_address.slice(0, 14) + "…" : "—" },
-          ].map(({ icon: Icon, label, value }) => (
-            <div key={label} className="flex items-center gap-3 p-4 bg-[#FAF7F2] rounded-[10px]">
-              <Icon size={16} className="text-[#022448] shrink-0" strokeWidth={1.8} />
-              <div>
-                <p className="text-[#43474e] text-xs font-semibold uppercase tracking-wider">{label}</p>
-                <p className="text-[#022448] text-sm font-medium">{value}</p>
+            { icon: Globe, label: "Website", value: inst.website || "—", mono: false },
+            { icon: Mail,  label: "Email",   value: inst.email   || "—", mono: false },
+            { icon: Phone, label: "Phone",   value: inst.phone   || "—", mono: false },
+            { icon: Link2, label: "Wallet",  value: inst.wallet_address || "—", mono: true },
+          ].map(({ icon: Icon, label, value, mono }) => (
+            <div key={label} className="flex items-start gap-3 p-4 bg-[#F8F7F2] rounded-xl border border-[#E4E1D6] min-w-0">
+              <Icon size={16} className="text-[#08283F] shrink-0 mt-0.5" strokeWidth={1.8} />
+              <div className="min-w-0">
+                <p className="text-[#8A929C] text-xs font-semibold uppercase tracking-wider">{label}</p>
+                <p className={`text-[#08283F] text-sm font-medium break-all ${mono ? "font-mono" : ""}`}>{value}</p>
               </div>
             </div>
           ))}

@@ -21,8 +21,14 @@ def _auth_headers() -> dict:
     return {"Authorization": f"Bearer {jwt}"}
 
 
-def pin_file_to_ipfs(file_obj, filename: str, certificate_id: str) -> dict:
-    """Pin a PDF file to IPFS. Returns {cid, ipfs_url}."""
+def pin_file_to_ipfs(
+    file_obj,
+    filename: str,
+    certificate_id: str,
+    *,
+    content_type: str = "application/pdf",
+) -> dict:
+    """Pin a file to IPFS. Credential payloads should be encrypted bytes."""
     headers  = _auth_headers()
     metadata = json.dumps({
         "name":      f"CREDENCE-{certificate_id}-{filename}",
@@ -33,7 +39,7 @@ def pin_file_to_ipfs(file_obj, filename: str, certificate_id: str) -> dict:
             PINATA_PIN_FILE_URL,
             headers=headers,
             files={
-                "file":          (filename, file_obj, "application/pdf"),
+                "file":          (filename, file_obj, content_type),
                 "pinataMetadata": (None, metadata),
                 "pinataOptions":  (None, json.dumps({"cidVersion": 1})),
             },
@@ -45,6 +51,19 @@ def pin_file_to_ipfs(file_obj, filename: str, certificate_id: str) -> dict:
         return {"cid": cid, "ipfs_url": url}
     except requests.RequestException as e:
         raise RuntimeError(f"Pinata file upload failed: {e}") from e
+
+
+def fetch_file_from_ipfs(cid: str) -> bytes:
+    """Fetch a pinned payload for server-side decryption; never expose this URL."""
+    if not cid:
+        raise ValueError("An IPFS CID is required.")
+    url = f"{settings.PINATA_GATEWAY.rstrip('/')}/ipfs/{cid}"
+    try:
+        res = requests.get(url, timeout=60)
+        res.raise_for_status()
+        return res.content
+    except requests.RequestException as e:
+        raise RuntimeError(f"IPFS document retrieval failed: {e}") from e
 
 
 def pin_json_to_ipfs(data: dict, certificate_id: str) -> dict:

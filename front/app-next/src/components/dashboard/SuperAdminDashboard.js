@@ -1,252 +1,133 @@
 "use client";
-import { useEffect, useState } from "react";
+
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  Building2, Users, ScrollText, Gavel, Anchor,
-  Link2, ShieldCheck, ArrowRight, Loader2,
-  CheckCircle2, Clock, History, BarChart3,
-} from "lucide-react";
+import { Anchor, ArrowRight, Building2, CheckCircle2, FileCheck2, Gavel, History, ScrollText, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import StatusBadge from "./StatusBadge";
 
+const STATUS = {
+  issued: { label: "Issued", color: "#3f7658" },
+  pending: { label: "Pending", color: "#c59a3a" },
+  draft: { label: "Draft", color: "#9aa8b4" },
+  revoked: { label: "Revoked", color: "#a6423a" },
+};
+const HELP = {
+  institutions: ["Institutions", "Registered institutions currently active on the Credence platform."],
+  users: ["System users", "User accounts across every platform and institutional role."],
+  certificates: ["Total certificates", "All credentials currently recorded in the platform portfolio."],
+  verifications: ["Verification checks", "Public certificate verification events recorded in the audit trail."],
+};
+const getList = response => response?.results ?? response ?? [];
+const date = value => value ? new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+const action = value => (value || "").replace(/^certificate\./, "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+
+function sixMonthTrend(events) {
+  const now = new Date();
+  const periods = Array.from({ length: 6 }, (_, index) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - 5 + index, 1);
+    return { key: `${d.getFullYear()}-${d.getMonth()}`, label: d.toLocaleDateString("en-GB", { month: "short" }), count: 0 };
+  });
+  const index = new Map(periods.map((period, i) => [period.key, i]));
+  events.forEach(event => {
+    const d = new Date(event.timestamp);
+    const i = index.get(`${d.getFullYear()}-${d.getMonth()}`);
+    if (i !== undefined) periods[i].count += 1;
+  });
+  return periods;
+}
+
+function Tooltip({ tip }) {
+  if (!tip) return null;
+  return <div role="tooltip" className="fixed z-[70] max-w-[220px] rounded-lg border border-white/10 bg-[#142B41]/[.97] px-3 py-2 text-[11px] leading-relaxed text-[#D8E0E7] shadow-xl pointer-events-none" style={{ left: tip.x, top: tip.y }}><strong className="block text-xs text-white">{tip.title}</strong>{tip.detail}</div>;
+}
+
 export default function SuperAdminDashboard() {
-  const [stats,       setStats]       = useState({ institutions: "—", users: "—", certificates: "—", pending: 0 });
-  const [pending,     setPending]     = useState([]);
-  const [recentCerts, setRecentCerts] = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [error,       setError]       = useState("");
+  const [data, setData] = useState({ institutions: [], users: [], certs: [], pending: [], audit: [] });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [tip, setTip] = useState(null);
 
   useEffect(() => {
     async function load() {
+      setLoading(true); setError("");
       try {
-        // Run all requests, handle individual failures gracefully
-        const results = await Promise.allSettled([
-          api.get("/institutions/"),
-          api.get("/users/"),
-          api.get("/certificates/"),
-          api.get("/admin/institutions/pending/"),
+        const [institutions, users, certificates, pending, audit] = await Promise.all([
+          api.get("/institutions/?page_size=100"), api.get("/users/?page_size=100"),
+          api.get("/certificates/?ordering=-created_at&page_size=100"), api.get("/admin/institutions/pending/?page_size=10"),
+          api.get("/audit-logs/?ordering=-timestamp&page_size=100"),
         ]);
-
-        const [instsRes, usersRes, certsRes, pendingRes] = results;
-
-        const insts   = instsRes.status   === "fulfilled" ? (instsRes.value.results   ?? instsRes.value)   : [];
-        const users   = usersRes.status   === "fulfilled" ? (usersRes.value.results   ?? usersRes.value)   : [];
-        const certs   = certsRes.status   === "fulfilled" ? (certsRes.value.results   ?? certsRes.value)   : [];
-        const pend    = pendingRes.status === "fulfilled" ? (pendingRes.value.results ?? pendingRes.value) : [];
-
-        setStats({
-          institutions: instsRes.status   === "fulfilled" ? (instsRes.value.count   ?? insts.length)  : "—",
-          users:        usersRes.status   === "fulfilled" ? (usersRes.value.count   ?? users.length)  : "—",
-          certificates: certsRes.status   === "fulfilled" ? (certsRes.value.count   ?? certs.length)  : "—",
-          pending:      pendingRes.status === "fulfilled" ? (pendingRes.value.count ?? pend.length)   : 0,
-        });
-
-        setPending(pend.slice(0, 5));
-        setRecentCerts(certs.slice(0, 6));
-      } catch (e) {
-        setError("Some data failed to load.");
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
+        setData({ institutions: getList(institutions), users: getList(users), certs: getList(certificates), pending: getList(pending), audit: getList(audit) });
+      } catch (cause) { console.error(cause); setError("Some dashboard data could not be loaded. Refresh to try again."); }
+      finally { setLoading(false); }
     }
     load();
   }, []);
 
-  return (
-    <div className="flex flex-col gap-8 max-w-[1280px]">
+  const analytics = useMemo(() => {
+    const status = { issued: 0, pending: 0, draft: 0, revoked: 0 };
+    data.certs.forEach(cert => { if (cert.status === "issued") status.issued += 1; else if (cert.status === "draft") status.draft += 1; else if (cert.status === "revoked") status.revoked += 1; else status.pending += 1; });
+    const verifications = data.audit.filter(event => event.action === "certificate.verified");
+    const byInstitution = data.institutions.map(institution => ({ name: institution.name, count: data.certs.filter(cert => cert.institution_name === institution.name).length })).sort((a, b) => b.count - a.count).slice(0, 5);
+    return { status, verifications, trend: sixMonthTrend(verifications), byInstitution };
+  }, [data]);
 
-      {/* Governance banner */}
-      <div className="bg-[#022448] rounded-[14px] p-6 flex items-center justify-between flex-wrap gap-4 relative overflow-hidden">
-        <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-[#7b5900]/20 rounded-full blur-3xl" />
-        <div className="relative z-10">
-          <div className="flex items-center gap-2 mb-1">
-            <ShieldCheck size={18} className="text-[#ffdea4]" />
-            <span className="text-white/70 text-xs font-semibold uppercase tracking-widest">Super Admin · Platform Governance</span>
-          </div>
-          <h2 className="text-white font-bold text-2xl">CREDENCE Governance Console</h2>
-          <p className="text-white/60 text-sm mt-0.5">
-            Institution onboarding · Blockchain anchor · Platform-wide oversight
-          </p>
-        </div>
-        <div className="relative z-10 flex gap-3 flex-wrap">
-          <Link href="/dashboard/admin/applications"
-            className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-4 py-2.5 rounded-[12px] text-sm font-semibold transition-all"
-          >
-            <Gavel size={15} />
-            Review Applications
-            {stats.pending > 0 && (
-              <span className="bg-[#ED8A19] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                {stats.pending}
-              </span>
-            )}
-          </Link>
-          <Link href="/dashboard/admin/anchor"
-            className="flex items-center gap-2 bg-[#7b5900] hover:opacity-90 text-white px-4 py-2.5 rounded-[12px] text-sm font-semibold transition-all"
-          >
-            <Anchor size={15} /> Anchor On-Chain
-          </Link>
-        </div>
-      </div>
+  const total = data.certs.length;
+  const maxInstitution = Math.max(...analytics.byInstitution.map(item => item.count), 1);
+  const maxTrend = Math.max(...analytics.trend.map(item => item.count), 1);
+  const latest = analytics.trend.at(-1)?.count ?? 0;
+  const previous = analytics.trend.at(-2)?.count ?? 0;
+  const change = previous ? Math.round((latest - previous) / previous * 100) : null;
+  const issuedRate = total ? Math.round(analytics.status.issued / total * 100) : 0;
+  const pendingAnchors = data.institutions.filter(institution => institution.is_active && !institution.is_chain_active).length;
 
-      {error && (
-        <div className="bg-[#ffdad6] text-[#93000a] text-sm px-4 py-3 rounded-lg">{error}</div>
-      )}
+  function showTip(event, title, detail) {
+    setTip({ x: Math.max(10, Math.min(event.clientX + 12, window.innerWidth - 235)), y: Math.max(10, Math.min(event.clientY + 12, window.innerHeight - 90)), title, detail });
+  }
+  function focusTip(event, title, detail) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setTip({ x: Math.min(rect.right + 10, window.innerWidth - 235), y: rect.top, title, detail });
+  }
+  function showDonutTip(event) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const angle = (Math.atan2(event.clientY - rect.top - rect.height / 2, event.clientX - rect.left - rect.width / 2) * 180 / Math.PI + 450) % 360;
+    const ordered = ["issued", "pending", "draft", "revoked"];
+    let boundary = 0;
+    const key = ordered.find(status => {
+      boundary += total ? analytics.status[status] / total * 360 : 360;
+      return angle <= boundary;
+    }) ?? "issued";
+    const meta = STATUS[key];
+    showTip(event, `${meta.label} certificates`, `${analytics.status[key]} certificate${analytics.status[key] === 1 ? "" : "s"} (${total ? Math.round(analytics.status[key] / total * 100) : 0}% of the portfolio).`);
+  }
 
-      {/* KPI cards — clickable */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { icon: Building2,  value: stats.institutions, label: "Institutions",         href: "/dashboard/admin/institutions",   accent: false },
-          { icon: Users,      value: stats.users,        label: "System Users",         href: "/dashboard/admin/users",          accent: false },
-          { icon: ScrollText, value: stats.certificates, label: "Total Certificates",   href: "/dashboard/certificates",         accent: false },
-          { icon: Gavel,      value: stats.pending,      label: "Pending Applications", href: "/dashboard/admin/applications",   accent: stats.pending > 0 },
-        ].map(({ icon: Icon, value, label, href, accent }) => (
-          <Link key={label} href={href}
-            className="bg-white rounded-[14px] shadow-card p-5 flex flex-col gap-3 border border-[#c4c6cf]/10 hover:shadow-[0px_10px_30px_rgba(30,58,95,0.08)] transition-all"
-          >
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${accent ? "bg-[#ED8A19]/10" : "bg-[#022448]/5"}`}>
-              <Icon size={20} className={accent ? "text-[#ED8A19]" : "text-[#022448]"} strokeWidth={1.8} />
-            </div>
-            <div>
-              <p className={`text-2xl font-bold ${accent ? "text-[#ED8A19]" : "text-[#022448]"}`}>
-                {loading ? <span className="inline-block w-8 h-6 bg-[#eef4ff] rounded animate-pulse" /> : value}
-              </p>
-              <p className="text-[#43474e] text-xs font-semibold uppercase tracking-wider mt-0.5">{label}</p>
-            </div>
-          </Link>
-        ))}
-      </div>
+  const metrics = [
+    { key: "institutions", Icon: Building2, value: data.institutions.length, label: "Institutions", sub: "Active on Credence", href: "/dashboard/admin/institutions", tone: "bg-[#EFF3F6] text-[#142B41]" },
+    { key: "users", Icon: Users, value: data.users.length, label: "System users", sub: "Across platform roles", href: "/dashboard/admin/users", tone: "bg-[#E6EFE9] text-[#3F7658]" },
+    { key: "certificates", Icon: ScrollText, value: total, label: "Total certificates", sub: `${analytics.status.issued} issued · ${analytics.status.pending} pending · ${analytics.status.draft} draft`, href: "/dashboard/certificates", tone: "bg-[#F2E8D2] text-[#8A6A22]" },
+    { key: "verifications", Icon: FileCheck2, value: analytics.verifications.length, label: "Verification checks", sub: "Platform-wide activity", href: "/dashboard/audit", tone: "bg-[#EFF3F6] text-[#142B41]" },
+  ];
 
-      {/* Main content grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+  return <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5 pb-3">
+    <section className="flex flex-col justify-between gap-5 sm:flex-row sm:items-start"><div><p className="text-[11px] font-bold uppercase tracking-[.14em] text-[#687B8E]">Super Admin · Platform Governance</p><h2 className="mt-1 font-serif text-3xl font-bold tracking-tight text-[#142B41]">Credence Governance Console</h2><p className="mt-2 max-w-2xl text-sm text-[#687B8E]">Platform-wide oversight of institutions, credentials, verification activity and blockchain integrity.</p></div><div className="flex gap-2"><Link href="/dashboard/admin/applications" className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#E4E0D5] bg-white px-3.5 text-sm font-semibold text-[#142B41] transition hover:-translate-y-0.5 hover:shadow-sm"><Gavel size={15} />Review applications</Link><Link href="/dashboard/admin/anchor" className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#D8BF84] bg-[#F2E8D2] px-3.5 text-sm font-semibold text-[#795A18] transition hover:-translate-y-0.5 hover:shadow-sm"><Anchor size={15} />Anchor on-chain</Link></div></section>
+    {error && <div className="rounded-lg bg-[#F3E4E2] px-4 py-3 text-sm text-[#A6423A]">{error}</div>}
 
-        {/* Pending applications */}
-        <div className="bg-white rounded-[14px] shadow-card border border-[#c4c6cf]/10 overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-[#c4c6cf]/15">
-            <h3 className="text-[#022448] font-semibold text-sm flex items-center gap-2">
-              <Gavel size={15} className="text-[#ED8A19]" />
-              Pending Applications
-            </h3>
-            <Link href="/dashboard/admin/applications" className="text-[#7b5900] text-xs font-semibold flex items-center gap-1 hover:underline">
-              Review all <ArrowRight size={12} />
-            </Link>
-          </div>
+    <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">{metrics.map(({ key, Icon, value, label, sub, href, tone }) => <Link key={key} href={href} onMouseEnter={e => showTip(e, ...HELP[key])} onMouseMove={e => showTip(e, ...HELP[key])} onMouseLeave={() => setTip(null)} onFocus={e => focusTip(e, ...HELP[key])} onBlur={() => setTip(null)} className="group relative min-h-[126px] rounded-xl border border-[#E4E0D5] bg-white px-4 py-4 shadow-[0_7px_24px_rgba(20,43,65,.045)] transition hover:-translate-y-0.5 hover:border-[#D6C69F] hover:shadow-md"><span className="absolute right-3 top-3 grid h-[18px] w-[18px] place-items-center rounded-full border border-[#E4E0D5] text-[10px] text-[#687B8E]" aria-hidden="true">i</span><span className={`mb-3 grid h-8 w-8 place-items-center rounded-lg ${tone}`}><Icon size={16} /></span><p className="font-serif text-[28px] font-bold leading-none text-[#142B41]">{loading ? "—" : value}</p><p className="mt-1 text-sm font-semibold text-[#142B41]">{label}</p><p className="mt-1 text-[11px] text-[#687B8E]">{sub}</p><ArrowRight size={15} className="absolute bottom-3 right-4 text-[#C59A3A] transition-transform group-hover:translate-x-1" /></Link>)}</section>
 
-          {loading ? (
-            <div className="flex justify-center py-10">
-              <Loader2 size={22} className="text-[#022448] animate-spin" />
-            </div>
-          ) : pending.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-10">
-              <CheckCircle2 size={28} className="text-[#2E7D32]" />
-              <p className="text-[#43474e] text-sm">No pending applications</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-[#c4c6cf]/10">
-              {pending.map(app => (
-                <div key={app.id} className="flex items-center justify-between px-6 py-4 hover:bg-[#FAF7F2] transition-colors">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-lg bg-[#ED8A19]/5 flex items-center justify-center shrink-0">
-                      <Building2 size={16} className="text-[#ED8A19]" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[#022448] text-sm font-semibold truncate">{app.institution_name}</p>
-                      <p className="text-[#43474e] text-xs truncate">{app.contact_email} · {app.country}</p>
-                      <p className="text-[#74777f] text-[10px] mt-0.5">
-                        Submitted {new Date(app.submitted_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                  <Link
-                    href="/dashboard/admin/applications"
-                    className="shrink-0 ml-3 flex items-center gap-1 bg-[#022448] text-white text-xs font-semibold px-3 py-1.5 rounded-[8px] hover:opacity-90 transition-all"
-                  >
-                    Review <ArrowRight size={11} />
-                  </Link>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+    <section className="grid gap-4 xl:grid-cols-[.9fr_1.35fr]">
+      <article className="overflow-hidden rounded-xl border border-[#E4E0D5] bg-white shadow-[0_7px_24px_rgba(20,43,65,.045)]"><PanelHead title="Certificate status" subtitle="Current platform credential portfolio" href="/dashboard/certificates" link="View all" /><div className="flex min-h-[250px] flex-col items-center justify-center gap-7 p-5 sm:flex-row"><div className="relative h-40 w-40 shrink-0 cursor-help rounded-full" onMouseMove={showDonutTip} onMouseLeave={() => setTip(null)} style={{ background: total ? `conic-gradient(#3f7658 0 ${analytics.status.issued / total * 100}%, #c59a3a 0 ${(analytics.status.issued + analytics.status.pending) / total * 100}%, #9aa8b4 0 ${(analytics.status.issued + analytics.status.pending + analytics.status.draft) / total * 100}%, #a6423a 0)` : "#edf0f2" }}><div className="absolute inset-[30px] grid place-items-center rounded-full bg-white text-center"><strong className="block font-serif text-3xl text-[#142B41]">{loading ? "—" : total}</strong><span className="text-[10px] text-[#687B8E]">Certificates</span></div></div><div className="min-w-[145px] space-y-3">{Object.entries(STATUS).map(([key, meta]) => <button type="button" key={key} onMouseEnter={e => showTip(e, `${meta.label} certificates`, `${analytics.status[key]} certificate${analytics.status[key] === 1 ? "" : "s"} currently ${key === "pending" ? "awaiting action" : `in ${meta.label.toLowerCase()} status`}.`)} onMouseLeave={() => setTip(null)} onFocus={e => focusTip(e, `${meta.label} certificates`, `${analytics.status[key]} certificate${analytics.status[key] === 1 ? "" : "s"}.`)} onBlur={() => setTip(null)} className="flex w-full items-center justify-between gap-6 text-left text-xs"><span className="flex items-center gap-2 text-[#687B8E]"><i className="h-2 w-2 rounded-full" style={{ background: meta.color }} />{meta.label}</span><b className="text-[#142B41]">{analytics.status[key]}</b></button>)}</div></div><div className="mx-5 flex justify-between border-t border-[#E4E0D5] py-3 text-xs text-[#687B8E]"><span>Issued rate</span><strong className="text-[#3F7658]">{issuedRate}%</strong></div></article>
+      <article className="overflow-hidden rounded-xl border border-[#E4E0D5] bg-white shadow-[0_7px_24px_rgba(20,43,65,.045)]"><PanelHead title="Verification activity" subtitle="Verification checks over the last six months" href="/dashboard/audit" link="Open audit logs" /><div className="p-5"><div className="relative flex h-[205px] items-end gap-3 border-b border-[#E4E0D5] bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_40px,rgba(228,224,213,.75)_41px,rgba(228,224,213,.75)_42px)] px-2 pb-7">{analytics.trend.map(point => <div key={point.key} className="group relative flex h-full flex-1 items-end" onMouseEnter={e => showTip(e, point.label, `${point.count} verification check${point.count === 1 ? "" : "s"} recorded.`)} onMouseMove={e => showTip(e, point.label, `${point.count} verification check${point.count === 1 ? "" : "s"} recorded.`)} onMouseLeave={() => setTip(null)}><div className="w-full rounded-t bg-[#142B41] transition-opacity group-hover:opacity-80" style={{ height: `${Math.max(point.count ? 7 : 0, point.count / maxTrend * 100)}%` }} /><span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[10px] text-[#687B8E]">{point.label}</span></div>)}</div><div className="mt-4 flex flex-wrap gap-7"><Summary value={analytics.verifications.length} label="Total checks" /><Summary value={latest} label="Latest month" /><Summary value={change === null ? "—" : `${change >= 0 ? "+" : ""}${change}%`} label="Month-on-month" /></div></div></article>
+    </section>
 
-        {/* Recent certificates */}
-        <div className="bg-white rounded-[14px] shadow-card border border-[#c4c6cf]/10 overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-[#c4c6cf]/15">
-            <h3 className="text-[#022448] font-semibold text-sm flex items-center gap-2">
-              <ScrollText size={15} className="text-[#022448]" />
-              Recent Certificates
-            </h3>
-            <Link href="/dashboard/certificates" className="text-[#7b5900] text-xs font-semibold flex items-center gap-1 hover:underline">
-              View all <ArrowRight size={12} />
-            </Link>
-          </div>
+    <section className="grid gap-4 xl:grid-cols-[1.35fr_.85fr]"><article className="overflow-hidden rounded-xl border border-[#E4E0D5] bg-white shadow-[0_7px_24px_rgba(20,43,65,.045)]"><PanelHead title="Certificates by institution" subtitle="Credential volume across registered institutions" href="/dashboard/admin/institutions" link="View institutions" /><div className="space-y-4 p-5">{analytics.byInstitution.length === 0 ? <Empty text="No institutions or certificates recorded yet." /> : analytics.byInstitution.map(item => <div key={item.name} className="grid grid-cols-[minmax(110px,160px)_1fr_30px] items-center gap-3 text-xs"><span className="truncate text-[#142B41]" title={item.name}>{item.name}</span><div className="h-2 overflow-hidden rounded-full bg-[#EDF0F2]"><div className="h-full rounded-full bg-[#142B41]" onMouseEnter={e => showTip(e, item.name, `${item.count} certificate${item.count === 1 ? "" : "s"} recorded.`)} onMouseMove={e => showTip(e, item.name, `${item.count} certificate${item.count === 1 ? "" : "s"} recorded.`)} onMouseLeave={() => setTip(null)} style={{ width: `${item.count / maxInstitution * 100}%` }} /></div><b className="text-right text-[#142B41]">{item.count}</b></div>)}</div></article><article className="overflow-hidden rounded-xl border border-[#E4E0D5] bg-white shadow-[0_7px_24px_rgba(20,43,65,.045)]"><PanelHead title="Blockchain health" subtitle="Credential anchoring infrastructure" href="/dashboard/blockchain" link="Details" /><div className="p-5"><div className="flex items-center justify-between border-b border-[#E4E0D5] pb-3"><span className="flex items-center gap-2 text-sm font-bold text-[#142B41]"><i className="h-2 w-2 rounded-full bg-[#3F7658] shadow-[0_0_0_4px_#E6EFE9]" />Platform healthy</span><span className="text-xs font-bold text-[#3F7658]">Operational</span></div><div className="mt-4 space-y-3 text-xs">{[["Network", "Ethereum"], ["On-chain credentials", analytics.status.issued], ["Pending anchors", pendingAnchors], ["Storage", "IPFS · Pinata"], ["Backend", "Django REST"]].map(([label, value]) => <div className="flex justify-between gap-4" key={label}><span className="text-[#687B8E]">{label}</span><strong className="text-right text-[#142B41]">{value}</strong></div>)}</div></div></article></section>
 
-          {loading ? (
-            <div className="flex justify-center py-10">
-              <Loader2 size={22} className="text-[#022448] animate-spin" />
-            </div>
-          ) : recentCerts.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-10">
-              <ScrollText size={28} className="text-[#c4c6cf]" />
-              <p className="text-[#43474e] text-sm">No certificates yet</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-[#c4c6cf]/10">
-              {recentCerts.map(cert => (
-                <div key={cert.id} className="flex items-center justify-between px-6 py-3.5 hover:bg-[#FAF7F2] transition-colors">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 h-8 rounded-lg bg-[#022448]/5 flex items-center justify-center shrink-0">
-                      <ScrollText size={14} className="text-[#022448]" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[#022448] text-sm font-semibold truncate">{cert.student_name}</p>
-                      <p className="text-[#43474e] text-xs truncate">{cert.degree_title}</p>
-                    </div>
-                  </div>
-                  <div className="shrink-0 ml-3">
-                    <StatusBadge status={cert.status} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+    <section className="grid gap-4 xl:grid-cols-2"><article className="overflow-hidden rounded-xl border border-[#E4E0D5] bg-white shadow-[0_7px_24px_rgba(20,43,65,.045)]"><PanelHead title="Pending applications" subtitle="Institution applications awaiting governance review" href="/dashboard/admin/applications" link="Review all" />{data.pending.length ? <div className="divide-y divide-[#E4E0D5]">{data.pending.slice(0, 4).map(app => <div className="flex items-center justify-between gap-4 px-5 py-3" key={app.id}><div className="min-w-0"><p className="truncate text-sm font-semibold text-[#142B41]">{app.institution_name}</p><p className="mt-0.5 truncate text-xs text-[#687B8E]">{app.country} · {app.contact_email}</p></div><Link className="shrink-0 text-xs font-bold text-[#C59A3A] hover:underline" href="/dashboard/admin/applications">Review</Link></div>)}</div> : <div className="flex min-h-[145px] flex-col items-center justify-center p-6 text-center"><CheckCircle2 size={28} className="text-[#3F7658]" /><p className="mt-3 text-sm font-bold text-[#142B41]">No pending applications</p><p className="mt-1 text-xs text-[#687B8E]">New institution applications requiring review will appear here.</p></div>}</article><article className="overflow-hidden rounded-xl border border-[#E4E0D5] bg-white shadow-[0_7px_24px_rgba(20,43,65,.045)]"><PanelHead title="Recent audit activity" subtitle="Platform-wide administrative events" href="/dashboard/audit" link="Open logs" /><div className="divide-y divide-[#E4E0D5]">{data.audit.slice(0, 4).map(entry => <div className="flex gap-3 px-5 py-3" key={entry.id}><span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#EFF3F6] text-[#142B41]"><History size={12} /></span><div className="min-w-0"><p className="truncate text-sm font-medium text-[#142B41]">{action(entry.action)}</p><p className="mt-0.5 text-[11px] text-[#687B8E]">{date(entry.timestamp)} · {entry.actor_name || entry.actor_email || "System"}</p></div></div>)}{!data.audit.length && <Empty text="No audit activity recorded yet." />}</div></article></section>
 
-      {/* Quick actions grid */}
-      <div>
-        <h3 className="text-[#022448] font-semibold text-sm uppercase tracking-widest mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: "All Institutions", href: "/dashboard/admin/institutions", icon: Building2 },
-            { label: "All Users",        href: "/dashboard/admin/users",        icon: Users },
-            { label: "Blockchain",       href: "/dashboard/blockchain",         icon: Link2 },
-            { label: "Audit Logs",       href: "/dashboard/audit",              icon: History },
-          ].map(({ label, href, icon: Icon }) => (
-            <Link key={label} href={href}
-              className="border border-[#022448]/20 text-[#022448] h-12 rounded-[12px] flex items-center justify-center gap-2 text-sm font-semibold hover:bg-[#022448] hover:text-white transition-all"
-            >
-              <Icon size={16} /> {label}
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      {/* Platform stats footer */}
-      <div className="bg-[#FAF7F2] rounded-[14px] border border-[#c4c6cf]/15 px-6 py-4 flex flex-wrap gap-6 text-sm text-[#43474e]">
-        <span className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#2E7D32] inline-block" />
-          Django API: <strong className="text-[#022448]">http://127.0.0.1:8000</strong>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#2E7D32] inline-block" />
-          Ethereum Node: <strong className="text-[#022448]">http://127.0.0.1:8545</strong>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#7b5900] inline-block" />
-          IPFS: <strong className="text-[#022448]">Pinata Cloud</strong>
-        </span>
-      </div>
-    </div>
-  );
+    <section className="overflow-hidden rounded-xl border border-[#E4E0D5] bg-white shadow-[0_7px_24px_rgba(20,43,65,.045)]"><PanelHead title="Recent certificates" subtitle="Latest credentials recorded across the platform" href="/dashboard/certificates" link="View all" /><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="bg-[#FCFBF8] text-[10px] uppercase tracking-wide text-[#687B8E]"><tr>{["Student", "Institution", "Certificate ID", "Programme", "Status", "Recorded"].map(head => <th className="px-4 py-3 font-bold" key={head}>{head}</th>)}</tr></thead><tbody className="divide-y divide-[#E4E0D5]">{data.certs.slice(0, 6).map(cert => <tr className="transition hover:bg-[#F8F7F2]" key={cert.id}><td className="px-4 py-3 font-semibold text-[#142B41]">{cert.student_name}</td><td className="px-4 py-3 text-[#687B8E]">{cert.institution_name}</td><td className="px-4 py-3 font-mono text-[11px] text-[#687B8E]">{cert.certificate_id}</td><td className="px-4 py-3 text-[#687B8E]">{cert.degree_title}</td><td className="px-4 py-3"><StatusBadge status={cert.status} /></td><td className="px-4 py-3 text-[#687B8E]">{date(cert.chain_issued_at || cert.created_at)}</td></tr>)}{!loading && !data.certs.length && <tr><td colSpan={6}><Empty text="No certificates have been recorded yet." /></td></tr>}</tbody></table></div><div className="flex justify-between border-t border-[#E4E0D5] px-4 py-3 text-[11px] text-[#687B8E]"><span>{loading ? "Loading platform data…" : `${total} certificate${total === 1 ? "" : "s"} in this dashboard view`}</span><span>Credence Platform</span></div></section>
+    <Tooltip tip={tip} />
+  </div>;
 }
+
+function PanelHead({ title, subtitle, href, link }) { return <div className="flex items-start justify-between gap-4 border-b border-[#E4E0D5] px-5 py-4"><div><h3 className="font-serif text-lg font-bold text-[#142B41]">{title}</h3><p className="mt-0.5 text-[11px] text-[#687B8E]">{subtitle}</p></div><Link href={href} className="mt-1 shrink-0 text-xs font-bold text-[#C59A3A] hover:underline">{link} <ArrowRight className="inline" size={11} /></Link></div>; }
+function Summary({ value, label }) { return <div><strong className="block font-serif text-lg text-[#142B41]">{value}</strong><span className="text-[11px] text-[#687B8E]">{label}</span></div>; }
+function Empty({ text }) { return <p className="p-7 text-center text-sm text-[#687B8E]">{text}</p>; }

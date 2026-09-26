@@ -39,7 +39,7 @@ const steps = [
 
 export default function HowItWorks() {
   return (
-    <section className="py-20 px-4 md:px-10 max-w-[900px] mx-auto" id="how-it-works">
+    <section className="py-20 px-4 md:px-10 max-w-[1920px] mx-auto" id="how-it-works">
       <div className="text-center mb-14">
         <h2 className="text-[#022448] font-bold text-4xl md:text-[48px] leading-tight tracking-tight">
           The Certificate Lifecycle

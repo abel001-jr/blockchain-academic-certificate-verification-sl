@@ -67,7 +67,7 @@ export default function OfficerDetailPage() {
     try {
       const data = await api.get(`/users/${id}/`);
       if (data.role !== "vc" && data.role !== "chancellor") {
-        setError("This user is not a VC or Chancellor officer.");
+        setError("This user is not a VC or Dean officer.");
         setOfficer(null);
       } else {
         setOfficer(data);
@@ -240,7 +240,7 @@ export default function OfficerDetailPage() {
     officer.wallet_address;
 
   return (
-    <div className="flex flex-col gap-6 max-w-[720px]">
+    <div className="flex flex-col gap-6 w-full">
       <Link
         href="/dashboard/officers"
         className="inline-flex items-center gap-2 text-[#43474e] text-sm hover:text-[#022448] w-fit"
@@ -262,7 +262,7 @@ export default function OfficerDetailPage() {
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <p className="text-[11px] uppercase tracking-wide text-[#7b5900] font-bold mb-1">
-                {officer.role === "vc" ? "Vice Chancellor" : "Chancellor"}
+                {officer.role === "vc" ? "Vice Chancellor" : "Dean"}
               </p>
               <h2 className="text-[#022448] font-bold text-2xl">
                 {officer.first_name} {officer.last_name}
@@ -354,7 +354,7 @@ export default function OfficerDetailPage() {
                 <select className={inp + " sm:col-span-2"} value={form.role}
                   onChange={e => setForm({ ...form, role: e.target.value })}>
                   <option value="vc">Vice Chancellor</option>
-                  <option value="chancellor">Chancellor</option>
+                  <option value="chancellor">Dean</option>
                 </select>
               </div>
               <div className="flex gap-2">
@@ -384,39 +384,39 @@ export default function OfficerDetailPage() {
             {st.text}
           </div>
 
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            <div>
-              <dt className="text-[#74777f] text-xs uppercase tracking-wide mb-1">Wallet</dt>
-              <dd className="text-[#022448] font-mono text-xs break-all flex items-start gap-2">
+          <dl className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 text-sm">
+            <div className="bg-[#F8F7F2] rounded-xl border border-[#E4E1D6] px-4 py-3 sm:col-span-2 xl:col-span-3 min-w-0">
+              <dt className="text-[#8A929C] text-xs uppercase tracking-wide mb-1">Wallet</dt>
+              <dd className="text-[#08283F] font-mono text-xs break-all flex items-start gap-2">
                 <span>{officer.wallet_address || "Not linked yet"}</span>
                 {officer.wallet_address && (
-                  <button type="button" onClick={copyWallet} className="shrink-0 text-[#74777f] hover:text-[#022448]" title="Copy">
+                  <button type="button" onClick={copyWallet} className="shrink-0 text-[#8A929C] hover:text-[#08283F]" title="Copy">
                     {copied ? <Check size={14} /> : <Copy size={14} />}
                   </button>
                 )}
               </dd>
             </div>
-            <div>
-              <dt className="text-[#74777f] text-xs uppercase tracking-wide mb-1">Wallet verified</dt>
-              <dd className="text-[#022448]">{officer.wallet_verified ? "Yes" : "No"}</dd>
+            <div className="bg-[#F8F7F2] rounded-xl border border-[#E4E1D6] px-4 py-3">
+              <dt className="text-[#8A929C] text-xs uppercase tracking-wide mb-1">Wallet verified</dt>
+              <dd className="text-[#08283F]">{officer.wallet_verified ? "Yes" : "No"}</dd>
             </div>
-            <div>
-              <dt className="text-[#74777f] text-xs uppercase tracking-wide mb-1">Password setup</dt>
-              <dd className="text-[#022448]">
+            <div className="bg-[#F8F7F2] rounded-xl border border-[#E4E1D6] px-4 py-3">
+              <dt className="text-[#8A929C] text-xs uppercase tracking-wide mb-1">Password setup</dt>
+              <dd className="text-[#08283F]">
                 {officer.must_change_password ? "Still on temporary password" : "Permanent password set"}
               </dd>
             </div>
-            <div>
-              <dt className="text-[#74777f] text-xs uppercase tracking-wide mb-1">On-chain authorized</dt>
-              <dd className="text-[#022448]">{officer.on_chain_authorized ? "Yes" : "No"}</dd>
+            <div className="bg-[#F8F7F2] rounded-xl border border-[#E4E1D6] px-4 py-3">
+              <dt className="text-[#8A929C] text-xs uppercase tracking-wide mb-1">On-chain authorized</dt>
+              <dd className="text-[#08283F]">{officer.on_chain_authorized ? "Yes" : "No"}</dd>
             </div>
-            <div>
-              <dt className="text-[#74777f] text-xs uppercase tracking-wide mb-1">Account active</dt>
-              <dd className="text-[#022448]">{officer.is_active ? "Yes" : "No"}</dd>
+            <div className="bg-[#F8F7F2] rounded-xl border border-[#E4E1D6] px-4 py-3">
+              <dt className="text-[#8A929C] text-xs uppercase tracking-wide mb-1">Account active</dt>
+              <dd className="text-[#08283F]">{officer.is_active ? "Yes" : "No"}</dd>
             </div>
-            <div>
-              <dt className="text-[#74777f] text-xs uppercase tracking-wide mb-1">Joined</dt>
-              <dd className="text-[#022448]">
+            <div className="bg-[#F8F7F2] rounded-xl border border-[#E4E1D6] px-4 py-3">
+              <dt className="text-[#8A929C] text-xs uppercase tracking-wide mb-1">Joined</dt>
+              <dd className="text-[#08283F]">
                 {officer.date_joined ? new Date(officer.date_joined).toLocaleString() : "—"}
               </dd>
             </div>

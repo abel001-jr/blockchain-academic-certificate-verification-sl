@@ -159,7 +159,7 @@ export default function AnchorPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 max-w-[900px]">
+    <div className="flex flex-col gap-6 w-full">
       <div>
         <h2 className="text-[#022448] font-bold text-2xl">Anchor Institutions On-Chain</h2>
         <p className="text-[#43474e] text-sm mt-0.5">

@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Credence Certificate Loading</title>
+
+  <style>
+    :root {
+      --navy: #142b41;
+      --navy-2: #1d405c;
+      --cream: #f7f5ef;
+      --white: #ffffff;
+      --gold: #c59a3a;
+      --gold-soft: #ead9ad;
+      --blue-soft: #eaf1f7;
+      --text: #1d344a;
+      --muted: #7a8b9c;
+      --line: #e6e3db;
+      --shadow: rgba(20, 43, 65, 0.15);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        Arial, sans-serif;
+      background: var(--cream);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    /* ---------------------------------
+       Dashboard skeleton
+       --------------------------------- */
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 250px 1fr;
+    }
+
+    .sidebar {
+      background: linear-gradient(180deg, var(--navy), #18334a);
+      padding: 28px 18px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 2px 12px 35px;
+    }
+
+    .brand-mark {
+      width: 30px;
+      height: 35px;
+      border: 1px solid rgba(197,154,58,.75);
+      border-radius: 5px 5px 8px 8px;
+      position: relative;
+    }
+
+    .brand-mark:after {
+      content: "";
+      position: absolute;
+      left: 7px;
+      right: 7px;
+      bottom: 7px;
+      height: 9px;
+      border-top: 1px solid rgba(197,154,58,.6);
+      border-bottom: 1px solid rgba(197,154,58,.6);
+    }
+
+    .brand-name {
+      color: white;
+      font-size: 23px;
+      font-weight: 750;
+    }
+
+    .nav {
+      display: grid;
+      gap: 8px;
+    }
+
+    .nav-item {
+      height: 44px;
+      border-radius: 9px;
+      background: rgba(255,255,255,.05);
+      position: relative;
+    }
+
+    .nav-item.active {
+      background: rgba(255,255,255,.075);
+      box-shadow: inset 3px 0 var(--gold);
+    }
+
+    .nav-item:before {
+      content: "";
+      position: absolute;
+      left: 17px;
+      top: 14px;
+      width: 112px;
+      height: 14px;
+      border-radius: 5px;
+      background: rgba(255,255,255,.12);
+    }
+
+    .main {
+      padding: 30px 40px;
+      min-width: 0;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 27px;
+    }
+
+    .title {
+      width: 195px;
+      height: 25px;
+      border-radius: 6px;
+      margin-bottom: 9px;
+    }
+
+    .subtitle {
+      width: 255px;
+      height: 11px;
+      border-radius: 5px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 11px;
+      align-items: center;
+    }
+
+    .action {
+      width: 37px;
+      height: 37px;
+      border-radius: 9px;
+    }
+
+    .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+    }
+
+    .skeleton {
+      background: linear-gradient(
+        105deg,
+        #edf0f2 20%,
+        #e0e5e9 45%,
+        #edf0f2 70%
+      );
+      background-size: 240% 100%;
+      animation: shimmer 1.6s ease-in-out infinite;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 17px;
+      margin-bottom: 20px;
+    }
+
+    .stat {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      height: 126px;
+      padding: 20px;
+    }
+
+    .stat-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      margin-bottom: 14px;
+    }
+
+    .stat-value {
+      width: 80px;
+      height: 19px;
+      border-radius: 5px;
+      margin-bottom: 8px;
+    }
+
+    .stat-label {
+      width: 112px;
+      height: 9px;
+      border-radius: 4px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.4fr .9fr;
+      gap: 19px;
+      margin-bottom: 19px;
+    }
+
+    .panel {
+      min-height: 300px;
+      padding: 20px;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+
+    .panel-head {
+      width: 145px;
+      height: 16px;
+      border-radius: 5px;
+      margin-bottom: 24px;
+    }
+
+    .chart {
+      height: 212px;
+      display: flex;
+      align-items: flex-end;
+      gap: 13px;
+      border-bottom: 1px solid #eeece8;
+      padding: 8px;
+    }
+
+    .bar {
+      flex: 1;
+      border-radius: 5px 5px 0 0;
+    }
+
+    .bar:nth-child(1) { height: 35%; }
+    .bar:nth-child(2) { height: 55%; }
+    .bar:nth-child(3) { height: 44%; }
+    .bar:nth-child(4) { height: 68%; }
+    .bar:nth-child(5) { height: 52%; }
+    .bar:nth-child(6) { height: 82%; }
+    .bar:nth-child(7) { height: 62%; }
+    .bar:nth-child(8) { height: 89%; }
+
+    .activity {
+      display: grid;
+      gap: 18px;
+    }
+
+    .activity-row {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+    }
+
+    .activity-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+    }
+
+    .activity-copy {
+      flex: 1;
+    }
+
+    .line-a {
+      width: 82%;
+      height: 10px;
+      border-radius: 4px;
+      margin-bottom: 7px;
+    }
+
+    .line-b {
+      width: 55%;
+      height: 8px;
+      border-radius: 4px;
+    }
+
+    /* ---------------------------------
+       Certificate loading overlay
+       --------------------------------- */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      background: rgba(247,245,239,.67);
+      backdrop-filter: blur(5px);
+    }
+
+    .loading-card {
+      width: 382px;
+      padding: 27px 30px 28px;
+      background: rgba(255,255,255,.97);
+      border: 1px solid #e4e1d9;
+      border-radius: 18px;
+      box-shadow: 0 22px 60px rgba(20,43,65,.13);
+      text-align: center;
+    }
+
+    /* Certificate graphic */
+    .certificate {
+      position: relative;
+      width: 190px;
+      height: 126px;
+      margin: 3px auto 22px;
+      perspective: 900px;
+    }
+
+    .certificate-page {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(145deg, #fffefa, #f8f6ef);
+      border: 1px solid #d7d0bc;
+      border-radius: 6px;
+      box-shadow:
+        0 10px 24px rgba(20,43,65,.12),
+        inset 0 0 0 4px rgba(197,154,58,.08);
+      overflow: hidden;
+    }
+
+    .certificate-page:before {
+      content: "";
+      position: absolute;
+      inset: 8px;
+      border: 1px solid rgba(197,154,58,.55);
+      border-radius: 3px;
+    }
+
+    .certificate-page:after {
+      content: "CREDENCE";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 12px;
+      text-align: center;
+      color: rgba(20,43,65,.55);
+      font-weight: 800;
+      font-size: 7px;
+      letter-spacing: 2px;
+    }
+
+    .cert-content {
+      position: absolute;
+      left: 24px;
+      right: 24px;
+      top: 34px;
+    }
+
+    .cert-line {
+      height: 5px;
+      border-radius: 3px;
+      background: #dfe3e5;
+      margin: 7px auto;
+    }
+
+    .cert-line.title {
+      width: 75%;
+      height: 7px;
+      margin-top: 0;
+    }
+
+    .cert-line.medium {
+      width: 56%;
+    }
+
+    .cert-line.short {
+      width: 39%;
+    }
+
+    .cert-seal {
+      position: absolute;
+      width: 31px;
+      height: 31px;
+      border: 2px solid var(--gold);
+      border-radius: 50%;
+      bottom: 14px;
+      left: 25px;
+      opacity: .85;
+    }
+
+    .cert-seal:after {
+      content: "✓";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -53%);
+      color: var(--gold);
+      font-weight: 800;
+      font-size: 16px;
+    }
+
+    .cert-signature {
+      position: absolute;
+      right: 23px;
+      bottom: 19px;
+      width: 42px;
+      height: 14px;
+      border-bottom: 1.5px solid #9aa4ad;
+      transform: skewX(-20deg);
+    }
+
+    /* Certificate scanning sweep */
+    .scan {
+      position: absolute;
+      z-index: 4;
+      top: 8px;
+      bottom: 8px;
+      left: 8px;
+      width: 2px;
+      border-radius: 2px;
+      background: linear-gradient(
+        to bottom,
+        transparent,
+        var(--gold),
+        transparent
+      );
+      box-shadow: 0 0 13px rgba(197,154,58,.65);
+      animation: scan 2.1s ease-in-out infinite;
+    }
+
+    /* Verification nodes */
+    .node {
+      position: absolute;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--gold);
+      box-shadow: 0 0 0 4px rgba(197,154,58,.12);
+      z-index: 5;
+    }
+
+    .node.n1 { left: -3px; top: 27px; animation: pulse 1.6s infinite; }
+    .node.n2 { right: -3px; top: 48px; animation: pulse 1.6s .35s infinite; }
+    .node.n3 { left: 61px; bottom: -4px; animation: pulse 1.6s .7s infinite; }
+
+    .link {
+      position: absolute;
+      z-index: 3;
+      height: 1px;
+      background: rgba(197,154,58,.34);
+      transform-origin: left center;
+    }
+
+    .link.one {
+      left: 2px;
+      top: 31px;
+      width: 38px;
+      transform: rotate(13deg);
+    }
+
+    .link.two {
+      right: 0;
+      top: 52px;
+      width: 32px;
+      transform: rotate(-10deg);
+    }
+
+    .loading-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 750;
+      color: var(--navy);
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+
+    .brand-mini {
+      width: 20px;
+      height: 23px;
+      border: 1px solid var(--gold);
+      border-radius: 4px 4px 6px 6px;
+    }
+
+    h1 {
+      margin: 0 0 7px;
+      font-size: 18px;
+      color: var(--navy);
+    }
+
+    .message {
+      margin: 0;
+      font-size: 12.5px;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+
+    .status {
+      margin-top: 17px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 11px;
+      border-radius: 999px;
+      background: var(--blue-soft);
+      color: #4f667c;
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--gold);
+      animation: pulse-dot 1.4s infinite;
+    }
+
+    .dots span {
+      display: inline-block;
+      animation: dots 1.4s infinite;
+    }
+
+    .dots span:nth-child(2) { animation-delay: .14s; }
+    .dots span:nth-child(3) { animation-delay: .28s; }
+
+    @keyframes shimmer {
+      0% { background-position: 220% 0; }
+      100% { background-position: -220% 0; }
+    }
+
+    @keyframes scan {
+      0%, 10% { transform: translateX(0); opacity: 0; }
+      20% { opacity: 1; }
+      80% { opacity: 1; }
+      90%, 100% { transform: translateX(172px); opacity: 0; }
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        transform: scale(.85);
+        opacity: .55;
+      }
+      50% {
+        transform: scale(1.25);
+        opacity: 1;
+      }
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { transform: scale(.8); opacity: .5; }
+      50% { transform: scale(1.25); opacity: 1; }
+    }
+
+    @keyframes dots {
+      0%, 60%, 100% { transform: translateY(0); opacity: .4; }
+      30% { transform: translateY(-3px); opacity: 1; }
+    }
+
+    @media (max-width: 950px) {
+      .app {
+        grid-template-columns: 82px 1fr;
+      }
+
+      .brand-name,
+      .nav-item:before {
+        display: none;
+      }
+
+      .brand {
+        justify-content: center;
+        padding-left: 0;
+        padding-right: 0;
+      }
+
+      .stats {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 650px) {
+      .sidebar {
+        display: none;
+      }
+
+      .app {
+        display: block;
+      }
+
+      .main {
+        padding: 20px;
+      }
+
+      .stats,
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .actions {
+        display: none;
+      }
+
+      .loading-card {
+        width: calc(100vw - 36px);
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="app">
+
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark"></div>
+        <div class="brand-name">Credence</div>
+      </div>
+
+      <div class="nav">
+        <div class="nav-item active"></div>
+        <div class="nav-item"></div>
+        <div class="nav-item"></div>
+        <div class="nav-item"></div>
+        <div class="nav-item"></div>
+      </div>
+    </aside>
+
+    <main class="main">
+
+      <div class="topbar">
+        <div>
+          <div class="skeleton title"></div>
+          <div class="skeleton subtitle"></div>
+        </div>
+
+        <div class="actions">
+          <div class="skeleton action"></div>
+          <div class="skeleton action"></div>
+          <div class="skeleton avatar"></div>
+        </div>
+      </div>
+
+      <section class="stats">
+        <div class="stat">
+          <div class="skeleton stat-icon"></div>
+          <div class="skeleton stat-value"></div>
+          <div class="skeleton stat-label"></div>
+        </div>
+
+        <div class="stat">
+          <div class="skeleton stat-icon"></div>
+          <div class="skeleton stat-value"></div>
+          <div class="skeleton stat-label"></div>
+        </div>
+
+        <div class="stat">
+          <div class="skeleton stat-icon"></div>
+          <div class="skeleton stat-value"></div>
+          <div class="skeleton stat-label"></div>
+        </div>
+
+        <div class="stat">
+          <div class="skeleton stat-icon"></div>
+          <div class="skeleton stat-value"></div>
+          <div class="skeleton stat-label"></div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="panel">
+          <div class="skeleton panel-head"></div>
+          <div class="chart">
+            <div class="skeleton bar"></div>
+            <div class="skeleton bar"></div>
+            <div class="skeleton bar"></div>
+            <div class="skeleton bar"></div>
+            <div class="skeleton bar"></div>
+            <div class="skeleton bar"></div>
+            <div class="skeleton bar"></div>
+            <div class="skeleton bar"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="skeleton panel-head"></div>
+
+          <div class="activity">
+            <div class="activity-row">
+              <div class="skeleton activity-icon"></div>
+              <div class="activity-copy">
+                <div class="skeleton line-a"></div>
+                <div class="skeleton line-b"></div>
+              </div>
+            </div>
+
+            <div class="activity-row">
+              <div class="skeleton activity-icon"></div>
+              <div class="activity-copy">
+                <div class="skeleton line-a"></div>
+                <div class="skeleton line-b"></div>
+              </div>
+            </div>
+
+            <div class="activity-row">
+              <div class="skeleton activity-icon"></div>
+              <div class="activity-copy">
+                <div class="skeleton line-a"></div>
+                <div class="skeleton line-b"></div>
+              </div>
+            </div>
+
+            <div class="activity-row">
+              <div class="skeleton activity-icon"></div>
+              <div class="activity-copy">
+                <div class="skeleton line-a"></div>
+                <div class="skeleton line-b"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Credence certificate loading state -->
+  <div class="overlay">
+    <div class="loading-card">
+
+      <div class="certificate">
+
+        <div class="link one"></div>
+        <div class="link two"></div>
+
+        <div class="certificate-page">
+
+          <div class="cert-content">
+            <div class="cert-line title"></div>
+            <div class="cert-line medium"></div>
+            <div class="cert-line"></div>
+            <div class="cert-line short"></div>
+          </div>
+
+          <div class="cert-seal"></div>
+          <div class="cert-signature"></div>
+
+          <div class="scan"></div>
+        </div>
+
+        <div class="node n1"></div>
+        <div class="node n2"></div>
+        <div class="node n3"></div>
+
+      </div>
+
+      <div class="loading-brand">
+        <span class="brand-mini"></span>
+        Credence
+      </div>
+
+      <h1>Preparing your certificate</h1>
+
+      <p class="message">
+        Loading certificate details and verification data
+        <span class="dots"><span>.</span><span>.</span><span>.</span></span>
+      </p>
+
+      <div class="status">
+        <span class="status-dot"></span>
+        Certificate record is being prepared
+      </div>
+
+    </div>
+  </div>
+
+</body>
+</html>

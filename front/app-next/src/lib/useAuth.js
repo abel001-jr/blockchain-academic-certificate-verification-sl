@@ -39,7 +39,7 @@ export const ROLES = {
   STUDENT:             "student",
 };
 
-/** Institution head (anchored issuer) — prepares certs, manages VC/Chancellor */
+/** Institution head (anchored issuer) — prepares certs, manages VC/Dean */
 export function isInstitutionHead(role) {
   return role === ROLES.REGISTRAR || role === ROLES.INSTITUTIONAL_ADMIN;
 }

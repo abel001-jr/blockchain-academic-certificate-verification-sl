@@ -12,7 +12,7 @@ function authHeaders() {
 }
 
 /**
- * VC / Chancellor cosmetic signature — upload scan or typed name.
+ * Institution signer cosmetic signature — upload scan or typed name.
  * Image is display-only; on-chain tx is the real proof (see notice below).
  */
 export default function OfficerSignaturePanel({
@@ -126,7 +126,7 @@ export default function OfficerSignaturePanel({
           <div>
             <h3 className="text-[#022448] font-semibold text-base">Digital Signature</h3>
             <p className="text-[#43474e] text-sm mt-1">
-              Your signature is set and will appear on certificates you approve.
+              Your signature is set and will appear on certificates you sign.
             </p>
           </div>
         )}
@@ -136,8 +136,7 @@ export default function OfficerSignaturePanel({
           <p className="text-[#43474e] text-xs leading-relaxed">
             <strong className="text-[#022448]">Cosmetic only.</strong> The signature image makes the
             certificate look official — it is not cryptographic proof. Authenticity comes from your
-            on-chain <code className="font-mono text-[10px]">approveAsVC</code> /{" "}
-            <code className="font-mono text-[10px]">approveAsChancellor</code> transaction, which is
+            on-chain submission or approval transaction, which is
             always shown alongside the image.
           </p>
         </div>
@@ -183,7 +182,7 @@ export default function OfficerSignaturePanel({
           <strong className="text-[#022448]">Cosmetic only.</strong> The signature image makes the
           certificate look official — it is not cryptographic proof. Authenticity comes from your
           on-chain <code className="font-mono text-[10px]">approveAsVC</code> /{" "}
-          <code className="font-mono text-[10px]">approveAsChancellor</code> transaction, which is
+          <code className="font-mono text-[10px]">approveAsDean</code> transaction, which is
           always shown alongside the image.
         </p>
       </div>

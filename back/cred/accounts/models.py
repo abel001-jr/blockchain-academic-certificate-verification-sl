@@ -17,7 +17,9 @@ class Role(models.TextChoices):
     INSTITUTIONAL_ADMIN  = "institutional_admin",  "Institutional Admin (legacy)"
     REGISTRAR            = "registrar",            "Registrar"
     VC                   = "vc",                   "Vice Chancellor"
-    CHANCELLOR           = "chancellor",           "Chancellor"
+    # Keep the stored value for existing users and chain compatibility; the
+    # institution-facing title is Dean.
+    CHANCELLOR           = "chancellor",           "Dean"
     STUDENT              = "student",              "Student"
 
 
@@ -54,6 +56,12 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     student_id    = models.CharField(max_length=50, blank=True, default="")
     wallet_address = models.CharField(max_length=42, blank=True, default="")
+    phone_number  = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="E.164 format e.g. +23276123456. Used for WhatsApp issuance notifications.",
+    )
 
     # Officer onboarding (VC / Chancellor)
     must_change_password = models.BooleanField(

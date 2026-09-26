@@ -1,16 +1,20 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { Search, Plus, Loader2 } from "lucide-react";
+import { Search, Plus, Loader2, Pencil } from "lucide-react";
 import StatusBadge from "@/components/dashboard/StatusBadge";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth, ROLES } from "@/lib/useAuth";
 import { revokeCertificateOnChain } from "@/lib/walletActions";
+import CertLoaderOverlay from "@/components/dashboard/CertLoaderOverlay";
 
 const STATUS_FILTERS = ["all", "draft", "pending_vc", "pending_chancellor", "pending_finalize", "issued", "revoked"];
+const STATUS_LABELS = { pending_chancellor: "Pending Dean" };
 
 export default function CertificatesPage() {
   const { role } = useAuth();
+  const router = useRouter();
 
   const [certs, setCerts] = useState([]);
   const [count, setCount] = useState(0);
@@ -18,13 +22,12 @@ export default function CertificatesPage() {
   const [filter, setFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [viewing, setViewing] = useState(false); // view overlay
   const [error, setError] = useState("");
   const [revoking, setRevoking] = useState(null);
-  const [deleting, setDeleting] = useState(null);
 
   const canIssue = [ROLES.REGISTRAR, ROLES.INSTITUTIONAL_ADMIN].includes(role);
   const canRevoke = [ROLES.REGISTRAR, ROLES.INSTITUTIONAL_ADMIN, ROLES.SUPER_ADMIN].includes(role);
-  const canDeleteDraft = canIssue;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,20 +47,6 @@ export default function CertificatesPage() {
   }, [page, filter, search]);
 
   useEffect(() => { load(); }, [load]);
-
-  async function handleDeleteDraft(cert) {
-    if (!confirm(`Delete draft ${cert.certificate_id}? This cannot be undone.`)) return;
-    setDeleting(cert.id);
-    setError("");
-    try {
-      await api.delete(`/certificates/${cert.id}/`);
-      load();
-    } catch (e) {
-      setError(e?.detail || JSON.stringify(e));
-    } finally {
-      setDeleting(null);
-    }
-  }
 
   async function handleRevoke(cert) {
     const reason = prompt(`Reason for revoking ${cert.certificate_id}?`);
@@ -83,124 +72,103 @@ export default function CertificatesPage() {
   const totalPages = Math.ceil(count / pageSize);
 
   return (
-    <div className="flex flex-col gap-6 max-w-[1280px]">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="flex flex-col gap-4 w-full">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-[#022448] font-bold text-2xl">Certificates</h2>
-          <p className="text-[#43474e] text-sm mt-0.5">
+          <h2 className="text-[#08283F] font-bold text-2xl">Certificates</h2>
+          <p className="text-[#4A5A68] text-sm mt-0.5">
             {count} certificate{count !== 1 ? "s" : ""} · lists are off-chain reads
           </p>
         </div>
         {canIssue && (
-          <Link
-            href="/dashboard/certificates/new"
-            className="flex items-center gap-2 bg-[#022448] text-white px-5 py-2.5 rounded-[12px] text-sm font-semibold hover:opacity-90 transition-all active:scale-95 self-start"
-          >
-            <Plus size={16} /> Issue Certificate
+          <Link href="/dashboard/certificates/new"
+            className="flex items-center gap-2 bg-[#08283F] text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 transition-all self-start">
+            <Plus size={15} /> Issue Certificate
           </Link>
         )}
       </div>
 
-      <div className="bg-white rounded-[14px] shadow-card border border-[#c4c6cf]/10 p-4 flex flex-col sm:flex-row gap-3">
-        <div className="flex items-center gap-2 bg-[#eef4ff] rounded-[10px] px-3 py-2.5 flex-1 border border-transparent focus-within:border-[#022448] transition-colors">
-          <Search size={15} className="text-[#74777f] shrink-0" />
-          <input
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Search by name, ID, or degree…"
-            className="bg-transparent text-sm text-[#121c28] outline-none placeholder:text-[#74777f] w-full"
-          />
+      {/* Search + filter bar */}
+      <div className="bg-white rounded-xl border border-[#E4E1D6] px-4 py-3 flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+        <div className="dash-search flex-1 min-w-0">
+          <Search size={14} className="text-[#8A929C] shrink-0" />
+          <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
+            placeholder="Search by name, ID, or degree…" />
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {STATUS_FILTERS.map((s) => (
-            <button
-              key={s}
-              onClick={() => { setFilter(s); setPage(1); }}
-              className={`px-3 py-2 rounded-[8px] text-xs font-semibold capitalize transition-all ${
-                filter === s ? "bg-[#022448] text-white" : "bg-[#eef4ff] text-[#43474e] hover:bg-[#022448]/10"
-              }`}
-            >
-              {s === "all" ? "All" : s.replace(/_/g, " ")}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {STATUS_FILTERS.map(s => (
+            <button key={s} onClick={() => { setFilter(s); setPage(1); }}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all whitespace-nowrap ${
+                filter === s ? "bg-[#08283F] text-white" : "bg-[#EAF2FB] text-[#4A5A68] hover:bg-[#08283F]/10"
+              }`}>
+              {s === "all" ? "All" : (STATUS_LABELS[s] || s.replace(/_/g, " "))}
             </button>
           ))}
         </div>
       </div>
 
-      {error && (
-        <div className="bg-[#ffdad6] text-[#93000a] text-sm px-4 py-3 rounded-lg break-all">{error}</div>
-      )}
+      {error && <div className="dash-error">{error}</div>}
 
-      <div className="bg-white rounded-[14px] shadow-card border border-[#c4c6cf]/10 overflow-hidden">
+      {/* Table */}
+      <div className="bg-white rounded-xl border border-[#E4E1D6] overflow-hidden w-full">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[700px]">
+          <table className="w-full min-w-[680px]">
             <thead>
-              <tr className="border-b border-[#c4c6cf]/15">
-                {["Certificate ID", "Student", "Degree", "Year", "Status", "Date", "Tx Hash", ""].map((h) => (
-                  <th key={h} className="text-left px-5 py-3.5 text-[#43474e] text-xs font-semibold uppercase tracking-wider bg-[#FAF7F2]">
-                    {h}
-                  </th>
+              <tr>
+                {["Certificate ID", "Student", "Degree", "Year", "Status", "Date", "Tx Hash", ""].map(h => (
+                  <th key={h} className="dash-th">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#c4c6cf]/10">
+            <tbody className="divide-y divide-[#E4E1D6]">
               {loading && (
-                <tr>
-                  <td colSpan={8} className="text-center py-12">
-                    <Loader2 size={22} className="text-[#022448] animate-spin mx-auto" />
-                  </td>
-                </tr>
+                <tr><td colSpan={8} className="text-center py-10">
+                  <Loader2 size={20} className="text-[#08283F] animate-spin mx-auto" />
+                </td></tr>
               )}
               {!loading && certs.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="text-center py-12 text-[#43474e] text-sm">
-                    No certificates found.
-                  </td>
-                </tr>
+                <tr><td colSpan={8} className="text-center py-10 text-[#4A5A68] text-sm">
+                  No certificates found.
+                </td></tr>
               )}
-              {!loading && certs.map((cert) => (
-                <tr key={cert.id} className="hover:bg-[#FAF7F2] transition-colors">
-                  <td className="px-5 py-4">
-                    <span className="font-mono text-[#022448] text-sm font-medium">{cert.certificate_id}</span>
-                  </td>
-                  <td className="px-5 py-4">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-[#022448]/10 flex items-center justify-center text-[#022448] text-xs font-bold shrink-0">
+              {!loading && certs.map(cert => (
+                <tr key={cert.id} className="hover:bg-[#F8F7F2] transition-colors">
+                  <td className="dash-td font-mono text-sm font-semibold text-[#08283F]">{cert.certificate_id}</td>
+                  <td className="dash-td">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full bg-[#08283F]/10 flex items-center justify-center text-[#08283F] text-xs font-bold shrink-0">
                         {cert.student_name?.split(" ").map(n => n[0]).join("").slice(0, 2) ?? "?"}
                       </div>
-                      <span className="text-[#022448] text-sm font-medium">{cert.student_name}</span>
+                      <span className="text-[#08283F] text-sm font-medium whitespace-nowrap">{cert.student_name}</span>
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-[#43474e] text-sm max-w-[200px] truncate">{cert.degree_title}</td>
-                  <td className="px-5 py-4 text-[#43474e] text-sm">{cert.graduation_year}</td>
-                  <td className="px-5 py-4"><StatusBadge status={cert.status} /></td>
-                  <td className="px-5 py-4 text-[#43474e] text-sm whitespace-nowrap">
+                  <td className="dash-td text-[#4A5A68] text-sm max-w-[180px] truncate">{cert.degree_title}</td>
+                  <td className="dash-td text-[#4A5A68] text-sm">{cert.graduation_year}</td>
+                  <td className="dash-td"><StatusBadge status={cert.status} /></td>
+                  <td className="dash-td text-[#4A5A68] text-sm whitespace-nowrap">
                     {cert.created_at ? new Date(cert.created_at).toLocaleDateString() : "—"}
                   </td>
-                  <td className="px-5 py-4 font-mono text-[#43474e] text-xs">
+                  <td className="dash-td font-mono text-[#4A5A68] text-xs">
                     {cert.tx_hash ? `${cert.tx_hash.slice(0, 10)}…` : "—"}
                   </td>
-                  <td className="px-5 py-4">
-                    <div className="flex items-center gap-3">
-                      <Link href={`/dashboard/certificates/${cert.id}`} className="text-[#7b5900] text-xs font-semibold hover:underline">
+                  <td className="dash-td">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => { setViewing(true); router.push(`/dashboard/certificates/${cert.id}`); }}
+                        className="text-[#B98A28] text-xs font-semibold hover:underline"
+                      >
                         View
-                      </Link>
-                      {canDeleteDraft && cert.status === "draft" && (
-                        <button
-                          onClick={() => handleDeleteDraft(cert)}
-                          disabled={!!deleting}
-                          className="text-[#C62828] text-xs font-semibold hover:underline disabled:opacity-50"
-                        >
-                          {deleting === cert.id ? "Deleting…" : "Delete"}
-                        </button>
+                      </button>
+                      {canIssue && cert.status === "draft" && cert.flow_type === "system_designed" && (
+                        <Link href={`/dashboard/certificates/new?flow=system_designed&draft=${encodeURIComponent(cert.id)}`}
+                          className="inline-flex items-center gap-1 text-[#08283F] text-xs font-semibold hover:underline">
+                          <Pencil size={12} /> Continue issuing
+                        </Link>
                       )}
                       {canRevoke && cert.status === "issued" && (
-                        <button
-                          onClick={() => handleRevoke(cert)}
-                          disabled={!!revoking}
-                          className="text-[#C62828] text-xs font-semibold hover:underline disabled:opacity-50"
-                          title="Revoke on-chain (MetaMask gas)"
-                        >
-                          {revoking === cert.id ? "Revoking…" : "Revoke"}
+                        <button onClick={() => handleRevoke(cert)} disabled={!!revoking}
+                          className="text-[#A23B34] text-xs font-semibold hover:underline disabled:opacity-50">
+                          {revoking === cert.id ? "…" : "Revoke"}
                         </button>
                       )}
                     </div>
@@ -210,29 +178,15 @@ export default function CertificatesPage() {
             </tbody>
           </table>
         </div>
-
-        <div className="px-5 py-3.5 border-t border-[#c4c6cf]/15 flex items-center justify-between">
-          <p className="text-[#43474e] text-xs">
-            Page {page} of {totalPages || 1} · {count} total
-          </p>
+        <div className="px-5 py-3 border-t border-[#E4E1D6] flex items-center justify-between">
+          <p className="text-[#4A5A68] text-sm">Page {page} of {totalPages || 1} · {count} total</p>
           <div className="flex gap-2">
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage(p => p - 1)}
-              className="px-3 py-1.5 rounded-lg bg-[#eef4ff] text-[#43474e] text-xs font-medium hover:bg-[#022448]/10 disabled:opacity-40 transition-colors"
-            >
-              Previous
-            </button>
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage(p => p + 1)}
-              className="px-3 py-1.5 rounded-lg bg-[#eef4ff] text-[#43474e] text-xs font-medium hover:bg-[#022448]/10 disabled:opacity-40 transition-colors"
-            >
-              Next
-            </button>
+            <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="dash-pagination-btn">← Prev</button>
+            <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="dash-pagination-btn">Next →</button>
           </div>
         </div>
       </div>
+      <CertLoaderOverlay variant="view" open={viewing} />
     </div>
   );
 }

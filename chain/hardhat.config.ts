@@ -6,8 +6,20 @@ export default defineConfig({
 
   solidity: {
     profiles: {
+      // The optimizer is enabled in every profile on purpose. Unoptimized this
+      // contract exceeds the 24576-byte EIP-170 limit, so compiling, testing
+      // and deploying under different profiles produces artifacts that disagree
+      // and a deploy that fails only at the point of on-chain submission. The
+      // registry is called a handful of times per credential and has no hot
+      // loops, so favouring code size over runtime gas costs nothing here.
       default: {
         version: "0.8.28",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+        },
       },
       production: {
         version: "0.8.28",

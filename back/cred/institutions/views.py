@@ -38,11 +38,54 @@ class InstitutionListCreateView(generics.ListCreateAPIView):
             return [IsSuperAdmin()]
         return [IsFullSession()]
 
+    def get_queryset(self):
+        # The Super Admin management screen must retain deactivated institutions
+        # so they can be audited and reactivated. Other callers only see active
+        # institutions by default.
+        include_inactive = self.request.query_params.get("include_inactive")
+        if include_inactive and self.request.user.role == Role.SUPER_ADMIN:
+            qs = Institution.objects.all()
+        else:
+            qs = Institution.objects.filter(is_active=True)
+        # Support ?is_chain_active=true/false from the anchor admin page
+        chain_active_param = self.request.query_params.get("is_chain_active")
+        if chain_active_param is not None:
+            flag = chain_active_param.lower() in ("true", "1", "yes")
+            qs = qs.filter(is_chain_active=flag)
+        return qs.order_by("name")
 
-class InstitutionDetailView(generics.RetrieveUpdateDestroyAPIView):
+
+class InstitutionDetailView(generics.RetrieveUpdateAPIView):
     queryset           = Institution.objects.all()
     serializer_class   = InstitutionSerializer
     permission_classes = [IsAdminOrAbove]
+
+    def update(self, request, *args, **kwargs):
+        """Require and audit a reason for an institution status change."""
+        instance = self.get_object()
+        new_is_active = request.data.get("is_active")
+        status_changing = isinstance(new_is_active, bool) and new_is_active != instance.is_active
+
+        if status_changing:
+            reason = str(request.data.get("reason", "")).strip()
+            if not reason:
+                return Response(
+                    {"detail": "A reason is required to activate or deactivate an institution."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        response = super().update(request, *args, **kwargs)
+
+        if status_changing:
+            log_action(
+                actor=request.user,
+                action="institution.activated" if new_is_active else "institution.deactivated",
+                target_type="Institution",
+                target_id=str(instance.id),
+                detail=f"{instance.name}: {reason}",
+                ip_address=request.META.get("REMOTE_ADDR"),
+            )
+        return response
 
 
 # ── Phase 1: Application submission (public) ──────────────────────────────────
