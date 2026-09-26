@@ -31,11 +31,17 @@ const SUPER_ADMIN_ITEMS = [
   // CERTIFICATES
   { section: "CERTIFICATES", badge: "READ ONLY" },
   { label: "All Certificates", href: "/dashboard/certificates", icon: ScrollText },
+  { label: "Credentials", href: "/dashboard/credentials", icon: ScrollText },
+  { label: "Verification", href: "/dashboard/verification", icon: BadgeCheck },
   
   // TRUST AND VERIFICATION
   { section: "TRUST AND VERIFICATION", badge: "READ ONLY" },
   { label: "Blockchain", href: "/dashboard/blockchain", icon: Link2 },
   { label: "Audit Logs", href: "/dashboard/audit", icon: History },
+  
+  // INSIGHT
+  { section: "INSIGHT", badge: "READ ONLY" },
+  { label: "Reports", href: "/dashboard/reports", icon: BarChart3 },
 ];
 
 const INST_ADMIN_ITEMS = [

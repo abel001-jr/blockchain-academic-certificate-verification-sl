@@ -60,6 +60,13 @@ class CertificateDetailSerializer(serializers.ModelSerializer):
             "vc_signature_image", "chancellor_signature_image",
             "registrar_signature_image",
             "finalize_tx_hash",
+            # Read-only on this serializer on purpose: `student_email` is folded
+            # into the on-chain data hash by `build_certificate_json()`, so it is
+            # only ever written through the dedicated, immutability-guarded
+            # endpoint `POST /certificates/<id>/update-student-email/`. Leaving it
+            # writable here would let any future view that reuses this serializer
+            # for writes bypass both the hash guard and the audit log.
+            "student_email",
         ]
 
     def _media_url(self, field):
@@ -88,6 +95,29 @@ class CertificateDetailSerializer(serializers.ModelSerializer):
 
     def get_chancellor_signature_url(self, obj):
         return self._media_url(obj.chancellor_signature_image)
+
+
+class CertificateUpdateStudentEmailSerializer(serializers.Serializer):
+    """
+    Payload for `POST /certificates/<id>/update-student-email/`.
+
+    The address is only correctable while the credential is still a draft,
+    because `build_certificate_json()` folds `student_email` into the
+    `dataHash` that gets committed to Ethereum at `prepare` /
+    `upload-and-anchor`. Changing it afterwards would leave the stored
+    `cert_hash` unreproducible and the IPFS-pinned JSON stale, so the view
+    refuses the change outright once a hash exists.
+
+    `reassign_student` lets a registrar move the linked student account to the
+    new address in the same call. It is opt-in because re-pointing the FK
+    changes who can see the certificate in their portal.
+    """
+
+    student_email = serializers.EmailField(max_length=254)
+    reassign_student = serializers.BooleanField(required=False, default=False)
+
+    def validate_student_email(self, value):
+        return value.strip().lower()
 
 
 class CertificateCreateSerializer(serializers.ModelSerializer):

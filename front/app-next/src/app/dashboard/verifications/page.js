@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth, ROLES } from "@/lib/useAuth";
+import { verificationSharePath } from "@/lib/parseCertificateScan";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api";
 const FRONTEND = typeof window !== "undefined" ? window.location.origin : "";
@@ -31,7 +32,7 @@ function fmtDate(iso) {
 }
 
 function shareUrl(certificateId, rawCode) {
-  return `${FRONTEND}/verify/${certificateId}?code=${rawCode}`;
+  return `${FRONTEND}${verificationSharePath(certificateId, rawCode)}`;
 }
 
 // ─── Share code row ───────────────────────────────────────────────────────────

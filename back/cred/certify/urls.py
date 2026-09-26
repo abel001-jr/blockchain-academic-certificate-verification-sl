@@ -15,7 +15,9 @@ from .views import (
     StudentCertificatesView,
     CertificateResendInviteView,
     CertificateLinkStudentView,
+    CertificateUpdateStudentEmailView,
 )
+from .platform_views import PlatformStatsView, PlatformCertificateOverviewView
 from .share_code_views import ShareCodeListCreateView, ShareCodeRevokeView
 from .document_analysis_views import DocumentAnalysisView
 from .transcript_views import (
@@ -31,6 +33,9 @@ from .transcript_views import (
 
 urlpatterns = [
     path("documents/analyze/", DocumentAnalysisView.as_view(), name="document-analysis"),
+    # ── Super Admin platform oversight ─────────────────────────────────────────
+    path("admin/platform-stats/", PlatformStatsView.as_view(), name="platform-stats"),
+    path("admin/certificates/overview/", PlatformCertificateOverviewView.as_view(), name="platform-certificate-overview"),
     # ── Certificates ──────────────────────────────────────────────────────────
     path("certificates/",                                          CertificateListCreateView.as_view(),      name="certificate-list-create"),
     path("certificates/<uuid:pk>/",                                CertificateDetailView.as_view(),          name="certificate-detail"),
@@ -46,6 +51,7 @@ urlpatterns = [
     path("certificates/<uuid:pk>/revoke/",                         CertificateRevokeView.as_view(),          name="certificate-revoke"),
     path("certificates/<uuid:pk>/resend-invite/",                  CertificateResendInviteView.as_view(),    name="certificate-resend-invite"),
     path("certificates/<uuid:pk>/link-student/",                   CertificateLinkStudentView.as_view(),     name="certificate-link-student"),
+    path("certificates/<uuid:pk>/update-student-email/",           CertificateUpdateStudentEmailView.as_view(), name="certificate-update-student-email"),
     
     # ── Transcripts ───────────────────────────────────────────────────────────
     path("transcripts/",                                           TranscriptListCreateView.as_view(),       name="transcript-list-create"),

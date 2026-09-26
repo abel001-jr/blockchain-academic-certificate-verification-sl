@@ -95,9 +95,9 @@ export default function Footer() {
           <section>
             <div className="ft-heading">Platform</div>
             <nav className="ft-links">
-              <Link href="#lifecycle">How it works</Link>
-              <Link href="#verify">Verify a certificate</Link>
-              <Link href="#why">Why blockchain</Link>
+              <Link href="/#lifecycle">How it works</Link>
+              <Link href="/verify">Verify a certificate</Link>
+              <Link href="/#why">Why blockchain</Link>
               <Link href="/apply">Apply as a university</Link>
             </nav>
           </section>
@@ -107,9 +107,9 @@ export default function Footer() {
             <div className="ft-heading">For institutions</div>
             <nav className="ft-links">
               <Link href="/login">Institution sign in</Link>
-              <Link href="#stakeholders">Supported roles</Link>
+              <Link href="/#stakeholders">Supported roles</Link>
               <a href="https://github.com" target="_blank" rel="noopener noreferrer">GitHub repository</a>
-              <Link href="#why">Case study</Link>
+              <Link href="/#why">Case study</Link>
             </nav>
           </section>
 

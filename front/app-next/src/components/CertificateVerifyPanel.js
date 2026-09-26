@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
-  AlertTriangle, Bell, CheckCircle2, HelpCircle,
+  AlertTriangle, BadgeCheck, Bell, CheckCircle2, HelpCircle,
   Loader2, ScanLine, XCircle,
 } from "lucide-react";
-import { parseCertificateIdFromScan } from "@/lib/parseCertificateScan";
+import { parseCertificateIdFromScan, parseShareCodeFromScan } from "@/lib/parseCertificateScan";
 import { useCaptcha } from "@/hooks/useCaptcha";
 
 const QrScanner = dynamic(() => import("@/components/QrScanner"), { ssr: false });
@@ -21,6 +21,36 @@ const OUTCOMES = {
   not_found:        { icon: HelpCircle,    color: "text-[#4A5A68]", bg: "bg-[#EAF2FB] border-[#CFE1F2]",    label: "Not Found" },
   captcha_required: { icon: AlertTriangle, color: "text-[#A9721F]", bg: "bg-[#F5EBDB] border-[#A9721F]/20", label: "Please complete the CAPTCHA and try again" },
 };
+
+// ─── Result detail grid ───────────────────────────────────────────────────────
+
+/**
+ * Build the "certificate details" grid.
+ *
+ * The public scope intentionally returns only four fields; the full scope
+ * (share code or granted consent) adds degree, grade and hashes. Rendering
+ * the full label list unconditionally produced empty cells, so only the
+ * fields actually present are shown.
+ */
+function detailRows(c) {
+  if (!c) return [];
+  const all = [
+    ["Certificate ID",  c.certificate_id],
+    ["Student",         c.student_name],
+    ["Institution",     c.institution_name],
+    ["Degree",          c.degree_title],
+    ["Department",      c.department],
+    ["Graduation Year", c.graduation_year],
+    ["Grade",           c.grade],
+    ["Issued At",       c.chain_issued_at],
+    ["Tx Hash",         c.tx_hash],
+    ["Revoked At",      c.revoked_at],
+    ["Revocation Tx",   c.revocation_tx_hash],
+  ];
+  return all
+    .filter(([, v]) => v !== undefined && v !== null && v !== "")
+    .map(([label, value]) => [label, String(value)]);
+}
 
 // ─── Consent request flow ─────────────────────────────────────────────────────
 
@@ -248,17 +278,23 @@ export default function CertificateVerifyPanel({
   variant = "dashboard",
   autoVerify = false,
   initialConsentId = "",   // if set, skip verify form and go straight to consent polling
+  initialShareCode = "",   // ?code=<raw> — unlocks the full (share-scoped) payload
 }) {
   const [certId,        setCertId]        = useState(initialId);
   const [result,        setResult]        = useState(null);
   const [loading,       setLoading]       = useState(false);
   const [scanning,      setScanning]      = useState(false);
   const [consentResult, setConsentResult] = useState(null);
+  const [shareCode,     setShareCode]     = useState(initialShareCode || "");
   // If the page loaded with ?consent=<id>, jump straight to polling
   const [directConsentId, setDirectConsentId] = useState(initialConsentId || null);
   const { captchaNode, execute: runCaptcha } = useCaptcha();
 
-  async function verify(id) {
+  async function verify(id, rawScan = "") {
+    const scanned = parseShareCodeFromScan(rawScan);
+    if (scanned) setShareCode(scanned);
+    const codeToSend = scanned || shareCode;
+
     const parsed = parseCertificateIdFromScan(id || certId);
     if (!parsed) return;
     setCertId(parsed);
@@ -266,11 +302,14 @@ export default function CertificateVerifyPanel({
     setResult(null);
     setConsentResult(null);
     try {
-      const captchaToken = await runCaptcha();
+      // A valid share code bypasses the CAPTCHA gate and rate limits server-side,
+      // so skip the widget entirely when one is present.
+      const captchaToken = codeToSend ? null : await runCaptcha();
       const headers = { "Content-Type": "application/json" };
       if (captchaToken) headers["X-Captcha-Token"] = captchaToken;
 
-      const res  = await fetch(`${API_BASE}/verify/${encodeURIComponent(parsed)}/`, { headers });
+      const qs = codeToSend ? `?code=${encodeURIComponent(codeToSend)}` : "";
+      const res  = await fetch(`${API_BASE}/verify/${encodeURIComponent(parsed)}/${qs}`, { headers });
       const data = await res.json();
 
       if (res.status === 403 && data.captcha_required) {
@@ -288,7 +327,7 @@ export default function CertificateVerifyPanel({
   useEffect(() => {
     if (autoVerify && initialId) verify(initialId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoVerify, initialId]);
+  }, [autoVerify, initialId, initialShareCode]);
 
   // When consent is approved, merge the approved cert data into result
   function handleConsentApproved(certPayload) {
@@ -331,14 +370,7 @@ export default function CertificateVerifyPanel({
               <p className={`font-bold text-base ${outcome.color}`}>{outcome.label}</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {[
-                ["Certificate ID",  result.certificate.certificate_id],
-                ["Student",         result.certificate.student_name],
-                ["Degree",          result.certificate.degree_title],
-                ["Institution",     result.certificate.institution_name],
-                ["Graduation Year", result.certificate.graduation_year],
-                ["Issued At",       result.certificate.chain_issued_at ?? "—"],
-              ].map(([label, value]) => (
+              {detailRows(result.certificate).map(([label, value]) => (
                 <div key={label} className="bg-[#F8F7F2] rounded-lg px-3 py-2.5 border border-[#E4E1D6]">
                   <p className="text-[#8A929C] text-xs font-semibold uppercase tracking-wider mb-0.5">{label}</p>
                   <p className="text-[#08283F] text-sm font-medium break-all">{value}</p>
@@ -392,6 +424,21 @@ export default function CertificateVerifyPanel({
             </button>
           </div>
         </div>
+
+        {shareCode && (
+          <div className="flex items-center gap-2 mt-3 text-xs">
+            <BadgeCheck size={13} className="text-[#2F6F4E] shrink-0" />
+            <span className="text-[#2F6F4E] font-medium">Share code applied</span>
+            <span className="text-[#8A929C] truncate">full credential details unlocked</span>
+            <button
+              type="button"
+              onClick={() => setShareCode("")}
+              className="ml-auto text-[#8A929C] hover:text-[#A23B34] underline shrink-0"
+            >
+              Remove
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Verification result */}
@@ -407,15 +454,7 @@ export default function CertificateVerifyPanel({
 
           {result.found && result.certificate && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {[
-                ["Certificate ID",  result.certificate.certificate_id],
-                ["Student",         result.certificate.student_name],
-                ["Degree",          result.certificate.degree_title],
-                ["Institution",     result.certificate.institution_name],
-                ["Graduation Year", result.certificate.graduation_year],
-                ["Issued At",       result.certificate.chain_issued_at ?? "—"],
-                ["Tx Hash",         result.certificate.tx_hash || "—"],
-              ].map(([label, value]) => (
+              {detailRows(result.certificate).map(([label, value]) => (
                 <div key={label} className="bg-[#F8F7F2] rounded-lg px-3 py-2.5 border border-[#E4E1D6]">
                   <p className="text-[#8A929C] text-xs font-semibold uppercase tracking-wider mb-0.5">{label}</p>
                   <p className="text-[#08283F] text-sm font-medium break-all">{value}</p>
@@ -438,7 +477,7 @@ export default function CertificateVerifyPanel({
         <QrScanner
           open
           onClose={() => setScanning(false)}
-          onScan={(id) => verify(id)}
+          onScan={(id) => verify(id, id)}
         />
       )}
 

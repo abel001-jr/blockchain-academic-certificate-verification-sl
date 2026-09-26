@@ -10,12 +10,14 @@ function VerifyContent() {
   const params     = useSearchParams();
   const initialId  = params.get("id")      || params.get("cert") || "";
   const consentId  = params.get("consent") || "";
+  const shareCode  = params.get("code")    || "";
 
   return (
     <CertificateVerifyPanel
       initialId={initialId}
       autoVerify={!!initialId && !consentId}
       initialConsentId={consentId}
+      initialShareCode={shareCode}
     />
   );
 }

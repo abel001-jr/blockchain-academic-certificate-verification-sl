@@ -7,6 +7,8 @@ Lifecycle:
        → generate PDF + pin → finalizeCertificate on-chain → Issued
 """
 
+from django.db.models import Count, Q
+from django.db.models.functions import TruncMonth
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.shortcuts import get_object_or_404
@@ -38,6 +40,7 @@ from .serializers import (
     CertificateDetailSerializer,
     CertificateListSerializer,
     CertificateRevokeSerializer,
+    CertificateUpdateStudentEmailSerializer,
     CertificateUploadDocumentSerializer,
     CertificateUploadAnchorSerializer,
 )
@@ -242,11 +245,35 @@ class CertificateListCreateView(generics.ListCreateAPIView):
         if status_param:
             qs = qs.filter(status=status_param)
 
+        # Super admin only — narrow the platform-wide list to one institution.
+        institution_param = self.request.query_params.get("institution")
+        if institution_param:
+            if user.role != Role.SUPER_ADMIN:
+                return qs.none()
+            qs = qs.filter(institution_id=institution_param)
+
         search = self.request.query_params.get("search")
         if search:
-            qs = qs.filter(certificate_id__icontains=search) | qs.filter(student_name__icontains=search)
+            # OR-combining two already-filtered querysets can duplicate rows that
+            # match both branches, so filter on the combined Q instead.
+            qs = qs.filter(
+                Q(certificate_id__icontains=search)
+                | Q(student_name__icontains=search)
+                | Q(student_email__icontains=search)
+            )
 
-        return qs.order_by("-created_at")
+        ordering = self.request.query_params.get("ordering") or "-created_at"
+        allowed = {
+            "-created_at", "created_at",
+            "-chain_issued_at", "chain_issued_at",
+            "certificate_id", "-certificate_id",
+            "graduation_year", "-graduation_year",
+            "status", "-status",
+        }
+        if ordering not in allowed:
+            ordering = "-created_at"
+
+        return qs.order_by(ordering).distinct()
 
     def perform_create(self, serializer):
         user        = self.request.user
@@ -1236,7 +1263,7 @@ class CertificateLinkStudentView(APIView):
     permission_classes = [IsAdminOrAbove]
 
     def post(self, request, pk):
-        from accounts.models import Role as _Role
+        from accounts.models import Role as _Role, User as _User
 
         cert = get_object_or_404(Certificate, pk=pk)
 
@@ -1258,8 +1285,8 @@ class CertificateLinkStudentView(APIView):
         if student_id:
             # Direct UUID lookup — must already exist
             try:
-                student_user = User.objects.get(pk=student_id, role=_Role.STUDENT)
-            except User.DoesNotExist:
+                student_user = _User.objects.get(pk=student_id, role=_Role.STUDENT)
+            except _User.DoesNotExist:
                 return Response(
                     {"detail": "No student account found with that ID."},
                     status=status.HTTP_404_NOT_FOUND,
@@ -1302,4 +1329,165 @@ class CertificateLinkStudentView(APIView):
         return Response({
             **CertificateDetailSerializer(cert, context={"request": request}).data,
             "student_created": student_created,
+        })
+
+
+# ── Correct the student email on a certificate ────────────────────────────────
+
+class CertificateUpdateStudentEmailView(APIView):
+    """
+    POST /api/certify/certificates/<id>/update-student-email/
+
+    Correct a mistyped student address on a certificate.
+
+    The address is part of the payload hashed into `cert_hash` and committed
+    to Ethereum as `dataHash` (see `utils.build_certificate_json`), and the
+    matching JSON is pinned to IPFS. There is no re-hash or re-pin path in the
+    codebase, so once a hash exists the field is frozen: this endpoint returns
+    409 rather than silently breaking hash reproducibility. Before that point
+    (`prepare` / `upload-and-anchor` recompute the hash) the edit is safe.
+
+    Body:
+        student_email  : str  — new address, required
+        reassign_student: bool — also re-point the linked student account.
+
+    Notifications, WhatsApp invites and consent requests all follow the
+    `student` FK rather than this column, so changing the address does not
+    redirect any of them. When the two diverge the response flags it.
+    """
+
+    permission_classes = [IsAdminOrAbove]
+
+    # Pre-anchor states. In every one of these the hash has not been committed
+    # yet, so `prepare` / `upload-and-anchor` will recompute `cert_hash` from
+    # the corrected address and nothing on-chain goes stale.
+    EDITABLE_STATUSES = frozenset({
+        CertificateStatus.DRAFT,
+        CertificateStatus.PENDING,
+        CertificateStatus.PENDING_VC,
+        CertificateStatus.PENDING_CHANCELLOR,
+        CertificateStatus.PENDING_FINALIZE,
+    })
+
+    def post(self, request, pk):
+        from accounts.models import Role as _Role
+
+        cert = get_object_or_404(Certificate, pk=pk)
+
+        # Scope: non-super-admins can only modify their own institution's certs
+        if request.user.role != _Role.SUPER_ADMIN and cert.institution != request.user.institution:
+            return Response(
+                {"detail": "You can only edit certificates issued by your institution."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = CertificateUpdateStudentEmailSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        new_email      = serializer.validated_data["student_email"]
+        reassign_student = serializer.validated_data.get("reassign_student", False)
+
+        if not new_email:
+            return Response(
+                {"student_email": ["Enter a valid email address."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if new_email == (cert.student_email or "").lower():
+            return Response(
+                {
+                    "detail": "That is already the address on record.",
+                    **CertificateDetailSerializer(cert, context={"request": request}).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # ── Immutability guard ───────────────────────────────────────────────
+        # Two independent conditions, so neither a missing hash nor an
+        # out-of-band status change can open the field after anchoring:
+        #   * no cert_hash  → the address was never committed to the chain or
+        #     pinned to IPFS, so a later `prepare` recomputes a consistent hash
+        #   * editable status → ISSUED/REVOKED stay frozen unconditionally, even
+        #     if data was ever repaired to drop the hash
+        if cert.cert_hash or cert.status not in self.EDITABLE_STATUSES:
+            # The two rejection causes need different wording: a hashed
+            # credential is a genuine on-chain commitment, whereas a hashless
+            # ISSUED/REVOKED row means the record was repaired out of band.
+            if cert.cert_hash:
+                detail = (
+                    "This certificate has already been hashed and anchored, so the "
+                    "student email is part of the committed on-chain data hash and "
+                    "cannot be changed. Revoke the certificate and issue a "
+                    "replacement with the correct address."
+                )
+            else:
+                detail = (
+                    f"This certificate is {cert.get_status_display()}, so its student "
+                    "email is closed to correction. Revoke it and issue a replacement "
+                    "with the correct address."
+                )
+            return Response(
+                {
+                    "detail":        detail,
+                    "cert_hash":     cert.cert_hash,
+                    "tx_hash":       cert.tx_hash,
+                    "status":        cert.status,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        previous_email = cert.student_email or ""
+        cert.student_email = new_email
+
+        # ── Optional re-link of the student account ──────────────────────────
+        student_reassigned = False
+        student_created    = False
+        if reassign_student:
+            student_user, student_created = _get_or_create_student(
+                email=new_email,
+                student_name=cert.student_name,
+                institution=cert.institution,
+            )
+            cert.student      = student_user
+            student_reassigned = True
+            cert.save(update_fields=["student_email", "student"])
+        else:
+            cert.save(update_fields=["student_email"])
+
+        # ── Audit ────────────────────────────────────────────────────────────
+        linked_account = cert.student.email if cert.student_id else None
+        account_in_sync = (linked_account or "").lower() == new_email
+
+        log_action(
+            actor=request.user,
+            action="certificate.student_email_changed",
+            target_type="Certificate",
+            target_id=str(cert.id),
+            detail=(
+                f"Student email on {cert.certificate_id} changed from "
+                f"'{previous_email}' to '{new_email}' by {request.user.email}."
+                + ("" if account_in_sync else
+                   f" Linked student account is still '{linked_account}' — "
+                   "notifications continue to go there.")
+            ),
+        )
+
+        if student_created:
+            log_action(
+                actor=request.user,
+                action="student.auto_created",
+                target_type="User",
+                target_id=str(cert.student_id),
+                detail=(
+                    f"Student account auto-created for {new_email} while correcting "
+                    f"the email on {cert.certificate_id}."
+                ),
+            )
+
+        return Response({
+            **CertificateDetailSerializer(cert, context={"request": request}).data,
+            "previous_student_email": previous_email,
+            "student_reassigned":     student_reassigned,
+            "student_created":        student_created,
+            "student_account_email":  linked_account or "",
+            "student_account_in_sync": account_in_sync,
         })

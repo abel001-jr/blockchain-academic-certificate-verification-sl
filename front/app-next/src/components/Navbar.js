@@ -54,7 +54,7 @@ export default function Navbar() {
           <Link href="/login" className="cred-btn cred-btn-secondary">
             Institution sign in
           </Link>
-          <Link href="#verify" className="cred-btn cred-btn-primary">
+          <Link href={href("verify")} className="cred-btn cred-btn-primary">
             Verify a certificate
           </Link>
         </div>
@@ -87,7 +87,7 @@ export default function Navbar() {
             <Link href="/login"  className="cred-btn cred-btn-secondary w-full text-center" onClick={() => setOpen(false)}>
               Institution sign in
             </Link>
-            <Link href="#verify" className="cred-btn cred-btn-primary  w-full text-center" onClick={() => setOpen(false)}>
+            <Link href={href("verify")} className="cred-btn cred-btn-primary  w-full text-center" onClick={() => setOpen(false)}>
               Verify a certificate
             </Link>
           </div>

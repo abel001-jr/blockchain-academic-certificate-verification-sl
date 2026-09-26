@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Wallet, FileText, ExternalLink, ShieldCheck, Send, RefreshCw, UserPlus, Sparkles } from "lucide-react";
+import { ArrowLeft, Loader2, Wallet, FileText, ExternalLink, ShieldCheck, Send, RefreshCw, UserPlus, Sparkles, Pencil } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth, ROLES, isInstitutionHead } from "@/lib/useAuth";
 import StatusBadge from "@/components/dashboard/StatusBadge";
@@ -130,7 +130,12 @@ export default function CertificateDetailPage() {
   const [resending, setResending] = useState(false);
   const [linkEmail, setLinkEmail] = useState("");
   const [linking,   setLinking]   = useState(false);
+  const [emailDraft, setEmailDraft] = useState("");
+  const [emailEditing, setEmailEditing] = useState(false);
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailNotice, setEmailNotice] = useState("");
   const [anchorConfirmationOpen, setAnchorConfirmationOpen] = useState(false);
+
   const [transcriptFile, setTranscriptFile] = useState(null);
   const [transcriptUploading, setTranscriptUploading] = useState(false);
 
@@ -140,6 +145,7 @@ export default function CertificateDetailPage() {
     try {
       const data = await api.get(`/certificates/${id}/`);
       setCert(data);
+      setEmailDraft(data.student_email || "");
       // Pre-fill the student link form with the email on record
       if (!data.student && data.student_email) {
         setLinkEmail(data.student_email);
@@ -154,6 +160,11 @@ export default function CertificateDetailPage() {
   useEffect(() => {
     if (!authLoading) load();
   }, [authLoading, load]);
+
+  // Correcting the address is registrar/super-admin work, and only while the
+  // credential is still un-hashed (the API enforces both and returns 409/403).
+  const canEditStudentEmail =
+    isInstitutionHead(role) && !cert?.cert_hash;
 
   // System-designed flow finalize (seals the issued document then MetaMask).
   // The document officers approved is the review copy rendered at prepare; this
@@ -347,6 +358,43 @@ export default function CertificateDetailPage() {
     }
   }
 
+  /**
+   * Correct a mistyped student address on the certificate.
+   *
+   * Only available while the credential is still un-hashed: `student_email`
+   * feeds `build_certificate_json()` → `cert_hash` → the on-chain dataHash, and
+   * there is no re-hash or re-pin path. The API enforces this and returns 409,
+   * so the UI disables the control once `cert_hash` exists.
+   *
+   * Calls POST /api/certify/certificates/<id>/update-student-email/
+   */
+  async function handleSaveEmail(e) {
+    e.preventDefault();
+    const email = emailDraft.trim().toLowerCase();
+    setEmailSaving(true); setError(""); setSuccess(""); setEmailNotice("");
+    try {
+      const data = await api.post(`/certificates/${id}/update-student-email/`, {
+        student_email: email,
+      });
+      setEmailEditing(false);
+      setEmailDraft(email);
+      if (data.student_account_in_sync === false) {
+        setEmailNotice(
+          `Updated to ${email}. The linked student account is still ${data.student_account_email}, so WhatsApp invites and portal access still go there. Use "Link student account" to move it.`
+        );
+      } else {
+        setSuccess(`Student email updated to ${email}.`);
+      }
+      await load();
+    } catch (err) {
+      // DRF field errors arrive as { student_email: ["…"] }
+      const fieldError = err?.student_email?.[0];
+      setError(fieldError || err?.detail || "Failed to update the student email.");
+    } finally {
+      setEmailSaving(false);
+    }
+  }
+
   if (authLoading || loading) {
     return <div className="flex justify-center py-16"><Loader2 size={26} className="text-[#08283F] animate-spin" /></div>;
   }
@@ -428,7 +476,6 @@ export default function CertificateDetailPage() {
           {/* ── Metadata table ── */}
           <div className="bg-white rounded-xl border border-[#E4E1D6] divide-y divide-[#E4E1D6]">
             {[
-              ["Student email",       cert.student_email || "—",              false],
               ["Flow type",           flowTypeLabel(cert.flow_type), false],
               ["Data hash",           cert.cert_hash || "—",                   true],
               ["Document hash",       cert.doc_hash  || "—",                   true],
@@ -440,6 +487,75 @@ export default function CertificateDetailPage() {
                 <p className={`text-[#08283F] text-sm break-all ${mono ? "font-mono text-xs" : "font-medium"}`}>{value}</p>
               </div>
             ))}
+
+            {/* Student email — editable while the credential is still un-hashed */}
+            <div className="px-5 py-3">
+              <div className="flex items-start gap-4">
+                <p className="text-[#8A929C] text-sm w-36 shrink-0 pt-1.5">Student email</p>
+                <div className="min-w-0 flex-1">
+                  {emailEditing ? (
+                    <form onSubmit={handleSaveEmail} className="flex flex-col gap-2">
+                      <div className="flex gap-2">
+                        <input
+                          type="email"
+                          required
+                          autoFocus
+                          value={emailDraft}
+                          onChange={e => setEmailDraft(e.target.value)}
+                          placeholder="student@cusl.edu.sl"
+                          className="flex-1 text-sm border border-[#DDE3EA] rounded-lg px-3 py-1.5 text-[#08283F] placeholder-[#8A929C] outline-none focus:border-[#08283F] bg-white"
+                        />
+                        <button
+                          type="submit"
+                          disabled={emailSaving || !emailDraft.trim()}
+                          className="inline-flex items-center gap-1.5 bg-[#08283F] text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 disabled:opacity-50 whitespace-nowrap"
+                        >
+                          {emailSaving
+                            ? <><Loader2 size={12} className="animate-spin" /> Saving…</>
+                            : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setEmailEditing(false); setEmailDraft(cert.student_email || ""); }}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[#4A5A68] hover:bg-[#F5E5E3] whitespace-nowrap"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-[#8A929C]">
+                        This address is hashed into the certificate&apos;s on-chain data hash, so it
+                        can only be corrected before the credential is anchored.
+                      </p>
+                    </form>
+                  ) : (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[#08283F] text-sm font-medium break-all">
+                        {cert.student_email || "—"}
+                      </span>
+                      {canEditStudentEmail && (
+                        <button
+                          onClick={() => setEmailEditing(true)}
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-[#B98A28] hover:underline"
+                        >
+                          <Pencil size={11} /> Edit
+                        </button>
+                      )}
+                      {!cert.cert_hash && !canEditStudentEmail && (
+                        <span className="text-[11px] text-[#8A929C]">read-only for your role</span>
+                      )}
+                    </div>
+                  )}
+                  {cert.cert_hash && !emailEditing && (
+                    <p className="text-[11px] text-[#8A929C] mt-1">
+                      Locked — this certificate has been hashed and anchored on-chain.
+                    </p>
+                  )}
+                  {emailNotice && (
+                    <p className="text-[11px] text-[#A9721F] mt-1">{emailNotice}</p>
+                  )}
+                </div>
+              </div>
+            </div>
 
             {/* IPFS links */}
             {cert.ipfs_url_pdf && (

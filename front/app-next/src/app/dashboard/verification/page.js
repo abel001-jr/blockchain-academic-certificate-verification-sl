@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { ExternalLink } from "lucide-react";
 import CertificateVerifyPanel from "@/components/CertificateVerifyPanel";
 
 export default function DashboardVerificationPage() {
@@ -12,6 +14,18 @@ export default function DashboardVerificationPage() {
         </p>
       </div>
       <CertificateVerifyPanel />
+      <p className="text-[#8A929C] text-xs">
+        Need the page an employer sees?{" "}
+        <Link
+          href="/verify"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[#B98A28] font-semibold hover:underline inline-flex items-center gap-1"
+        >
+          Open the public verification page
+          <ExternalLink size={11} />
+        </Link>
+      </p>
     </div>
   );
 }

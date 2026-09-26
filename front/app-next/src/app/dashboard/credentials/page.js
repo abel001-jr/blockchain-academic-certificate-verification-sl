@@ -13,9 +13,12 @@ import {
   Loader2,
   Eye,
   Pencil,
-  Download
+  Download,
+  ShieldCheck
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useAuth, ROLES } from "@/lib/useAuth";
+import { verificationPath } from "@/lib/parseCertificateScan";
 
 function StatusBadge({ status }) {
   const styles = {
@@ -133,21 +136,42 @@ function CredentialRow({ credential }) {
             <Download size={16} />
           </a>
         )}
+        {credential.certificate_id && (
+          <Link
+            href={verificationPath(credential.certificate_id)}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open the public verification page for this credential"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#E4E0D5] text-[#4A5A68] transition hover:border-[#C59A3A] hover:bg-[#C59A3A]/5 hover:text-[#C59A3A]"
+          >
+            <ShieldCheck size={16} />
+          </Link>
+        )}
       </div>
     </div>
   );
 }
 
 export default function CredentialsPage() {
+  const { role } = useAuth();
   const [credentials, setCredentials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [institution, setInstitution] = useState("");
+  const [institutions, setInstitutions] = useState([]);
+
+  // Issuing is registrar-only; the API returns 403 for everyone else, so the
+  // CTA is hidden rather than left to fail.
+  const canIssue = [ROLES.REGISTRAR, ROLES.INSTITUTIONAL_ADMIN].includes(role);
+  const isSuperAdmin = role === ROLES.SUPER_ADMIN;
 
   useEffect(() => {
     async function loadCredentials() {
       try {
-        const response = await api.get("/certificates/");
+        let url = "/certificates/?page_size=100";
+        if (isSuperAdmin && institution) url += `&institution=${encodeURIComponent(institution)}`;
+        const response = await api.get(url);
         setCredentials(Array.isArray(response) ? response : response.results ?? []);
       } catch (error) {
         console.error("Failed to load credentials:", error);
@@ -156,7 +180,14 @@ export default function CredentialsPage() {
       }
     }
     loadCredentials();
-  }, []);
+  }, [institution, isSuperAdmin]);
+
+  useEffect(() => {
+    if (!isSuperAdmin || institutions.length) return;
+    api.get("/institutions/?page_size=100")
+      .then(data => setInstitutions(data.results ?? data ?? []))
+      .catch(() => setInstitutions([]));
+  }, [isSuperAdmin, institutions.length]);
 
   const filteredCredentials = credentials.filter((cred) => {
     const matchesSearch = 
@@ -196,13 +227,20 @@ export default function CredentialsPage() {
             Manage student credentials (certificates + transcripts as unified records)
           </p>
         </div>
-        <Link
-          href="/dashboard/credentials/new"
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#C59A3A] px-5 text-sm font-bold text-white transition hover:brightness-110"
-        >
-          <Plus size={18} />
-          Issue Credential
-        </Link>
+        {canIssue && (
+          <Link
+            href="/dashboard/credentials/new"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#C59A3A] px-5 text-sm font-bold text-white transition hover:brightness-110"
+          >
+            <Plus size={18} />
+            Issue Credential
+          </Link>
+        )}
+        {!canIssue && !loading && (
+          <p className="text-sm text-[#687B8E] self-center">
+            Read-only view — issuing credentials is restricted to registrars.
+          </p>
+        )}
       </div>
 
       {/* Stats */}
@@ -270,6 +308,18 @@ export default function CredentialsPage() {
           <option value="issued">Issued</option>
           <option value="revoked">Revoked</option>
         </select>
+        {isSuperAdmin && (
+          <select
+            value={institution}
+            onChange={(e) => setInstitution(e.target.value)}
+            className="h-11 rounded-lg border border-[#E4E0D5] bg-white px-4 text-sm text-[#142B41] focus:border-[#C59A3A] focus:outline-none focus:ring-2 focus:ring-[#C59A3A]/20"
+          >
+            <option value="">All institutions</option>
+            {institutions.map((inst) => (
+              <option key={inst.id} value={inst.id}>{inst.name}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Credentials List */}
@@ -287,7 +337,7 @@ export default function CredentialsPage() {
                 ? "Try adjusting your filters"
                 : "Start by issuing your first credential"}
             </p>
-            {!searchQuery && statusFilter === "all" && (
+            {!searchQuery && statusFilter === "all" && canIssue && (
               <Link
                 href="/dashboard/credentials/new"
                 className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#C59A3A] px-4 py-2 text-sm font-semibold text-white hover:brightness-110"
