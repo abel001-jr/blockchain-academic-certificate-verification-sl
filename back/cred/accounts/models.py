@@ -1,7 +1,7 @@
 """
 accounts/models.py
 
-Custom User model for CREDENCE.
+Custom User model for INTELLIGENT ACADEMIC CREDENTIALING.
 Roles: Super Admin, Registrar (institution head / anchored issuer),
        VC, Chancellor, Student.
 """
@@ -13,13 +13,13 @@ from django.db import models
 
 class Role(models.TextChoices):
     SUPER_ADMIN          = "super_admin",         "Super Admin"
-    # Kept for legacy rows; treated as Registrar (institution head)
-    INSTITUTIONAL_ADMIN  = "institutional_admin",  "Institutional Admin (legacy)"
+    # Institution administrator manages setup and signer authorization.
+    INSTITUTIONAL_ADMIN  = "institutional_admin",  "Institutional Admin"
     REGISTRAR            = "registrar",            "Registrar"
     VC                   = "vc",                   "Vice Chancellor"
     # Keep the stored value for existing users and chain compatibility; the
-    # institution-facing title is Dean.
-    CHANCELLOR           = "chancellor",           "Dean"
+    # institution-facing title is Chancellor.
+    CHANCELLOR           = "chancellor",           "Chancellor"
     STUDENT              = "student",              "Student"
 
 
@@ -55,6 +55,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
 
     student_id    = models.CharField(max_length=50, blank=True, default="")
+    profile_photo = models.ImageField(upload_to="profiles/", blank=True, null=True)
     wallet_address = models.CharField(max_length=42, blank=True, default="")
     phone_number  = models.CharField(
         max_length=20,
@@ -161,7 +162,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     @property
     def is_officer(self):
-        return self.role in (Role.VC, Role.CHANCELLOR)
+        return self.role in (Role.REGISTRAR, Role.VC, Role.CHANCELLOR)
 
     @property
     def needs_officer_setup(self):

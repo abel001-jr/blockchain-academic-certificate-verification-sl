@@ -4,7 +4,7 @@
  * FlipTooltip
  * A 3-D envelope / box that flips open a grid-paper tooltip above it on hover.
  * Source: mail.html (uiverse, MIT licence)
- * Adapted: Credence paper/navy palette — used for notification badges,
+ * Adapted: Intelligent Academic Credentialing paper/navy palette — used for notification badges,
  * "unread messages" counts, or any context where a tactile reveal fits.
  *
  * Props:

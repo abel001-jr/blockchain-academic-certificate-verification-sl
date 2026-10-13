@@ -1,4 +1,6 @@
 "use client";
+import { ActionButton } from "@/components/ui/AnimatedControls";
+
 /**
  * Academic Structure catalog — Departments, Programs, Grade Classifications.
  * Registrar only; off-chain session auth (no MetaMask).
@@ -9,10 +11,14 @@ import {
   Loader2, Plus, Pencil, EyeOff, Eye, Check, X, GripVertical, ChevronUp, ChevronDown,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import Link from "next/link";
+
 import { QUALIFICATION_TYPES, qualificationLabel } from "@/lib/qualificationWording";
 
 const SUBTABS = ["Departments", "Programs", "Grade Classifications"];
+const DEGREE_AWARDS = [["bsc", "Bachelor of Science (BSc)"], ["bsc_eng", "Bachelor of Science in Engineering (BSc Eng / BSE)"], ["ba", "Bachelor of Arts (BA)"]];
+function AwardSelect({ value, onChange }) {
+  return <label className="text-sm font-semibold text-[#08283F]">Degree award<select className="cd-input mt-1" value={value || ""} onChange={event => onChange(event.target.value)}><option value="">Use the full formal title entered below</option>{DEGREE_AWARDS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>;
+}
 
 export default function AcademicStructurePanel() {
   const [sub, setSub] = useState("Departments");
@@ -30,6 +36,7 @@ export default function AcademicStructurePanel() {
     department: "",
     title: "",
     qualification_type: "bachelors",
+    degree_award: "",
   });
   const [gradeForm, setGradeForm] = useState({ label: "" });
   const [editing, setEditing] = useState(null); // { type, id, ...fields }
@@ -55,7 +62,7 @@ export default function AcademicStructurePanel() {
     }
   }, [q]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { const timer = setTimeout(() => { void load(); }, 0); return () => clearTimeout(timer); }, [load]);
 
   const programsByDept = useMemo(() => {
     const map = {};
@@ -90,8 +97,9 @@ export default function AcademicStructurePanel() {
         department: progForm.department,
         title: progForm.title.trim(),
         qualification_type: progForm.qualification_type,
+        degree_award: progForm.qualification_type === "bachelors" ? progForm.degree_award : "",
       });
-      setProgForm({ department: progForm.department, title: "", qualification_type: "bachelors" });
+      setProgForm({ department: progForm.department, title: "", qualification_type: "bachelors", degree_award: "" });
       setSuccess("Program added.");
       load();
     } catch (err) {
@@ -128,6 +136,7 @@ export default function AcademicStructurePanel() {
           title: editing.title.trim(),
           department: editing.department,
           qualification_type: editing.qualification_type,
+          degree_award: editing.qualification_type === "bachelors" ? editing.degree_award : "",
         });
       } else if (editing.type === "grade") {
         await api.patch(`/catalog/grades/${editing.id}/`, { label: editing.label.trim() });
@@ -189,7 +198,7 @@ export default function AcademicStructurePanel() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="cd-academic-settings flex flex-col gap-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h3 className="text-[#08283F] font-semibold text-xl">Academic Structure</h3>
@@ -242,9 +251,9 @@ export default function AcademicStructurePanel() {
               value={deptForm.name}
               onChange={(e) => setDeptForm({ name: e.target.value })}
             />
-            <button disabled={busy} type="submit" className="cd-btn-primary disabled:opacity-50 shrink-0">
+            <ActionButton disabled={busy} type="submit" className="cred-btn cred-btn-primary gap-2 self-start">
               {busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Add
-            </button>
+            </ActionButton>
           </form>
           <div className="divide-y divide-[#E4E1D6] border border-[#E4E1D6] rounded-xl overflow-hidden bg-white">
             {departments.length === 0 && (
@@ -300,12 +309,13 @@ export default function AcademicStructurePanel() {
                   <option key={q.value} value={q.value}>{q.label}</option>
                 ))}
               </select>
+              {progForm.qualification_type === "bachelors" && <AwardSelect value={progForm.degree_award} onChange={value => setProgForm({...progForm, degree_award: value})} />}
               <div className="flex flex-col sm:flex-row gap-3">
                 <input required className="cd-input" placeholder="Full formal title (e.g. Bachelor of Science in Nursing)"
                   value={progForm.title} onChange={(e) => setProgForm({ ...progForm, title: e.target.value })} />
-                <button disabled={busy} type="submit" className="cd-btn-primary disabled:opacity-50 shrink-0">
+                <ActionButton disabled={busy} type="submit" className="cred-btn cred-btn-primary gap-2 self-start">
                   {busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Add
-                </button>
+                </ActionButton>
               </div>
             </form>
           )}
@@ -332,6 +342,7 @@ export default function AcademicStructurePanel() {
                             <option key={q.value} value={q.value}>{q.label}</option>
                           ))}
                         </select>
+                        {editing.qualification_type === "bachelors" && <AwardSelect value={editing.degree_award} onChange={value => setEditing({...editing, degree_award: value})} />}
                         <div className="flex gap-2">
                           <input className="cd-input" value={editing.title}
                             onChange={(e) => setEditing({ ...editing, title: e.target.value })} />
@@ -342,7 +353,7 @@ export default function AcademicStructurePanel() {
                     ) : (
                       <>
                         <div>
-                          <p className="text-[#08283F] text-lg font-medium">{p.title}</p>
+                          <p className="text-[#08283F] text-lg font-medium">{p.full_title || p.title}</p>
                           <p className="text-[#4A5A68] text-sm mt-1">
                             {qualificationLabel(p.qualification_type || "bachelors")}
                           </p>
@@ -354,6 +365,7 @@ export default function AcademicStructurePanel() {
                             title: p.title,
                             department: p.department,
                             qualification_type: p.qualification_type || "bachelors",
+                            degree_award: p.degree_award || "",
                           })} className="text-[#4A5A68] hover:text-[#08283F]"><Pencil size={16} /></button>
                           <button type="button" onClick={() => toggleActive("program", p.id, p.active)}
                             className="text-base font-semibold text-[#B98A28]">
@@ -376,9 +388,9 @@ export default function AcademicStructurePanel() {
           <form onSubmit={addGrade} className="flex flex-col sm:flex-row gap-3">
             <input required className="cd-input" placeholder="Classification label"
               value={gradeForm.label} onChange={(e) => setGradeForm({ label: e.target.value })} />
-            <button disabled={busy} type="submit" className="cd-btn-primary disabled:opacity-50 shrink-0">
+            <ActionButton disabled={busy} type="submit" className="cred-btn cred-btn-primary gap-2 self-start">
               {busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Add
-            </button>
+            </ActionButton>
           </form>
           <div className="divide-y divide-[#E4E1D6] border border-[#E4E1D6] rounded-xl overflow-hidden bg-white">
             {grades.length === 0 && (
@@ -425,13 +437,10 @@ export default function AcademicStructurePanel() {
         </div>
       )}
 
-      <p className="text-[#4A5A68] text-base">
-        Need these for issuance? Open{" "}
-        <Link href="/dashboard/certificates/new" className="text-[#B98A28] font-semibold hover:underline">
-          Issue Certificate
-        </Link>
-        .
-      </p>
+      <div className="flex flex-wrap items-center gap-4 border-t border-[#E4E1D6] pt-6">
+        <p className="text-[#4A5A68] text-base">Ready to use your academic structure for issuance?</p>
+        <ActionButton href="/dashboard/certificates/new" className="cred-btn cred-btn-primary">Issue Certificate</ActionButton>
+      </div>
     </div>
   );
 }

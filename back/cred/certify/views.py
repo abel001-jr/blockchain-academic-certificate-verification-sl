@@ -15,16 +15,21 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
 from rest_framework import generics, status
+from rest_framework.exceptions import APIException
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsFullSession, IsRegistrar, IsRegistrarOrAbove, IsAdminOrAbove
+from accounts.models import Role
 from audit.utils import log_action
 from institutions.branding_views import _get_or_create_template
+from institutions.models import ChainConfig
+from institutions.chain_config_serializers import ChainConfigSerializer
 from institutions.pdf_certificate import generate_certificate_pdf
 
 from accounts.signature_views import snapshot_signature_to_certificate
+from .attestation_notices import notify_officer_pending_attestation
 from .ipfs import fetch_file_from_ipfs, pin_file_to_ipfs, pin_json_to_ipfs
 from .encrypted_documents import (
     DocumentEncryptionError,
@@ -33,7 +38,14 @@ from .encrypted_documents import (
     encrypt_document,
     is_encrypted_document,
 )
-from .models import Certificate, CertificateStatus, FlowType, StudentInviteToken
+from .document_review_views import document_review_gate
+from .models import (
+    Certificate,
+    CertificateStatus,
+    DocumentReviewKind,
+    FlowType,
+    StudentInviteToken,
+)
 from .serializers import (
     CertificateChainUpdateSerializer,
     CertificateCreateSerializer,
@@ -52,6 +64,40 @@ from .utils import (
 )
 
 
+# ── Document encryption ──────────────────────────────────────────────────────
+
+class EncryptionNotConfigured(APIException):
+    """Encryption key missing or malformed — a deployment fault, not a bad request.
+
+    Every endpoint that seals a document fails identically when the key is not
+    configured, and the underlying `DocumentEncryptionError` is a bare
+    `ValueError`: unhandled, DRF returned a 500 traceback that told the
+    Registrar nothing and left the operator decoding a stack. Raising an
+    `APIException` instead renders a single actionable `detail`, and keeps the
+    distinction that this is *not* the caller's fault.
+    """
+
+    status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+    default_detail = (
+        "Document encryption is not configured on this server, so this document "
+        "cannot be sealed. Set CREDENTIAL_DOCUMENT_ENCRYPTION_KEY to 64 hex "
+        "characters and try again."
+    )
+
+
+def _seal(pdf_bytes: bytes, cert: Certificate, document_kind: str) -> bytes:
+    """Encrypt a document for pinning, reporting a key fault as a clean 500.
+
+    `document_kind` is the AAD domain and must be one of the values in
+    `encrypted_documents._AAD_DOMAINS`; the certificate's own id binds the
+    ciphertext to it, so a blob cannot be replayed against another credential.
+    """
+    try:
+        return encrypt_document(pdf_bytes, cert.certificate_id, document_kind)
+    except DocumentEncryptionError as exc:
+        raise EncryptionNotConfigured() from exc
+
+
 # ── Shared student account helper ─────────────────────────────────────────────
 
 def _get_or_create_student(email: str, student_name: str = "", institution=None):
@@ -59,7 +105,7 @@ def _get_or_create_student(email: str, student_name: str = "", institution=None)
     Find an active student User by email, or create one automatically.
 
     When a registrar issues a certificate they provide the student's email.
-    If that student already has a Credence account it's returned directly.
+    If that student already has an Intelligent Academic Credentialing account it's returned directly.
     Otherwise a minimal student account is auto-created so the certificate
     appears in their portal as soon as they sign up / claim an invite.
 
@@ -176,12 +222,12 @@ def notify_student_issued(cert: Certificate, *, force: bool = False) -> dict:
     body = (
         f"Hello {student.first_name},\n\n"
         f"Your *{cert.degree_title}* certificate from {cert.institution.name} "
-        f"has been issued on the Credence blockchain platform.\n\n"
+        f"has been issued on the Intelligent Academic Credentialing blockchain platform.\n\n"
         f"Tap the link below to access your certificate "
         f"(valid for {ttl_hours} hours):\n"
         f"{claim_url}\n\n"
         f"After opening the link you can log in with Google to keep permanent access.\n\n"
-        f"— Credence"
+        f"— Intelligent Academic Credentialing"
     )
 
     wa_url = f"https://wa.me/?text={urllib.parse.quote(body)}"
@@ -292,14 +338,14 @@ class CertificateListCreateView(generics.ListCreateAPIView):
             import secrets as _s
             cert_id = f"CR-{year}-{short.upper()}-{_s.token_hex(6).upper()}"
         template = _get_or_create_template(institution)
-        registrar_name = user.full_name or user.get_full_name() or "Registrar"
+        registrar_name = user.full_name or "Registrar"
 
         # Respect flow_type sent by the frontend (default: system_designed)
         from .models import FlowType
         flow_type = self.request.data.get("flow_type", FlowType.SYSTEM_DESIGNED)
         # Validate flow_type is one of the three supported flows
         valid_flows = (
-            FlowType.SYSTEM_DESIGNED,      # Design with Credence
+            FlowType.SYSTEM_DESIGNED,      # Design with Intelligent Academic Credentialing
             FlowType.FULL_UPLOAD,          # Upload both
             FlowType.TRANSCRIPT_THEN_CERT  # Transcript first
         )
@@ -307,11 +353,13 @@ class CertificateListCreateView(generics.ListCreateAPIView):
             flow_type = FlowType.SYSTEM_DESIGNED
 
         certificate = serializer.save(
+            chain_config_snapshot=ChainConfigSerializer(ChainConfig.load()).data,
             institution=institution,
             issued_by=user,
             certificate_id=cert_id,
             status=CertificateStatus.DRAFT,
             branding_preset=template.preset,
+            template_revision=template.active_revision if flow_type == FlowType.SYSTEM_DESIGNED else None,
             registrar_signer_name=registrar_name,
             flow_type=flow_type,
         )
@@ -401,7 +449,7 @@ class CertificateUploadDocumentView(APIView):
         s = CertificateUploadDocumentSerializer(cert, data=request.data, partial=True)
         s.is_valid(raise_exception=True)
         pdf_bytes = s.validated_data["document_file"].read()
-        encrypted = encrypt_document(pdf_bytes, cert.certificate_id, "certificate")
+        encrypted = _seal(pdf_bytes, cert, "certificate")
         cert.document_file.save(
             f"{cert.certificate_id}.pdf.enc", ContentFile(encrypted), save=False
         )
@@ -438,6 +486,43 @@ class CertificatePrepareView(APIView):
             return Response({"detail": "Only Draft certificates can be prepared."},
                             status=status.HTTP_400_BAD_REQUEST)
 
+        # A system-designed credential is one student record made of two
+        # documents: the certificate rendered here, and the transcript uploaded
+        # alongside it. Preparing it is what commits the hashes and hands the
+        # record to the VC and Chancellor, so both halves have to be present and
+        # settled first — otherwise the officers sign a record that is missing
+        # half of itself and the transcript is anchored after the fact, outside
+        # anything they approved.
+        #
+        # Two separate gates, and neither is the certificate itself: the
+        # certificate is rendered from this intake record, so re-reading it
+        # could only ever agree with itself. The transcript is authored
+        # independently, so it is both mandatory and checked.
+        if cert.flow_type == FlowType.SYSTEM_DESIGNED:
+            if not cert.transcript_hash:
+                return Response(
+                    {
+                        "detail": (
+                            "Attach the student's transcript before anchoring. This "
+                            "credential is a single record made of two documents, and "
+                            "anchoring submits it straight to the VC and Chancellor for "
+                            "signature. It stays a draft until the transcript is "
+                            "attached and reviewed."
+                        ),
+                        "transcript_required": True,
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            # Keyed on the transcript that is actually attached, so a review of
+            # one file cannot be spent on a different one.
+            review_blocked = document_review_gate(
+                cert,
+                kinds=[DocumentReviewKind.TRANSCRIPT],
+                actual_hashes={DocumentReviewKind.TRANSCRIPT: cert.transcript_hash},
+            )
+            if review_blocked:
+                return Response(review_blocked, status=status.HTTP_409_CONFLICT)
+
         template = _get_or_create_template(cert.institution)
         cert.branding_preset = template.preset
 
@@ -453,13 +538,17 @@ class CertificatePrepareView(APIView):
                 verification_base_url=frontend,
                 include_attestations=False,
             )
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except RuntimeError as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         review_hash = document_sha256(review_bytes)
 
         filename = f"{cert.certificate_id}-review.pdf"
-        encrypted_review = encrypt_document(review_bytes, cert.certificate_id, "certificate-review")
+        # Sealed under its own AAD domain: this blob is the commitment officers
+        # approve, not a document anyone is entitled to download.
+        encrypted_review = _seal(review_bytes, cert, "certificate-review")
 
         try:
             review_result = pin_file_to_ipfs(
@@ -505,13 +594,18 @@ class CertificatePrepareView(APIView):
             "branding_preset": cert.branding_preset,
             "status":         cert.status,
             "requires_seal":  True,
+            # The transcript is anchored with the certificate, so the hash the
+            # Registrar signs against has to travel with the pair rather than
+            # being looked up afterwards. Empty on the flows that have no
+            # transcript.
+            "transcript_hash": cert.transcript_hash or "",
             "ipfs_cid_json":  json_result["cid"],
             "ipfs_cid_pdf":   review_result["cid"],
             "ipfs_url_json":  json_result["ipfs_url"],
             "ipfs_url_pdf":   review_result["ipfs_url"],
             "message": (
                 "Review document rendered, hashed and pinned. Submit on-chain with "
-                "submitForSealedReview, then VC and Dean approve the review copy. "
+                "submitForSealedReview, then VC and Chancellor approve the review copy. "
                 "The issued document is sealed after both approvals."
             ),
         })
@@ -562,7 +656,7 @@ class CertificateConfirmChainView(APIView):
             cert.block_number = s.validated_data["block_number"]
         if not cert.registrar_signer_name:
             cert.registrar_signer_name = (
-                request.user.full_name or request.user.get_full_name() or "Registrar"
+                request.user.full_name or "Registrar"
             )
         snapshot_signature_to_certificate(request.user, cert, "registrar_signature_image")
         cert.registrar_signed_at = timezone.now()
@@ -575,6 +669,15 @@ class CertificateConfirmChainView(APIView):
             target_type="Certificate",
             target_id=str(cert.id),
             detail=f"Submitted for approval on-chain. Tx: {cert.tx_hash}",
+        )
+        notify_officer_pending_attestation(
+            institution=cert.institution,
+            role=Role.VC,
+            credential_id=cert.certificate_id,
+            credential_kind="Certificate",
+            student_name=cert.student_name,
+            detail="The Registrar has submitted this certificate on-chain. Review the "
+                   "document, then approve it with your MetaMask wallet.",
         )
         return Response(CertificateDetailSerializer(cert, context={"request": request}).data)
 
@@ -622,7 +725,7 @@ class CertificateConfirmVCView(APIView):
         
         cert.vc_approved_at = timezone.now()
         cert.vc_approval_tx_hash = tx_hash
-        cert.vc_approver_name = request.user.full_name or request.user.get_full_name() or "Vice Chancellor"
+        cert.vc_approver_name = request.user.full_name or "Vice Chancellor"
         snapshot_signature_to_certificate(request.user, cert, "vc_signature_image")
         cert.status = CertificateStatus.PENDING_CHANCELLOR
         cert.save()
@@ -633,6 +736,15 @@ class CertificateConfirmVCView(APIView):
             target_type="Certificate",
             target_id=str(cert.id),
             detail=f"VC approved {cert.certificate_id}. Tx: {tx_hash}",
+        )
+        notify_officer_pending_attestation(
+            institution=cert.institution,
+            role=Role.CHANCELLOR,
+            credential_id=cert.certificate_id,
+            credential_kind="Certificate",
+            student_name=cert.student_name,
+            detail="The VC has attested to this certificate. Review the document, "
+                   "then approve it with your MetaMask wallet.",
         )
         return Response(CertificateDetailSerializer(cert, context={"request": request}).data)
 
@@ -647,17 +759,17 @@ class CertificateConfirmChancellorView(APIView):
     def post(self, request, pk):
         from accounts.models import Role
         if request.user.role != Role.CHANCELLOR:
-            return Response({"detail": "Only Dean may confirm this step."},
+            return Response({"detail": "Only Chancellor may confirm this step."},
                             status=status.HTTP_403_FORBIDDEN)
 
         cert = get_object_or_404(Certificate, pk=pk, institution=request.user.institution)
         if not cert.tx_hash:
             return Response(
-                {"detail": "Registrar must submit this certificate on-chain before Dean approval."},
+                {"detail": "Registrar must submit this certificate on-chain before Chancellor approval."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if cert.status != CertificateStatus.PENDING_CHANCELLOR:
-            return Response({"detail": "Certificate is not awaiting Dean approval."},
+            return Response({"detail": "Certificate is not awaiting Chancellor approval."},
                             status=status.HTTP_400_BAD_REQUEST)
 
         tx_hash = request.data.get("tx_hash", "").strip()
@@ -677,7 +789,7 @@ class CertificateConfirmChancellorView(APIView):
         # Verify VC has already approved with MetaMask
         if not cert.vc_approved_at:
             return Response(
-                {"detail": "VC must approve with MetaMask attestation before Dean approval."},
+                {"detail": "VC must approve with MetaMask attestation before Chancellor approval."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -690,7 +802,7 @@ class CertificateConfirmChancellorView(APIView):
         cert.chancellor_approved_at = timezone.now()
         cert.chancellor_approval_tx_hash = tx_hash
         cert.chancellor_approver_name = (
-            request.user.full_name or request.user.get_full_name() or "Dean"
+            request.user.full_name or "Chancellor"
         )
         snapshot_signature_to_certificate(request.user, cert, "chancellor_signature_image")
         cert.status = CertificateStatus.PENDING_FINALIZE
@@ -702,7 +814,7 @@ class CertificateConfirmChancellorView(APIView):
             target_type="Certificate",
             target_id=str(cert.id),
             detail=(
-                f"Dean approved {cert.certificate_id}. "
+                f"Chancellor approved {cert.certificate_id}. "
                 f"Awaiting final PDF + finalizeCertificate. Tx: {tx_hash}"
             ),
         )
@@ -750,6 +862,8 @@ class CertificateFinalizeView(APIView):
                 verification_base_url=frontend,
                 include_attestations=True,
             )
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except RuntimeError as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -766,7 +880,7 @@ class CertificateFinalizeView(APIView):
 
         # Persist the issued PDF locally as the document of record.
         filename = f"{cert.certificate_id}.pdf"
-        encrypted_pdf = encrypt_document(pdf_bytes, cert.certificate_id, "certificate")
+        encrypted_pdf = _seal(pdf_bytes, cert, "certificate")
         cert.document_file.save(
             f"{filename}.enc", ContentFile(encrypted_pdf), save=False
         )
@@ -836,7 +950,7 @@ class CertificateConfirmFinalizeView(APIView):
         
         if not cert.vc_approval_tx_hash or not cert.chancellor_approval_tx_hash:
             return Response(
-                {"detail": "Both VC and Dean MetaMask attestations are required before finalization."},
+                {"detail": "Both VC and Chancellor MetaMask attestations are required before finalization."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -914,7 +1028,7 @@ class CertificateUploadAndAnchorView(APIView):
     change again, and the contract rejects a finalize that supplies a different
     hash.
 
-    Both officers still approve: the upload is not a shortcut around VC and Dean
+    Both officers still approve: the upload is not a shortcut around VC and Chancellor
     review. Only after both sign does the registrar run the final anchoring
     transaction and POST /confirm-finalize/.
     """
@@ -948,21 +1062,40 @@ class CertificateUploadAndAnchorView(APIView):
 
         pdf_file = s.validated_data["document_file"]
         pdf_bytes = pdf_file.read()
-        
+
         # Handle optional transcript file for full_upload flow
         transcript_file = s.validated_data.get("transcript_file")
         transcript_cid = None
         transcript_url = None
         transcript_hash = None
-        
+        transcript_bytes = None
+
         if transcript_file and cert.flow_type == "full_upload":
             transcript_bytes = transcript_file.read()
             transcript_hash = document_sha256(transcript_bytes)
-            transcript_filename = f"{cert.certificate_id}-transcript.pdf.enc"
-            encrypted_transcript = encrypt_document(
-                transcript_bytes, cert.certificate_id, "transcript"
-            )
+
+        # Compute hashes
+        doc_hash  = document_sha256(pdf_bytes)
+
+        # ── Registrar document review gate (REMAINING_WORK item 4) ───────────
+        # Checked after the hashes are known but before anything is encrypted or
+        # pinned, so a rejected credential costs nothing and leaves no orphan
+        # blobs behind. The hashes are supplied so a review performed against a
+        # different copy of the file cannot be inherited.
+        review_blocked = document_review_gate(
+            cert,
+            actual_hashes={
+                DocumentReviewKind.CERTIFICATE: doc_hash,
+                **({DocumentReviewKind.TRANSCRIPT: transcript_hash} if transcript_hash else {}),
+            },
+        )
+        if review_blocked:
+            return Response(review_blocked, status=status.HTTP_409_CONFLICT)
+
+        if transcript_bytes is not None:
+            encrypted_transcript = _seal(transcript_bytes, cert, "transcript")
             # Pin transcript to IPFS
+            transcript_filename = f"{cert.certificate_id}-transcript.pdf.enc"
             try:
                 transcript_result = pin_file_to_ipfs(
                     ContentFile(encrypted_transcript, name=transcript_filename),
@@ -978,14 +1111,12 @@ class CertificateUploadAndAnchorView(APIView):
                     status=status.HTTP_502_BAD_GATEWAY,
                 )
 
-        # Compute hashes
-        doc_hash  = document_sha256(pdf_bytes)
         cert_json = build_certificate_json(cert)
         cert_hash = compute_sha256_json(cert_json)
 
         # Save the uploaded file
         filename = f"{cert.certificate_id}-uploaded.pdf"
-        encrypted_pdf = encrypt_document(pdf_bytes, cert.certificate_id, "certificate")
+        encrypted_pdf = _seal(pdf_bytes, cert, "certificate")
         cert.document_file.save(
             f"{filename}.enc", ContentFile(encrypted_pdf), save=False
         )
@@ -1031,7 +1162,7 @@ class CertificateUploadAndAnchorView(APIView):
             target_id=str(cert.id),
             detail=(
                 f"Upload documents pinned for {cert.certificate_id}. "
-                f"Ready for registrar submission on-chain, then VC and Dean review."
+                f"Ready for registrar submission on-chain, then VC and Chancellor review."
             ),
         )
 
@@ -1046,7 +1177,7 @@ class CertificateUploadAndAnchorView(APIView):
             "status":         cert.status,
             "message": (
                 "Certificate and transcript uploaded and pinned to IPFS. "
-                "The files are pinned. Submit the credential on-chain before VC and Dean approval."
+                "The files are pinned. Submit the credential on-chain before VC and Chancellor approval."
             ),
         }
         
@@ -1095,7 +1226,7 @@ class CertificateUploadTranscriptView(APIView):
                     "detail": (
                         "This certificate was already submitted on-chain, so the reviewed "
                         "document set is fixed. Attaching a transcript now would issue a "
-                        "document the VC and Dean never approved and whose hash is not "
+                        "document the VC and Chancellor never approved and whose hash is not "
                         "anchored. Attach the transcript first, then submit the certificate "
                         "on-chain."
                     ),
@@ -1110,10 +1241,23 @@ class CertificateUploadTranscriptView(APIView):
             return Response({"detail": "Transcript must be a PDF under 20 MB."}, status=status.HTTP_400_BAD_REQUEST)
 
         transcript_bytes = transcript_file.read()
-        filename = f"{cert.certificate_id}-transcript.pdf"
-        encrypted_transcript = encrypt_document(
-            transcript_bytes, cert.certificate_id, "transcript"
+        transcript_sha = document_sha256(transcript_bytes)
+
+        # Registrar document review (REMAINING_WORK item 4). Only the transcript
+        # is required here: on the transcript-then-certificate flow the
+        # certificate has not been generated yet, so requiring its review would
+        # block on a document that does not exist. The supplied hash stops a
+        # review of one transcript being applied to a different file.
+        review_blocked = document_review_gate(
+            cert,
+            kinds=[DocumentReviewKind.TRANSCRIPT],
+            actual_hashes={DocumentReviewKind.TRANSCRIPT: transcript_sha},
         )
+        if review_blocked:
+            return Response(review_blocked, status=status.HTTP_409_CONFLICT)
+
+        filename = f"{cert.certificate_id}-transcript.pdf"
+        encrypted_transcript = _seal(transcript_bytes, cert, "transcript")
         try:
             result = pin_file_to_ipfs(
                 ContentFile(encrypted_transcript, name=f"{filename}.enc"),
@@ -1250,7 +1394,7 @@ class CertificateLinkStudentView(APIView):
 
     Registrar links (or re-links) a student account to a certificate.
 
-    If the student already has a Credence account the FK is set directly.
+    If the student already has an Intelligent Academic Credentialing account the FK is set directly.
     If no account exists, one is auto-created (no usable password — student
     gains access via WhatsApp invite claim / Google OAuth).
 
@@ -1381,7 +1525,7 @@ class CertificateUpdateStudentEmailView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        serializer = CertificateUpdateStudentEmailSerializer(data=request.data)
+        serializer = CertificateUpdateStudentEmailSerializer(data=request.data, context={"institution": cert.institution})
         serializer.is_valid(raise_exception=True)
         new_email      = serializer.validated_data["student_email"]
         reassign_student = serializer.validated_data.get("reassign_student", False)

@@ -1,4 +1,4 @@
-# CREDENCE Credential Issuance Pipeline Design
+# INTELLIGENT ACADEMIC CREDENTIALING Credential Issuance Pipeline Design
 
 ## Purpose
 
@@ -77,7 +77,7 @@ Hashing is tied to final bytes. If a PDF changes after hashing (including a sign
 
 ### Purpose
 
-The certificate and transcript have already been produced, signed, stamped, and approved outside CREDENCE.
+The certificate and transcript have already been produced, signed, stamped, and approved outside INTELLIGENT ACADEMIC CREDENTIALING.
 
 ### Intake and processing
 
@@ -89,11 +89,11 @@ The certificate and transcript have already been produced, signed, stamped, and 
 6. Registrar attests. Continue through the shared VC -> Dean -> Registrar anchoring pipeline.
 7. Compute and register each finalized document hash separately, paired to the same credential record.
 
-## Flow 2 — Create certificate in CREDENCE + upload existing transcript
+## Flow 2 — Create certificate in INTELLIGENT ACADEMIC CREDENTIALING + upload existing transcript
 
 ### Purpose
 
-The transcript originates from the university's academic records. CREDENCE creates the certificate and registers both documents together.
+The transcript originates from the university's academic records. INTELLIGENT ACADEMIC CREDENTIALING creates the certificate and registers both documents together.
 
 ### Intake and processing
 
@@ -103,13 +103,13 @@ The transcript originates from the university's academic records. CREDENCE creat
 4. In the certificate designer, Registrar selects the certificate information and institution-configured design assets (institution identity, seal/stamp, and configured officer signature assets as applicable).
 5. Generate the certificate PDF. Review the generated certificate alongside the transcript and resolve any mismatch.
 6. Finalize both files, compute their hashes independently, and pair them to the same student/credential record.
-7. Complete the shared VC -> Dean -> Registrar anchoring pipeline. The transcript is an external upload; the certificate is CREDENCE-generated.
+7. Complete the shared VC -> Dean -> Registrar anchoring pipeline. The transcript is an external upload; the certificate is INTELLIGENT ACADEMIC CREDENTIALING-generated.
 
 ## Flow 3 — Upload unsigned documents + AI-assisted signature placement
 
 ### Purpose
 
-The university has certificate and transcript documents, but one or both still need institutional signatures applied through CREDENCE.
+The university has certificate and transcript documents, but one or both still need institutional signatures applied through INTELLIGENT ACADEMIC CREDENTIALING.
 
 ### Intake and processing
 
@@ -127,6 +127,7 @@ The university has certificate and transcript documents, but one or both still n
 - Configure institution identity and visual assets during institutional setup.
 - Each officer configures their signature asset once as part of officer setup. Store its association with the officer and role; reuse it for authorized issuance tasks.
 - MetaMask approval is a separate on-chain action and remains required for VC and Dean review/approval. A stored visual signature is not a substitute for a wallet transaction.
+- Each hand-off emails the officer whose turn it is. The notice is addressed to a **role**, not to a person, so it lands on the officer who is about to act rather than the one who just acted. Email is used rather than a browser notification or WhatsApp because it is the only channel an officer is guaranteed to have — it is how they received their login — and because a browser notification cannot cross a user boundary. A failed or undelivered notice must never block the credential.
 - Institutional status upgrades (for example, college to university) are explicitly future scope and are not part of this pipeline design.
 
 ## Claim and sharing lifecycle
@@ -164,9 +165,13 @@ The two document hashes remain independent values. Pairing means both hashes are
 
 ## Current implementation and planned work
 
-The repository already has certificate and transcript models/endpoints, PDF upload and IPFS support, hashing, certificate flow selection, a system-designed certificate preview, officer signature setup, wallet-based approval actions, claim/invite-related features, and verification share-code features.
+The repository already has certificate and document models/endpoints, PDF upload and IPFS support, hashing, certificate flow selection, a system-designed certificate preview, officer signature setup, wallet-based approval actions, claim/invite-related features, and verification share-code features.
 
-The first document-analysis slice is now present: `POST /api/documents/analyze/` accepts a Registrar PDF upload without storing it, extracts embedded text and word bounding boxes with PyMuPDF, and falls back to Tesseract OCR for pages with little or no extractable text. OCR output includes word boxes and confidence values. This endpoint returns analysis only; it does not yet compare fields with the intake record, review institutional marks, or gate issuance.
+The first document-analysis slice is now present: `POST /api/documents/analyze/` accepts a Registrar PDF upload without storing it, extracts embedded text and word bounding boxes with PyMuPDF, and falls back to Tesseract OCR for pages with little or no extractable text. OCR output includes word boxes and confidence values.
+
+This has since been carried through to issuance. Fields are extracted by label, compared against the intake record, and the comparison is persisted as a `DocumentReview` that must be resolved before the document can be submitted: an approve is refused while anything is unresolved, an override or reject requires a stated reason, and the decision is bound to the SHA-256 of the exact bytes about to be committed, so it cannot be inherited by different content. `DocumentReviewPanel` provides the review and resolution UI. What is **not** implemented is the analysis of institutional marks — seals and signatures are model-dependent and unbuilt, and there is no shared state machine. Representative scan coverage and OCR threshold tuning also remain unverified.
+
+One acceptance criterion below is only partly met: a mismatch is flagged and can be overridden or rejected with a reason, but a Registrar cannot yet correct the intake record itself. Overriding the verdict does not write the corrected value back to the certificate, so the intake data and the document can still disagree after a "resolved" review.
 
 The encryption foundation uses AES-256-GCM with credential/type-bound associated data and a backend-only `CREDENTIAL_DOCUMENT_ENCRYPTION_KEY`. The paired-hash contract path records document hashes, but not CIDs. Finalized hashes are submitted before officer review; the Registrar's post-approval transaction marks the credential issued without changing the hash pair. Existing plaintext pins and deployed legacy contracts require migration/reissue; new code cannot hide CIDs already published on-chain.
 
@@ -174,18 +179,19 @@ The following work is still needed to match this design. The detailed, ordered v
 
 1. Unify all three intakes with one shared state machine and consistent Registrar -> VC -> Dean -> Registrar approval order.
 2. Ensure transcripts enter the same credential approval/anchor lifecycle, and update blockchain registration so both independent hashes are paired on-chain.
-3. Connect the initial analysis endpoint to issuance intake; add field extraction/matching and Registrar mismatch resolution. The OCR fallback is implemented, while representative transcript coverage and OCR threshold tuning remain.
-4. Add checks/review UI for institutional marks, with clear limits on what automation can assert.
+3. Connect the initial analysis endpoint to issuance intake; add field extraction/matching and Registrar mismatch resolution. **Done** — extraction, comparison, the persisted decision, the submission gate and the review UI are all in place. The OCR fallback is implemented, while representative transcript coverage and OCR threshold tuning remain.
+4. Add checks/review UI for institutional marks, with clear limits on what automation can assert. **Partial** — the review UI and the human decision exist; detecting the marks themselves does not. This is model-dependent, and no inference integration has been supplied.
 5. Build Flow 3's layout analysis, candidate signature placement, movable fields, manual placement, and final-document generation/hash timing.
-6. Connect Flow 2's existing transcript to the CREDENCE-generated certificate before shared approvals and anchoring.
+6. Connect Flow 2's existing transcript to the INTELLIGENT ACADEMIC CREDENTIALING-generated certificate before shared approvals and anchoring.
 7. Confirm or complete 24-hour claim behavior, resend after expiry, paired document delivery in mobile, graduate-created expiring full-verification shares, and privacy-limited public verification.
 8. Ensure no document is considered anchored until hashes correspond to the final PDF bytes and the chain record contains both hashes.
+9. ~~Decide what to do about a second, divergent transcript lifecycle~~ — **done.** The standalone `Transcript` model and its approval chain never reached the chain, so it presented a second and unsound approval model. Deleted (`0014_delete_transcript`); a transcript is part of a `Certificate`. See `TRANSCRIPT_IMPLEMENTATION_REVIEW.md` §1a.
 
 ## Acceptance criteria
 
 - A mismatched student name or award is visibly flagged before Registrar attestation; a Registrar can correct intake data or reject/replace the document.
 - Text-based PDFs are processed without OCR. Image-only/insufficient-text PDFs are routed to OCR fallback or clearly blocked for manual handling.
-- Registrar can review full certificate and transcript documents; VC and Dean approve them in that order using their authorized wallets.
+- Registrar can review full certificate and transcript documents; VC and Dean approve them in that order using their authorized wallets. **The order is enforced and each hand-off notifies the next officer by email.**
 - Registrar performs final anchoring only after both approvals.
 - Certificate and transcript final hashes are independently reproducible and linked to the same on-chain credential record.
 - Flow 3 signatures and other edits are applied before final hash computation; moving a field invalidates any previous final hash.

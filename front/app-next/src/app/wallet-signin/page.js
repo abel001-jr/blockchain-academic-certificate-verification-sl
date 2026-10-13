@@ -1,4 +1,7 @@
 "use client";
+import { ActionButton } from "@/components/ui/AnimatedControls";
+import NavigationButton from "@/components/ui/NavigationButton";
+
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -21,17 +24,17 @@ export default function WalletSignInPage() {
       <main className="flex-1 flex flex-col items-center justify-center px-4 pt-28 pb-16">
 
         <div className="w-full max-w-md mb-6">
-          <Link href="/login" className="inline-flex items-center gap-2 text-[#43474e] text-sm font-medium hover:text-[#022448] transition-colors group">
+          <NavigationButton direction="back" href="/login" className="inline-flex items-center gap-2 text-[#43474e] text-sm font-medium hover:text-[#022448] transition-colors group">
             <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
             Back to login options
-          </Link>
+          </NavigationButton>
         </div>
 
         <div className="w-full max-w-md bg-white rounded-[14px] shadow-card border border-[#c4c6cf]/10 p-8">
 
           <div className="flex items-center gap-3 mb-7">
             <div className="w-11 h-11 rounded-[10px] overflow-hidden shrink-0 shadow-sm">
-              <Image src="/logo.png" alt="CREDENCE" width={44} height={44} className="w-full h-full object-cover" />
+              <Image src="/fav.png" alt="INTELLIGENT ACADEMIC CREDENTIALING" width={44} height={44} className="w-full h-full object-contain" />
             </div>
             <div>
               <h1 className="text-[#022448] font-bold text-xl leading-tight">Wallet Sign In</h1>
@@ -54,9 +57,9 @@ export default function WalletSignInPage() {
           <div className="h-px bg-[#c4c6cf]/20 mt-7 mb-5" />
           <p className="text-center text-[#43474e] text-xs">
             Not yet onboarded?{" "}
-            <Link href="/apply" className="text-[#7b5900] font-semibold hover:underline">
+            <ActionButton href="/apply" className="mt-2">
               Apply for your institution
-            </Link>
+            </ActionButton>
           </p>
         </div>
       </main>
@@ -65,3 +68,4 @@ export default function WalletSignInPage() {
     </div>
   );
 }
+

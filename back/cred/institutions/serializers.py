@@ -5,10 +5,36 @@ from .models import Institution, InstitutionApplication, WalletNonce
 
 
 class InstitutionSerializer(serializers.ModelSerializer):
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get("request")
+        if self.instance is not None:
+            for name in ("institution_id", "wallet_address"):
+                if name in fields:
+                    fields[name].read_only = True
+            if request and request.user.role == "institutional_admin":
+                editable = {"name", "short_name", "country", "address", "website", "email", "phone", "logo_url"}
+                for name, field in fields.items():
+                    if name not in editable:
+                        field.read_only = True
+        return fields
+
+    def validate_email_domain(self, value):
+        import re
+        value = value.strip().lower().lstrip(".@")
+        if value and not re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", value):
+            raise serializers.ValidationError("Enter a domain such as central.edu.sl, without an email name or web address.")
+        return value
     class Meta:
         model  = Institution
         fields = "__all__"
         read_only_fields = ["id", "created_at", "updated_at", "is_chain_active", "anchor_tx_hash"]
+
+
+class InstitutionEmailSettingsSerializer(InstitutionSerializer):
+    class Meta:
+        model = Institution
+        fields = ["email", "email_domain"]
 
 
 class InstitutionListSerializer(serializers.ModelSerializer):
@@ -21,6 +47,56 @@ class InstitutionListSerializer(serializers.ModelSerializer):
 
 
 class InstitutionApplicationSerializer(serializers.ModelSerializer):
+    def _validate_letters_name(self, value):
+        import unicodedata
+        value = value.strip()
+        if not any(character.isalpha() for character in value) or any(character != " " and unicodedata.category(character)[0] not in ("L", "M") for character in value):
+            raise serializers.ValidationError("Use letters and spaces only; numbers are not allowed.")
+        return value
+
+    def validate_institution_name(self, value):
+        return self._validate_letters_name(value)
+
+    def validate_admin_first_name(self, value):
+        return self._validate_letters_name(value)
+
+    def validate_admin_last_name(self, value):
+        return self._validate_letters_name(value)
+
+    def validate_contact_email(self, value):
+        if "." not in value.rpartition("@")[2]:
+            raise serializers.ValidationError("Enter a complete email address, such as you@institution.edu.")
+        return value
+
+    def validate_admin_email(self, value):
+        return self.validate_contact_email(value)
+
+    def validate_contact_phone(self, value):
+        if value and (not value.isascii() or not value.isdigit()):
+            raise serializers.ValidationError("Contact phone must contain numbers only.")
+        if value and (not 7 <= len(value) <= 15 or value.startswith("0")):
+            raise serializers.ValidationError("Include the country calling code and phone number, using 7–15 digits.")
+        return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        phone = attrs.get("contact_phone", "")
+        code = self.initial_data.get("contact_calling_code", "")
+        if phone:
+            if not isinstance(code, str) or not code.isascii() or not code.isdigit() or not 1 <= len(code) <= 3 or code.startswith("0"):
+                raise serializers.ValidationError({"contact_phone": "Provide a valid country calling code."})
+            if not phone.startswith(code) or not 8 <= len(phone[len(code):]) <= 15 - len(code):
+                raise serializers.ValidationError({"contact_phone": "Use at least 8 phone digits and at most 15 digits including the calling code."})
+        return attrs
+
+    def validate_country(self, value):
+        import json
+        from pathlib import Path
+        countries = json.loads(Path(__file__).with_name("countries.json").read_text(encoding="utf-8"))
+        if value not in {country["name"] for country in countries}:
+            raise serializers.ValidationError("Select a valid country.")
+        return value
+
     class Meta:
         model  = InstitutionApplication
         fields = [
@@ -42,6 +118,9 @@ class InstitutionApplicationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Wallet address is required.")
         if not value.startswith("0x") or len(value) != 42:
             raise serializers.ValidationError("Invalid Ethereum address.")
+        from accounts.models import User
+        if User.objects.filter(wallet_address__iexact=value).exists():
+            raise serializers.ValidationError("This wallet is already assigned to an account. Use a different MetaMask account.")
         if Institution.objects.filter(wallet_address__iexact=value).exists():
             raise serializers.ValidationError("Wallet already bound to another institution.")
         if InstitutionApplication.objects.filter(

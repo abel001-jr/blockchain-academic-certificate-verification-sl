@@ -104,7 +104,7 @@ def _notify_student(cr: ConsentRequest) -> bool:
         f"You have {ttl} minutes to approve or deny:\n"
         f"{approve_url}\n\n"
         f"If you didn't expect this request, simply deny it.\n\n"
-        f"— Credence"
+        f"— Intelligent Academic Credentialing"
     )
 
     sent = send_whatsapp(to=phone, body=body)
@@ -120,7 +120,7 @@ class ConsentRequestCreateView(APIView):
     """
     POST /api/verify/<certificate_id>/request-consent/
 
-    Public — no auth required (employer doesn't have a Credence account).
+    Public — no auth required (employer doesn't have an Intelligent Academic Credentialing account).
     Rate-limited via the global anon throttle (60/min).
 
     Body:

@@ -2,7 +2,7 @@
  * RocketLoader
  * A rocket ship with speed-lines — fun fullscreen or splash loading state.
  * Source: rocket_loader.html (uiverse, MIT licence)
- * Adapted: all hard-coded #000 replaced with Credence navy.
+ * Adapted: all hard-coded #000 replaced with Intelligent Academic Credentialing navy.
  *
  * Usage:
  *   <RocketLoader />                  — renders rocket centered, caller provides container

@@ -18,7 +18,7 @@ class UserAdmin(BaseUserAdmin):
     fieldsets = (
         (None,           {"fields": ("email", "password")}),
         ("Personal",     {"fields": ("first_name", "last_name")}),
-        ("CREDENCE",     {"fields": ("role", "institution", "student_id", "wallet_address")}),
+        ("INTELLIGENT ACADEMIC CREDENTIALING",     {"fields": ("role", "institution", "student_id", "wallet_address")}),
         ("Officer setup", {
             "fields": (
                 "must_change_password", "wallet_verified", "on_chain_authorized",
@@ -36,7 +36,7 @@ class UserAdmin(BaseUserAdmin):
     readonly_fields = ["date_joined"]
 
     def save_model(self, request, obj, form, change):
-        # Keep Django admin flags in sync with CREDENCE role
+        # Keep Django admin flags in sync with INTELLIGENT ACADEMIC CREDENTIALING role
         if obj.role == Role.SUPER_ADMIN:
             obj.is_staff = True
             obj.is_superuser = True

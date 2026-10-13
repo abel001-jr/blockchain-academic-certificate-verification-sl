@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Credence",
+    "name": "Intelligent Academic Credentialing",
     "slug": "credence",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -37,8 +37,8 @@
     },
     "web": {
       "favicon": "./assets/fav.png",
-      "name": "Credence",
-      "shortName": "Credence",
+      "name": "Intelligent Academic Credentialing",
+      "shortName": "Intelligent Academic Credentialing",
       "description": "Blockchain-backed academic certificate verification"
     },
     "plugins": [

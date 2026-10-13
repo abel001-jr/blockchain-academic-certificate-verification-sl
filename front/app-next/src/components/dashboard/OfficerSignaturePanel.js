@@ -1,10 +1,11 @@
 "use client";
+import { ActionButton } from "@/components/ui/AnimatedControls";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Check, Upload, Type, ShieldAlert } from "lucide-react";
 import { renderTypedSignature } from "@/lib/signatureCanvas";
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api";
 
 function authHeaders() {
   const t = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
@@ -24,6 +25,7 @@ export default function OfficerSignaturePanel({
 }) {
   const [mode, setMode] = useState("upload");
   const [typedName, setTypedName] = useState(defaultName);
+  const nameEdited = useRef(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [savedUrl, setSavedUrl] = useState("");
@@ -34,8 +36,6 @@ export default function OfficerSignaturePanel({
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
     try {
       const res = await fetch(`${API_BASE}/auth/signature/`, { headers: authHeaders() });
       const data = await res.json();
@@ -43,30 +43,37 @@ export default function OfficerSignaturePanel({
       setSavedUrl(data.signature_url || "");
       setPreviewUrl(data.signature_url || "");
       setSignatureSetAt(data.signature_set_at);
-      if (data.full_name && !typedName) setTypedName(data.full_name);
+      if (data.full_name && !nameEdited.current) {
+        setTypedName(current => current || data.full_name);
+      }
     } catch (e) {
       setError(e?.detail || "Failed to load signature.");
     } finally {
       setLoading(false);
     }
-  }, [typedName]);
+  }, []);
 
   useEffect(() => {
-    load();
+    let active = true;
+    Promise.resolve().then(() => { if (active) load(); });
+    return () => { active = false; };
   }, [load]);
 
   useEffect(() => {
-    if (defaultName && !typedName) setTypedName(defaultName);
-  }, [defaultName, typedName]);
+    if (defaultName && !nameEdited.current) {
+      setTypedName(current => current || defaultName);
+    }
+  }, [defaultName]);
 
   useEffect(() => {
+    let active = true;
     if (uploadFile) {
       const url = URL.createObjectURL(uploadFile);
-      setPreviewUrl(url);
-      return () => URL.revokeObjectURL(url);
+      Promise.resolve().then(() => { if (active) setPreviewUrl(url); });
+      return () => { active = false; URL.revokeObjectURL(url); };
     }
-    if (!uploadFile && savedUrl) setPreviewUrl(savedUrl);
-    return undefined;
+    Promise.resolve().then(() => { if (active) setPreviewUrl(savedUrl); });
+    return () => { active = false; };
   }, [uploadFile, savedUrl]);
 
   async function buildBlob() {
@@ -238,7 +245,10 @@ export default function OfficerSignaturePanel({
           <input
             className="w-full bg-[#eef4ff] border border-transparent focus:border-[#022448] rounded-[10px] px-4 py-3 text-sm text-[#121c28] outline-none"
             value={typedName}
-            onChange={(e) => setTypedName(e.target.value)}
+            onChange={(e) => {
+              nameEdited.current = true;
+              setTypedName(e.target.value);
+            }}
             placeholder="e.g. Prof. Bob Karankay Conteh"
           />
         </div>
@@ -266,15 +276,15 @@ export default function OfficerSignaturePanel({
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <button
+        <ActionButton
           type="button"
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-2 bg-[#022448] text-white px-5 py-2.5 rounded-[12px] text-sm font-semibold disabled:opacity-50"
+          className="cred-btn cred-btn-primary gap-2 self-start"
         >
           {saving && <Loader2 size={14} className="animate-spin" />}
           {saving ? "Saving…" : "Save Signature"}
-        </button>
+        </ActionButton>
         {allowSkip && (
           <button
             type="button"

@@ -1,4 +1,6 @@
 "use client";
+import NavigationButton from "@/components/ui/NavigationButton";
+
 import { useState, useEffect, useCallback } from "react";
 import { Search, Loader2, CheckCircle2, XCircle, X } from "lucide-react";
 import { api } from "@/lib/api";
@@ -10,7 +12,7 @@ const ROLE_COLORS = {
   registrar:           "bg-[#B98A28]/10 text-[#B98A28]",
   student:             "bg-[#2F6F4E]/10 text-[#2F6F4E]",
 };
-const roleLabel = (role) => role === "chancellor" ? "Dean" : role?.replace(/_/g, " ");
+const roleLabel = (role) => role === "chancellor" ? "Chancellor" : role?.replace(/_/g, " ");
 
 export default function AllUsersPage() {
   const { role, user: currentUser, loading: authLoading } = useAuth();
@@ -182,10 +184,10 @@ export default function AllUsersPage() {
         <div className="px-5 py-4 border-t border-[#E4E1D6] flex items-center justify-between">
           <p className="dash-pagination-text">Page {page} of {totalPages || 1} · {count} total</p>
           <div className="flex gap-2">
-            <button disabled={page <= 1} onClick={() => setPage(p => p - 1)}
-              className="dash-pagination-btn">Previous</button>
-            <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}
-              className="dash-pagination-btn">Next</button>
+            <NavigationButton direction="back" disabled={page <= 1} onClick={() => setPage(p => p - 1)}
+              className="dash-pagination-btn">Previous</NavigationButton>
+            <NavigationButton disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}
+              className="dash-pagination-btn">Next</NavigationButton>
           </div>
         </div>
       </div>

@@ -1,4 +1,8 @@
 "use client";
+import NavigationButton from "@/components/ui/NavigationButton";
+
+import { ActionButton } from "@/components/ui/AnimatedControls";
+
 /**
  * Officer setup gate — only screen reachable with a limited setup JWT.
  * 1) Connect MetaMask + sign nonce
@@ -10,11 +14,11 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Loader2, Wallet, KeyRound, CheckCircle2, Shield, PenLine } from "lucide-react";
-import { jwtPayload } from "@/lib/api";
+import { clearSession, jwtPayload } from "@/lib/api";
 import { connectWallet, signMessage } from "@/lib/walletActions";
 import OfficerSignaturePanel from "@/components/dashboard/OfficerSignaturePanel";
 
-const BASE = "http://127.0.0.1:8000/api";
+const BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api";
 
 function authHeaders() {
   const t = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
@@ -57,7 +61,7 @@ export default function OfficerSetupPage() {
 
     fetch(`${BASE}/auth/me/`, { headers: authHeaders() })
       .then(async (res) => {
-        if (res.status === 401) { localStorage.clear(); window.location.href = "/login"; return; }
+        if (res.status === 401) { clearSession(); window.location.href = "/login"; return; }
         const data = await res.json();
         setProfile(data);
         if (data.wallet_verified) {
@@ -124,7 +128,7 @@ export default function OfficerSetupPage() {
     }
   }
 
-  function finishAndLogout() { localStorage.clear(); window.location.href = "/login"; }
+  function finishAndLogout() { clearSession(); window.location.href = "/login"; }
   function finishSetup()     { setComplete(true); }
 
   if (!ready) {
@@ -142,7 +146,7 @@ export default function OfficerSetupPage() {
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
           <div className="w-11 h-11 rounded-xl overflow-hidden shrink-0 shadow-sm">
-            <Image src="/logo.png" alt="Credence" width={44} height={44} className="w-full h-full object-cover" />
+            <Image src="/fav.png" alt="Intelligent Academic Credentialing" width={44} height={44} className="w-full h-full object-contain" />
           </div>
           <div>
             <h1 className="text-[#08283F] font-bold text-2xl leading-tight">Officer setup</h1>
@@ -178,7 +182,7 @@ export default function OfficerSetupPage() {
             {walletDone ? (
               <p className="text-[#2F6F4E] text-sm font-mono break-all">{walletAddr}</p>
             ) : (
-              <button
+              <ActionButton
                 type="button"
                 onClick={connectAndVerifyWallet}
                 disabled={walletBusy}
@@ -186,7 +190,7 @@ export default function OfficerSetupPage() {
               >
                 {walletBusy ? <Loader2 size={16} className="animate-spin" /> : <Wallet size={16} />}
                 {walletBusy ? "Verifying…" : "Connect Wallet"}
-              </button>
+              </ActionButton>
             )}
           </div>
         </div>
@@ -219,8 +223,7 @@ export default function OfficerSetupPage() {
                 <button
                   type="submit"
                   disabled={!walletDone || pwBusy}
-                  className="cd-btn-primary self-start disabled:opacity-50"
-                  style={{ background: "#B98A28" }}
+                  className="cred-btn cred-btn-primary self-start disabled:opacity-50"
                 >
                   {pwBusy ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
                   Save password
@@ -258,21 +261,21 @@ export default function OfficerSetupPage() {
               sign in with <strong>MetaMask only</strong>.
               {!signatureDone && <> You can add your certificate signature later in Settings.</>}
             </p>
-            <button
+            <NavigationButton direction="back"
               type="button"
               onClick={finishAndLogout}
               className="cd-btn-primary"
               style={{ background: "#B98A28" }}
             >
               Return to sign in
-            </button>
+            </NavigationButton>
           </div>
         )}
 
         <div className="h-px bg-[#E4E1D6] mt-7 mb-4" />
         <p className="text-center text-[#8A929C] text-xs">
           Wrong account?{" "}
-          <Link href="/login" onClick={() => localStorage.clear()} className="text-[#B98A28] font-semibold hover:underline">
+          <Link href="/login" onClick={() => clearSession()} className="text-[#B98A28] font-semibold hover:underline">
             Sign out
           </Link>
         </p>

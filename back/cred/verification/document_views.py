@@ -12,24 +12,9 @@ from rest_framework.views import APIView
 
 from certify.encrypted_documents import (
     DocumentEncryptionError,
-    decrypt_document,
-    document_sha256,
-    is_encrypted_document,
+    fetch_verified_document,
 )
-from certify.ipfs import fetch_file_from_ipfs
-from certify.models import Certificate, CertificateStatus, Transcript, VerificationShareCode
-
-
-def _get_document(cid: str, associated_id: str, kind: str, expected_hash: str) -> bytes:
-    encrypted = fetch_file_from_ipfs(cid)
-    if not is_encrypted_document(encrypted):
-        raise DocumentEncryptionError(
-            "This credential contains a legacy document that has not been re-encrypted."
-        )
-    document = decrypt_document(encrypted, associated_id, kind)
-    if document_sha256(document).lower() != (expected_hash or "").lower():
-        raise DocumentEncryptionError("Decrypted document does not match its anchored hash.")
-    return document
+from certify.models import Certificate, CertificateStatus, VerificationShareCode
 
 
 class SharedCredentialDocumentsView(APIView):
@@ -67,15 +52,11 @@ class SharedCredentialDocumentsView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        # The transcript lives on the credential itself; see the paired upload flow
+        # in certify/views.py. The decryption associated data is always the
+        # certificate id.
         transcript_cid = certificate.ipfs_cid_transcript
         transcript_hash = certificate.transcript_hash
-        transcript_associated_id = certificate.certificate_id
-        if not transcript_cid:
-            transcript = Transcript.objects.filter(certificate=certificate).first()
-            if transcript:
-                transcript_cid = transcript.ipfs_cid
-                transcript_hash = transcript.transcript_hash
-                transcript_associated_id = transcript.transcript_id
 
         # The document served is the issued one, which for a sealed credential
         # is the sealed copy rather than the review copy officers approved.
@@ -88,15 +69,15 @@ class SharedCredentialDocumentsView(APIView):
             )
 
         try:
-            certificate_pdf = _get_document(
+            certificate_pdf = fetch_verified_document(
                 issued_cid,
                 certificate.certificate_id,
                 "certificate",
                 issued_hash,
             )
-            transcript_pdf = _get_document(
+            transcript_pdf = fetch_verified_document(
                 transcript_cid,
-                transcript_associated_id,
+                certificate.certificate_id,
                 "transcript",
                 transcript_hash,
             )

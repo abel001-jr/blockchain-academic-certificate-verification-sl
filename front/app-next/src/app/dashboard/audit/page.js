@@ -1,7 +1,10 @@
 "use client";
+import NavigationButton from "@/components/ui/NavigationButton";
+
 import { useState, useEffect, useCallback } from "react";
 import { Search, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
+import styles from "@/components/dashboard/DashboardRecords.module.css";
 
 const actionColor = {
   "certificate.issued":            "bg-[#08283F]/10 text-[#08283F]",
@@ -39,13 +42,13 @@ export default function AuditPage() {
     }
   }, [page, search]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { const timer = setTimeout(() => { void load(); }, 0); return () => clearTimeout(timer); }, [load]);
 
   const pageSize   = 20;
   const totalPages = Math.ceil(count / pageSize);
 
   return (
-    <div className="flex flex-col gap-6 w-full">
+    <div className={`${styles.page} flex flex-col gap-5 w-full`}>
       <div>
         <h2 className="dash-page-title">Audit Logs</h2>
         <p className="dash-page-sub">
@@ -109,14 +112,14 @@ export default function AuditPage() {
         <div className="px-5 py-4 border-t border-[#E4E1D6] flex items-center justify-between">
           <p className="dash-pagination-text">Page {page} of {totalPages || 1} · {count} total</p>
           <div className="flex gap-2">
-            <button disabled={page <= 1} onClick={() => setPage(p => p - 1)}
+            <NavigationButton direction="back" disabled={page <= 1} onClick={() => setPage(p => p - 1)}
               className="dash-pagination-btn">
               Previous
-            </button>
-            <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}
+            </NavigationButton>
+            <NavigationButton disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}
               className="dash-pagination-btn">
               Next
-            </button>
+            </NavigationButton>
           </div>
         </div>
       </div>

@@ -1,4 +1,5 @@
 "use client";
+import { ActionButton } from "@/components/ui/AnimatedControls";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
@@ -412,7 +413,8 @@ export default function CertificateVerifyPanel({
             >
               <ScanLine size={16} /> Scan QR
             </button>
-            <button
+            <ActionButton
+              tone={isDark ? "inverse" : undefined}
               type="button"
               onClick={() => verify()}
               disabled={loading}
@@ -421,7 +423,7 @@ export default function CertificateVerifyPanel({
                 : "cd-btn-primary px-6 whitespace-nowrap disabled:opacity-60"}
             >
               {loading ? "Checking…" : "Verify"}
-            </button>
+            </ActionButton>
           </div>
         </div>
 

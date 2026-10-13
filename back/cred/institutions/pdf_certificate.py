@@ -29,6 +29,14 @@ def generate_certificate_pdf(
     The document issued later is the same rendering with the signature block
     filled in, and is committed separately as the sealed hash.
     """
+    from .credential_validation import validate_certificate_data
+    validate_certificate_data(certificate)
+    if getattr(certificate, "template_revision_id", None):
+        from .template_rendering import render_uploaded_template
+        return render_uploaded_template(certificate, certificate.template_revision,
+            include_attestations=include_attestations,
+            verification_base_url=verification_base_url or settings.FRONTEND_URL)
+
     try:
         from reportlab.lib.pagesizes import landscape, A4
         from reportlab.lib.units import mm
@@ -103,7 +111,7 @@ def generate_certificate_pdf(
 
     c.setFillColor(primary)
     c.setFont("Times-Bold", 22)
-    c.drawCentredString(width / 2, y, (inst.name or "CREDENCE").upper())
+    c.drawCentredString(width / 2, y, (inst.name or "INTELLIGENT ACADEMIC CREDENTIALING").upper())
     y -= 8 * mm
 
     c.setFillColor(accent)
@@ -190,7 +198,7 @@ def generate_certificate_pdf(
     if include_attestations:
         reg_name = certificate.registrar_signer_name or "Registrar"
         vc_name = certificate.vc_approver_name or "Vice Chancellor"
-        ch_name = certificate.chancellor_approver_name or "Dean"
+        ch_name = certificate.chancellor_approver_name or "Chancellor"
 
         c.setFillColor(primary)
         c.setFont("Helvetica-Bold", 9)
@@ -202,7 +210,7 @@ def generate_certificate_pdf(
     c.setFont("Helvetica", 8)
     c.drawString(left_x, sig_y - 9 * mm, "Registrar")
     c.drawString(mid_x, sig_y - 9 * mm, "Vice Chancellor")
-    c.drawString(right_x, sig_y - 9 * mm, "Dean")
+    c.drawString(right_x, sig_y - 9 * mm, "Chancellor")
 
     if not include_attestations:
         # This rendering carries no signatures and is not the issued document.
@@ -246,7 +254,7 @@ def generate_certificate_pdf(
     c.setFillColor(theme["muted"])
     c.setFont("Helvetica", 7)
     c.drawCentredString(width / 2, 18 * mm, f"Certificate ID: {certificate.certificate_id}")
-    c.drawCentredString(width / 2, 14 * mm, "Verify on CREDENCE · blockchain-anchored")
+    c.drawCentredString(width / 2, 14 * mm, "Verify on INTELLIGENT ACADEMIC CREDENTIALING · blockchain-anchored")
 
     c.showPage()
     c.save()

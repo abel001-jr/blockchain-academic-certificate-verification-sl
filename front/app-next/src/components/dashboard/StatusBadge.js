@@ -11,7 +11,7 @@ const styles = {
 
 const labels = {
   pending_vc:         "Pending VC",
-  pending_chancellor: "Pending Dean",
+  pending_chancellor: "Pending Chancellor",
   pending_finalize:   "Pending Finalize",
 };
 

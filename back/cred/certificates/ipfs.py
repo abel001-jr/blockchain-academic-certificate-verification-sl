@@ -1,7 +1,7 @@
 """
 certificates/ipfs.py
 
-Pinata IPFS pinning service for CREDENCE.
+Pinata IPFS pinning service for INTELLIGENT ACADEMIC CREDENTIALING.
 Uses the Pinata JWT (most flexible auth method) for all requests.
 
 Spec §8 steps 6-7: Pin certificate PDF and JSON to IPFS via Pinata,
@@ -38,7 +38,7 @@ def pin_file_to_ipfs(file_obj, filename: str, certificate_id: str) -> dict:
     headers = _auth_headers()
     # metadata to tag the pin in Pinata
     metadata = json.dumps({
-        "name": f"CREDENCE-{certificate_id}-{filename}",
+        "name": f"INTELLIGENT ACADEMIC CREDENTIALING-{certificate_id}-{filename}",
         "keyvalues": {"certificate_id": certificate_id, "type": "document"},
     })
 
@@ -79,7 +79,7 @@ def pin_json_to_ipfs(data: dict, certificate_id: str) -> dict:
     payload = {
         "pinataContent":  data,
         "pinataMetadata": {
-            "name": f"CREDENCE-{certificate_id}-metadata.json",
+            "name": f"INTELLIGENT ACADEMIC CREDENTIALING-{certificate_id}-metadata.json",
             "keyvalues": {"certificate_id": certificate_id, "type": "metadata"},
         },
         "pinataOptions": {"cidVersion": 1},

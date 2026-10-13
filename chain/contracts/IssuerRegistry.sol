@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 /**
  * @title  IssuerRegistry
- * @notice Manages institutions and their registrars for CREDENCE.
+ * @notice Manages institutions and their registrars for INTELLIGENT ACADEMIC CREDENTIALING.
  *
  * Trust hierarchy (spec §5 + issuer-registration-auth-prompt §3):
  *   owner (Super Admin deployer)
@@ -204,6 +204,8 @@ contract IssuerRegistry {
         onlyActiveInstitution
         notZero(registrarAddr)
     {
+        require(!institutions[registrarAddr].active, "IssuerRegistry: institution admin is not a signer");
+        require(!vcs[vcToInstitution[registrarAddr]][registrarAddr] && !chancellors[chancellorToInstitution[registrarAddr]][registrarAddr], "IssuerRegistry: signer already has another role");
         address existingInstitution = registrarToInstitution[registrarAddr];
         if (existingInstitution != address(0) && existingInstitution != msg.sender) {
             revert("IssuerRegistry: registrar already bound to another institution");
@@ -239,6 +241,8 @@ contract IssuerRegistry {
         onlyActiveInstitution
         notZero(vcAddr)
     {
+        require(!institutions[vcAddr].active, "IssuerRegistry: institution admin is not a signer");
+        require(!registrars[registrarToInstitution[vcAddr]][vcAddr] && !chancellors[chancellorToInstitution[vcAddr]][vcAddr], "IssuerRegistry: signer already has another role");
         address existing = vcToInstitution[vcAddr];
         if (existing != address(0) && existing != msg.sender) {
             revert("IssuerRegistry: VC already bound to another institution");
@@ -259,6 +263,8 @@ contract IssuerRegistry {
         onlyActiveInstitution
         notZero(chancellorAddr)
     {
+        require(!institutions[chancellorAddr].active, "IssuerRegistry: institution admin is not a signer");
+        require(!registrars[registrarToInstitution[chancellorAddr]][chancellorAddr] && !vcs[vcToInstitution[chancellorAddr]][chancellorAddr], "IssuerRegistry: signer already has another role");
         address existing = chancellorToInstitution[chancellorAddr];
         if (existing != address(0) && existing != msg.sender) {
             revert("IssuerRegistry: Chancellor already bound to another institution");
@@ -286,6 +292,7 @@ contract IssuerRegistry {
      *         institution is revoked.
      */
     function isAuthorizedRegistrar(address registrarAddr) external view returns (bool) {
+        if (institutions[registrarAddr].active) return false;
         address inst = registrarToInstitution[registrarAddr];
         if (inst == address(0))             return false;   // never registered
         if (!institutions[inst].active)     return false;   // institution revoked
@@ -297,6 +304,7 @@ contract IssuerRegistry {
     }
 
     function isAuthorizedVC(address vcAddr) external view returns (bool) {
+        if (institutions[vcAddr].active) return false;
         address inst = vcToInstitution[vcAddr];
         if (inst == address(0)) return false;
         if (!institutions[inst].active) return false;
@@ -304,6 +312,7 @@ contract IssuerRegistry {
     }
 
     function isAuthorizedChancellor(address chancellorAddr) external view returns (bool) {
+        if (institutions[chancellorAddr].active) return false;
         address inst = chancellorToInstitution[chancellorAddr];
         if (inst == address(0)) return false;
         if (!institutions[inst].active) return false;

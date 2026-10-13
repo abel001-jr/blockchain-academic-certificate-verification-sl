@@ -28,6 +28,7 @@ from audit.models import AuditLog
 from institutions.models import Institution, InstitutionApplication
 
 from .models import Certificate
+from .pinata_usage import get_pinata_storage_usage
 
 
 class IsSuperAdmin(BasePermission):
@@ -150,8 +151,16 @@ class PlatformStatsView(APIView):
 
         active_institutions = institutions.filter(is_active=True)
         pending_anchor = active_institutions.filter(is_chain_active=False)
+        issued = certificates.filter(status="issued")
+        claimed = issued.filter(invite_tokens__used=True, invite_tokens__claimed_at__isnull=False).distinct()
+        wallet_users = User.objects.filter(is_active=True, role__in=[Role.SUPER_ADMIN, Role.INSTITUTIONAL_ADMIN, Role.REGISTRAR, Role.VC, Role.CHANCELLOR])
 
         return Response({
+            "completion": {
+                "claims": {"count": claimed.count(), "total": global_status["issued"]},
+                "wallets": {"count": wallet_users.exclude(wallet_address="").count(), "total": wallet_users.count()},
+                "pinata": get_pinata_storage_usage(),
+            },
             "institutions": {
                 "total":         institutions.count(),
                 "active":        active_institutions.count(),

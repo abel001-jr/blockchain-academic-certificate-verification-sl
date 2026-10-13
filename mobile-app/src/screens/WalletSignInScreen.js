@@ -1,3 +1,4 @@
+import AnimatedButton from "../components/AnimatedButton";
 /**
  * WalletSignInScreen
  * Mobile equivalent of WalletSignIn.js from the web app.
@@ -107,23 +108,13 @@ export default function WalletSignInScreen({ navigation, onLoginSuccess }) {
           </View>
         )}
 
-        <TouchableOpacity
-          style={[styles.btnPrimary, busy && styles.btnDisabled]}
-          onPress={handleConnect}
-          disabled={busy}
-        >
-          <Text style={styles.btnText}>
-            {step === "done" ? "✓  Signed In" : "🦊  " + stepLabels[step]}
-          </Text>
-        </TouchableOpacity>
+        <AnimatedButton label={step === "done" ? "Signed In" : stepLabels[step]} onPress={handleConnect} busy={busy} />
 
         <Text style={styles.note}>
           Your wallet will ask you to sign a message. No transaction or gas fee involved.
         </Text>
 
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.back}>← Back to login</Text>
-        </TouchableOpacity>
+        <AnimatedButton variant="navigation" direction="back" label="Back to login" onPress={() => navigation.goBack()} />
       </View>
     </SafeAreaView>
   );

@@ -1,7 +1,7 @@
 """
 audit/models.py
 
-Immutable audit log — every significant action in CREDENCE is recorded here.
+Immutable audit log — every significant action in INTELLIGENT ACADEMIC CREDENTIALING is recorded here.
 Covers spec §3 (certificate revocation history) and §12 (Audit Logs page).
 """
 

@@ -14,17 +14,29 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const payload = jwtPayload();
-    if (!payload) {
+    let alive = true;
+    let updated = false;
+    const onProfileUpdated = event => {
+      updated = true;
+      setUser(event.detail);
+      setRole(event.detail.role);
+    };
+    window.addEventListener("credence:profile-updated", onProfileUpdated);
+    Promise.resolve().then(async () => {
+      if (!alive) return;
+      const payload = jwtPayload();
+      setRole(payload?.role ?? null);
       setLoading(false);
-      return;
-    }
-    setRole(payload.role ?? null);
-    setLoading(false);
-
-    api.get("/auth/me/")
-      .then(data => { setUser(data); })
-      .catch(() => {});
+      if (!payload) return;
+      try {
+        const data = await api.get("/auth/me/");
+        if (alive && !updated) { setUser(data); setRole(data.role); }
+      } catch { /* Session handling belongs to the API and dashboard guard. */ }
+    });
+    return () => {
+      alive = false;
+      window.removeEventListener("credence:profile-updated", onProfileUpdated);
+    };
   }, []);
 
   return { user, role, loading };
@@ -32,14 +44,18 @@ export function useAuth() {
 
 export const ROLES = {
   SUPER_ADMIN:         "super_admin",
-  INSTITUTIONAL_ADMIN: "institutional_admin", // legacy → treat as registrar
+  INSTITUTIONAL_ADMIN: "institutional_admin",
   REGISTRAR:           "registrar",
   VC:                  "vc",
   CHANCELLOR:          "chancellor",
   STUDENT:             "student",
 };
 
-/** Institution head (anchored issuer) — prepares certs, manages VC/Dean */
+/** Registrar prepares and manages credential documentation. */
 export function isInstitutionHead(role) {
-  return role === ROLES.REGISTRAR || role === ROLES.INSTITUTIONAL_ADMIN;
+  return role === ROLES.REGISTRAR;
+}
+
+export function isInstitutionSetupAdmin(role) {
+  return role === ROLES.INSTITUTIONAL_ADMIN || role === ROLES.SUPER_ADMIN;
 }

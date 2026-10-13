@@ -1,0 +1,49 @@
+.layout { display: grid; grid-template-columns: minmax(0,2fr) minmax(0,1fr); gap: 16px; align-items: start; }
+.main { grid-row: span 2; align-self: stretch; display: flex; flex-direction: column; }
+.header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.header a { color: #780110; font-size: 11px; white-space: nowrap; }
+.portfolioTotal { display: block; color: #08283f; font-size: 30px; margin: 12px 0 24px; }
+.portfolioTotal span { display: block; font-size: 12px; font-weight: 400; margin-top: 4px; color: #4a5a68; }
+.barPlot { position: relative; flex: 1; min-height: 290px; margin-top: 12px; }
+.guides { position: absolute; inset: 0 0 36px; display: flex; flex-direction: column; justify-content: space-between; }
+.guides > div { display: flex; align-items: center; gap: 12px; }
+.guides span { width: 28px; text-align: right; color: #687b8e; font-size: 11px; }
+.guides i { flex: 1; border-top: 1px dashed #e4e8eb; }
+.empty { position: absolute; top: 45%; left: 40px; right: 0; text-align: center; }
+.gauges { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 16px; }
+.gauge,.card { width: 100%; background: white; border: 1px solid #e4e1d6; border-radius: 16px; padding: 20px; }
+.gauge { text-align: center; display: flex; align-items: center; flex-direction: column; transition: border-color .2s; }
+.gauge:hover { border-color: #780110; }
+.icon { display: grid; place-items: center; width: 30px; height: 30px; background: #f8f7f2; border-radius: 50%; margin-bottom: 8px; }
+.gauge h3,.card h3 { color: #08283f; font-size: 16px; font-weight: 600; margin: 0; }
+.gauge svg { width: 120px; height: 86px; margin-top: 12px; overflow: visible; }
+.gauge text { fill: #08283f; font-size: 21px; font-weight: 700; }
+.gauge p,.card p { color: #4a5a68; font-size: 12px; margin: 5px 0 0; }
+.bars { position: absolute; inset: 0 0 0 40px; display: flex; align-items: stretch; justify-content: center; gap: 12px; }
+.bars > div { max-width: 140px; }
+.column { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.column b { font-size: 12px; color: #780110; }
+.barSpace { position: relative; width: 100%; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
+.barSpace b { position: absolute; bottom: calc(100% + 4px); }
+.bar { width: 36px; max-width: 70%; border-radius: 5px 5px 0 0; background: #08283f; }
+.column span { display: block; width: 100%; height: 28px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #4a5a68; }
+.area { display: block; width: 100%; margin-top: 20px; }
+.area text { fill: #687b8e; font-size: 11px; }
+.months { display: flex; gap: 8px; margin-top: 8px; }
+.months span { font-size: 10px; color: #4a5a68; }
+.months b { color: #780110; }
+.areaWrap { position: relative; }
+.areaLine { stroke-dasharray: 1; animation: drawAreaLine 1s ease-out both; }
+.areaFill { animation: revealAreaFill .8s ease-out both; }
+.areaPoint { transition: r .18s ease, stroke-width .18s ease; }
+.area rect { cursor: pointer; }
+.area rect:focus-visible { outline: 2px solid #527b91; outline-offset: -2px; }
+.areaTooltip { position: absolute; top: 0; right: 0; display: grid; gap: 4px; padding: 10px 12px; border-radius: 10px; background: #08283f; color: white; font-size: 11px; pointer-events: none; box-shadow: 0 6px 18px #08283f26; animation: revealAreaFill .15s ease-out; }
+.months button { font-size: 10px; color: #4a5a68; border-radius: 6px; padding: 4px; cursor: pointer; transition: background .18s ease; }
+.months button:hover,.months button[aria-pressed="true"] { background: #7801100d; }
+.months button:focus-visible { outline: 2px solid #527b91; outline-offset: 2px; }
+@keyframes drawAreaLine { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes revealAreaFill { from { opacity: 0; } to { opacity: 1; } }
+@media(prefers-reduced-motion:reduce) { .areaLine,.areaFill,.areaTooltip { animation: none; } .areaPoint,.months button { transition: none; } }
+@media(max-width:1000px) { .layout { grid-template-columns: 1fr; } .main { grid-row: auto; } .gauges { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media(max-width:600px) { .layout { grid-template-columns: 1fr; } .gauge,.card { padding: 16px; } .gauge h3 { font-size: 13px; } }

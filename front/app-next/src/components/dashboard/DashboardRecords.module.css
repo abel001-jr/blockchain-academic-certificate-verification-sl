@@ -1,0 +1,25 @@
+.page { width: 100%; color: var(--cd-primary); }
+.page :global(.dash-page-title), .page h1 { color: var(--cd-primary); font-size: 30px; }
+.page :global(.dash-card), .page :global(.dash-table-wrap) { border: 1px solid var(--cd-line); background: white; border-radius: 14px; box-shadow: 0 3px 16px color-mix(in srgb,var(--cd-primary) 4%,transparent); }
+.page :global(.dash-table) { color: var(--cd-primary); }
+.page :global(.dash-th) { background: var(--cd-tint); color: var(--cd-primary); border-color: var(--cd-line); }
+.page :global(.dash-td) { border-color: var(--cd-line); }
+.page :global(.dash-tr):hover { background: var(--cd-paper); }
+.page :global(.dash-search) { background: var(--cd-paper); border: 1px solid var(--cd-line); }
+.page :global(.dash-search) input { color: var(--cd-primary); }
+.page :global(.dash-pagination-btn) { color: var(--cd-primary); border-color: var(--cd-line); background: white; }
+.page :global(.dash-pagination-btn):hover:not(:disabled) { background: var(--cd-tint); }
+.page [class~="text-[#142B41]"], .page [class~="text-[#1B2734]"] { color: var(--cd-primary); }
+.page [class~="text-[#C59A3A]"] { color: var(--cd-accent); }
+.page [class~="bg-[#C59A3A]"] { background-color: var(--cd-primary); box-shadow: 0 3px 10px color-mix(in srgb,var(--cd-primary) 16%,transparent); }
+.page [class~="border-[#E4E0D5]"], .page [class~="border-[#E4E1D6]"] { border-color: var(--cd-line); }
+.page [class~="hover:bg-[#FCFBF8]"]:hover { background-color: var(--cd-paper); }
+.page [class~="focus:border-[#C59A3A]"]:focus { border-color: var(--cd-primary); --tw-ring-color: var(--cd-line); }
+.page [class~="hover:border-[#C59A3A]"]:hover { border-color: var(--cd-accent); }
+.page [class~="hover:text-[#C59A3A]"]:hover { color: var(--cd-primary); }
+.page [class~="hover:bg-[#C59A3A]/5"]:hover { background-color: var(--cd-tint); }
+.page [class~="bg-[#C59A3A]/10"] { background-color: var(--cd-tint); }
+.page :is(input,select):focus-visible { outline: 2px solid var(--cd-accent); outline-offset: 2px; }
+.credentialRow h3, .credentialRow p, .credentialRow a, .credentialRow button, .credentialRow span { font-weight: 500; }
+.credentialRow > div:last-child { align-self: flex-start; }
+@media(max-width: 640px) { .credentialRow { flex-wrap: wrap; padding: 16px; } .credentialRow > div:first-child { flex-basis: 100%; } .credentialRow > div:last-child { margin-left: 56px; } }

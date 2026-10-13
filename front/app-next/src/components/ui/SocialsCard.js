@@ -5,7 +5,7 @@
  * A card with a gradient background whose corner panels sweep out on hover,
  * each revealing a social-link icon. Generic enough for any icon set.
  * Source: socials_card.html (uiverse, MIT licence)
- * Adapted: Credence navy gradient, paper/gold icon tints.
+ * Adapted: Intelligent Academic Credentialing navy gradient, paper/gold icon tints.
  *
  * Props:
  *   title   — text shown centred on the resting card (default "Connect")

@@ -1,4 +1,5 @@
 "use client";
+import { isWalletCancellation } from "@/lib/walletActions";
 /**
  * WalletSignIn
  * Reusable wallet-based sign-in component.
@@ -135,8 +136,9 @@ export default function WalletSignIn({ onSuccess, onError }) {
       onSuccess?.(verifyData);
     } catch (err) {
       // User rejected the MetaMask popup
-      if (err?.code === 4001) {
-        setError("Request cancelled. Click the button again when ready.");
+      if (isWalletCancellation(err)) {
+        setError("");
+        window.dispatchEvent(new CustomEvent("credence:wallet-cancelled"));
       } else {
         const msg = err?.message || "Wallet sign-in failed.";
         setError(msg);
@@ -156,7 +158,8 @@ export default function WalletSignIn({ onSuccess, onError }) {
         params: [{ eth_accounts: {} }],
       });
       // After the user picks, accountsChanged fires and updates activeAccount
-    } catch {
+    } catch (err) {
+      if (isWalletCancellation(err)) window.dispatchEvent(new CustomEvent("credence:wallet-cancelled"));
       // User closed the popup — no action needed
     }
   }
@@ -191,7 +194,7 @@ export default function WalletSignIn({ onSuccess, onError }) {
             <button
               type="button"
               onClick={handleSwitchAccount}
-              className="shrink-0 flex items-center gap-1.5 text-[#B98A28] text-xs font-semibold hover:underline"
+              className="cred-btn cred-btn-secondary shrink-0 gap-1.5"
               title="Switch to a different account"
             >
               <RefreshCw size={12} />
@@ -226,7 +229,7 @@ export default function WalletSignIn({ onSuccess, onError }) {
       <button
         onClick={handleConnect}
         disabled={busy}
-        className="cd-btn-primary w-full disabled:opacity-60"
+        className="cred-btn cred-btn-primary w-full disabled:opacity-60"
       >
         {busy ? (
           <Loader2 size={18} className="animate-spin" />

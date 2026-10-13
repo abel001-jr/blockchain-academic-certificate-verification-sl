@@ -1,23 +1,29 @@
 "use client";
-import { useState } from "react";
-import { Loader2, Check, Eye, EyeOff, Link2 } from "lucide-react";
+import { ActionButton } from "@/components/ui/AnimatedControls";
+import { useEffect, useState } from "react";
+import { Loader2, Check, Eye, EyeOff } from "lucide-react";
 import { api } from "@/lib/api";
-import { useAuth, isInstitutionHead, ROLES } from "@/lib/useAuth";
-import Link from "next/link";
+import { useAuth, ROLES } from "@/lib/useAuth";
+import ProfilePanel from "@/components/dashboard/ProfilePanel";
 import AcademicStructurePanel   from "@/components/dashboard/AcademicStructurePanel";
 import CertificateBrandingPanel from "@/components/dashboard/CertificateBrandingPanel";
 import OfficerSignaturePanel    from "@/components/dashboard/OfficerSignaturePanel";
+import ChainConfigPanel         from "@/components/dashboard/ChainConfigPanel";
+import SystemBrandingPanel from "@/components/dashboard/SystemBrandingPanel";
+import InstitutionEmailSettingsPanel from "@/components/dashboard/InstitutionEmailSettingsPanel";
+import NotificationSettingsPanel from "@/components/dashboard/NotificationSettingsPanel";
 
 export default function SettingsPage() {
   const { user, role, loading: authLoading } = useAuth();
-  const registrar = isInstitutionHead(role);
+  const registrar = role === ROLES.REGISTRAR;
+  const systemAdmin = role === ROLES.INSTITUTIONAL_ADMIN || role === ROLES.SUPER_ADMIN;
   const isOfficer = role === ROLES.VC || role === ROLES.CHANCELLOR;
 
-  const TABS = registrar
-    ? ["Academic Structure", "Certificate Branding", "Signature", "Profile", "Password", "Blockchain"]
+  const TABS = [...(registrar
+    ? ["Academic Structure", "Institution Email", "Certificate Branding", "Signature", "Profile", "Password"]
     : isOfficer
-      ? ["Profile", "Signature", "Password", "Blockchain"]
-      : ["Profile", "Password", "Blockchain"];
+      ? ["Profile", "Signature", "Password"]
+      : systemAdmin ? ["Profile", "System Branding", "Password", "Blockchain"] : ["Profile", "Password"]), "Notifications"];
 
   const [tab,     setTab]     = useState(registrar ? "Academic Structure" : "Profile");
   const [saving,  setSaving]  = useState(false);
@@ -26,6 +32,20 @@ export default function SettingsPage() {
   const [passwords, setPasswords] = useState({ old_password: "", new_password: "", confirm: "" });
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);
+  useEffect(() => {
+    const openNotifications = () => setTab("Notifications");
+    window.addEventListener("credence:notification-settings", openNotifications);
+    if (systemAdmin && new URLSearchParams(window.location.search).get("tab") === "System Branding") {
+      Promise.resolve().then(() => setTab("System Branding"));
+    }
+    if (new URLSearchParams(window.location.search).get("tab") === "Notifications") {
+      Promise.resolve().then(() => setTab("Notifications"));
+    }
+    if (registrar && new URLSearchParams(window.location.search).get("tab") === "Certificate Branding") {
+      Promise.resolve().then(() => setTab("Certificate Branding"));
+    }
+    return () => window.removeEventListener("credence:notification-settings", openNotifications);
+  }, [registrar, systemAdmin]);
 
   async function changePassword(e) {
     e.preventDefault();
@@ -56,7 +76,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Tab bar — full width */}
-      <div className="flex border-b border-[#E4E1D6] gap-1">
+      <div className="flex flex-wrap border-b border-[#E4E1D6] gap-1">
         {TABS.map(t => (
           <button key={t}
             onClick={() => { setTab(t); setSuccess(""); setError(""); }}
@@ -73,6 +93,9 @@ export default function SettingsPage() {
 
       {/* Tab content — no outer card, full-width panels */}
       <div>
+        {tab === "Notifications" && <NotificationSettingsPanel />}
+        {tab === "System Branding" && systemAdmin && <SystemBrandingPanel />}
+        {tab === "Institution Email" && registrar && <InstitutionEmailSettingsPanel />}
 
         {/* ── Academic Structure ── */}
         {tab === "Academic Structure" && registrar && <AcademicStructurePanel />}
@@ -81,42 +104,10 @@ export default function SettingsPage() {
         {tab === "Certificate Branding" && registrar && <CertificateBrandingPanel />}
 
         {/* ── Signature ── */}
-        {tab === "Signature" && (isOfficer || registrar) && <OfficerSignaturePanel defaultName={user?.full_name || ""} />}
+        {tab === "Signature" && (isOfficer || role === ROLES.REGISTRAR) && <OfficerSignaturePanel defaultName={user?.full_name || ""} />}
 
         {/* ── Profile ── */}
-        {tab === "Profile" && (
-          <div className="flex flex-col gap-6">
-            <div>
-              <h3 className="text-[#08283F] font-semibold text-xl">Profile Information</h3>
-              <p className="text-[#4A5A68] text-base mt-1.5">Your account details are managed by your administrator.</p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              {[
-                ["First name", user?.first_name || "—"],
-                ["Last name",  user?.last_name  || "—"],
-                ["Email",      user?.email      || "—"],
-                ["Role",       user?.role === "chancellor" ? "Dean" : (user?.role?.replace(/_/g, " ") || "—")],
-              ].map(([label, value]) => (
-                <div key={label} className="bg-white rounded-xl border border-[#E4E1D6] px-6 py-5">
-                  <p className="text-[#8A929C] text-sm font-semibold uppercase tracking-wider mb-2">{label}</p>
-                  <p className="text-[#08283F] text-lg font-medium capitalize break-all">{value}</p>
-                </div>
-              ))}
-              <div className="bg-white rounded-xl border border-[#E4E1D6] px-6 py-5 sm:col-span-2">
-                <p className="text-[#8A929C] text-sm font-semibold uppercase tracking-wider mb-2">Wallet</p>
-                {user?.wallet_address ? (
-                  <p className="text-[#08283F] text-base font-mono break-all leading-relaxed">{user.wallet_address}</p>
-                ) : (
-                  <p className="text-[#4A5A68] text-base">
-                    Not bound —{" "}
-                    <Link href="/dashboard/institution/bind-wallet" className="text-[#B98A28] font-semibold hover:underline">Bind Wallet</Link>
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        {tab === "Profile" && user && <ProfilePanel key={user.id} user={user} />}
 
         {/* ── Password ── */}
         {tab === "Password" && (
@@ -158,47 +149,17 @@ export default function SettingsPage() {
                 </div>
               ))}
               <div className="px-6 py-4 bg-[#F8F7F2] flex justify-end">
-                <button type="submit" disabled={saving} className="cd-btn-primary disabled:opacity-60">
+                <ActionButton type="submit" disabled={saving} className="cred-btn cred-btn-primary gap-2 self-start">
                   {saving && <Loader2 size={14} className="animate-spin" />}
                   {saving ? "Updating…" : "Update Password"}
-                </button>
+                </ActionButton>
               </div>
             </form>
           </div>
         )}
 
         {/* ── Blockchain ── */}
-        {tab === "Blockchain" && (
-          <div className="flex flex-col gap-6">
-            <div>
-              <h3 className="text-[#08283F] font-semibold text-xl">Blockchain Configuration</h3>
-              <p className="text-[#4A5A68] text-base mt-1.5">
-                Read-only — update your <code className="font-mono text-[#08283F] bg-[#EAF2FB] px-1.5 py-0.5 rounded">.env</code> file and restart to change these values.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              {[
-                ["RPC URL",              process.env.NEXT_PUBLIC_ETH_RPC_URL                  || "http://127.0.0.1:8545"],
-                ["Certificate Registry", process.env.NEXT_PUBLIC_CERTIFICATE_REGISTRY_ADDRESS || "Not configured"],
-                ["Issuer Registry",      process.env.NEXT_PUBLIC_ISSUER_REGISTRY_ADDRESS      || "Not configured"],
-                ["Your Wallet",          user?.wallet_address                                  || "Not bound"],
-              ].map(([label, value]) => (
-                <div key={label} className="bg-white rounded-xl border border-[#E4E1D6] px-6 py-5 min-w-0">
-                  <p className="text-[#8A929C] text-sm font-semibold uppercase tracking-wider mb-2">{label}</p>
-                  <p className="text-[#08283F] text-base font-mono break-all leading-relaxed">{value}</p>
-                </div>
-              ))}
-            </div>
-
-            <div>
-              <Link href="/dashboard/institution/bind-wallet"
-                className="inline-flex items-center gap-2 border border-[#E4E1D6] text-[#08283F] px-5 py-3 rounded-xl text-base font-semibold hover:bg-[#08283F] hover:text-white hover:border-[#08283F] transition-all">
-                <Link2 size={16} /> Manage Wallet Binding
-              </Link>
-            </div>
-          </div>
-        )}
+        {tab === "Blockchain" && systemAdmin && <ChainConfigPanel />}
       </div>
     </div>
   );

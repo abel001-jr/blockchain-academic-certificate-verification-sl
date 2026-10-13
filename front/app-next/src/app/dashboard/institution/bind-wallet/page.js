@@ -1,4 +1,5 @@
 "use client";
+import { ActionButton } from "@/components/ui/AnimatedControls";
 /**
  * Bind Wallet — Institutional Admin connects MetaMask wallet
  * after their application has been approved by Super Admin.
@@ -52,6 +53,8 @@ export default function BindWalletPage() {
     );
   }
 
+  if (user?.wallet_address) return <p role="status" className="text-sm text-[#43474e]">Your wallet is already bound. Contact the system admin to change it.</p>;
+
   if (user?.wallet_address) {
     return (
       <div className="w-full">
@@ -89,7 +92,7 @@ export default function BindWalletPage() {
           <h3 className="text-[#022448] text-sm font-semibold mb-2">Why is this required?</h3>
           <ul className="text-[#43474e] text-xs leading-relaxed space-y-1">
             <li>• Your wallet address will be anchored on the Ethereum blockchain as an authorised institutional issuer.</li>
-            <li>• All on-chain operations (registrar authorization, certificate issuance) will require this wallet's signature.</li>
+            <li>• All on-chain operations (registrar authorization, certificate issuance) will require this wallet&apos;s signature.</li>
             <li>• No transaction or gas fee is charged for binding — only read access is needed.</li>
           </ul>
         </div>
@@ -106,12 +109,12 @@ export default function BindWalletPage() {
             <p className="text-[#022448] font-semibold text-base mb-1">Wallet Bound</p>
             <code className="text-[#43474e] font-mono text-sm">{address}</code>
             <p className="text-[#43474e] text-xs mt-3">
-              A Super Admin will now anchor your institution on-chain. You'll be notified when active.
+              A Super Admin will now anchor your institution on-chain. You&apos;ll be notified when active.
             </p>
           </div>
         ) : (
           <>
-            <button
+            <ActionButton
               onClick={handleBind}
               disabled={step !== "idle"}
               className="flex items-center justify-center gap-3 w-full bg-[#022448] text-white px-6 py-4 rounded-[14px] font-semibold text-sm hover:opacity-90 transition-all active:scale-95 disabled:opacity-60"
@@ -120,7 +123,7 @@ export default function BindWalletPage() {
                 ? <Wallet size={18} />
                 : <Loader2 size={18} className="animate-spin" />}
               {labels[step]}
-            </button>
+            </ActionButton>
 
             {address && step !== "idle" && (
               <div className="mt-3 flex items-center gap-2 bg-[#eef4ff] px-4 py-3 rounded-[10px]">

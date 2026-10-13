@@ -21,7 +21,7 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model  = User
         fields = [
-            "id", "email", "first_name", "last_name", "full_name",
+            "id", "email", "first_name", "last_name", "full_name", "profile_photo",
             "role", "institution", "student_id", "wallet_address", "phone_number",
             "is_active", "date_joined",
             "must_change_password", "wallet_verified", "on_chain_authorized",
@@ -72,12 +72,12 @@ class UserCreateSerializer(serializers.ModelSerializer):
         if actor and getattr(actor, "role", None) in (
             Role.REGISTRAR, Role.INSTITUTIONAL_ADMIN
         ):
-            if value not in (Role.VC, Role.CHANCELLOR, Role.STUDENT):
+            if value not in ((Role.REGISTRAR, Role.VC, Role.CHANCELLOR, Role.STUDENT) if actor.role == Role.INSTITUTIONAL_ADMIN else (Role.VC, Role.CHANCELLOR, Role.STUDENT)):
                 raise serializers.ValidationError(
-                    "Registrars may only create VC, Dean, or Student accounts."
+                    "Registrars may only create VC, Chancellor, or Student accounts."
                 )
             
-            # Enforce max 2 officers (VC + Dean) per institution
+            # Enforce max 2 officers (VC + Chancellor) per institution
             if value in (Role.VC, Role.CHANCELLOR):
                 institution = getattr(actor, "institution", None)
                 if institution:
@@ -89,7 +89,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
                     
                     if officer_count >= 2:
                         raise serializers.ValidationError(
-                            "Maximum 2 officers (VC + Dean) allowed per institution. "
+                            "Maximum 2 officers (VC + Chancellor) allowed per institution. "
                             "Current count: {}. Deactivate an existing officer before adding a new one.".format(officer_count)
                         )
         return value
@@ -99,11 +99,14 @@ class UserCreateSerializer(serializers.ModelSerializer):
         actor = getattr(request, "user", None) if request else None
         role = validated_data.get("role")
 
+        if actor and actor.role != Role.SUPER_ADMIN and validated_data.get("institution") not in (None, actor.institution):
+            raise serializers.ValidationError({"institution": "Choose your own institution."})
+
         if actor and actor.institution_id and not validated_data.get("institution"):
             validated_data["institution"] = actor.institution
 
         # ── Officer invite (VC / Chancellor) ──────────────────────────────────
-        if role in (Role.VC, Role.CHANCELLOR):
+        if role in (Role.REGISTRAR, Role.VC, Role.CHANCELLOR):
             validated_data.pop("password", None)
             validated_data["wallet_address"] = ""
             temp_password = secrets.token_urlsafe(12)
@@ -142,6 +145,17 @@ class UserCreateSerializer(serializers.ModelSerializer):
         return user
 
 
+class SelfProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ["first_name", "last_name", "email", "phone_number", "profile_photo"]
+
+    def validate_profile_photo(self, image):
+        if image and (image.size > 5 * 1024 * 1024 or image.image.format not in {"JPEG", "PNG", "WEBP"}):
+            raise serializers.ValidationError("Choose a JPEG, PNG or WebP image up to 5 MB.")
+        return image
+
+
 class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model  = User
@@ -177,7 +191,7 @@ class OfficerAdminUpdateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         officer = self.instance
         if not officer or not officer.is_officer:
-            raise serializers.ValidationError("Only VC / Dean officers can be edited here.")
+            raise serializers.ValidationError("Only VC / Chancellor officers can be edited here.")
         # Lock once MetaMask wallet ownership is proven (or fully authorized)
         if officer.wallet_verified or officer.on_chain_authorized:
             raise serializers.ValidationError(
@@ -187,8 +201,11 @@ class OfficerAdminUpdateSerializer(serializers.ModelSerializer):
         return attrs
 
     def validate_role(self, value):
-        if value not in (Role.VC, Role.CHANCELLOR):
-            raise serializers.ValidationError("Role must be vc or chancellor.")
+        if value not in (Role.REGISTRAR, Role.VC, Role.CHANCELLOR):
+            raise serializers.ValidationError("Choose Registrar, Vice-Chancellor or Chancellor.")
+        actor = getattr(self.context.get("request"), "user", None)
+        if value == Role.REGISTRAR and actor and actor.role == Role.REGISTRAR and self.instance.role != Role.REGISTRAR:
+            raise serializers.ValidationError("Only the institution administrator can assign the Registrar role.")
         return value
 
     def validate_email(self, value):
@@ -271,6 +288,9 @@ class CredenceTokenObtainSerializer(TokenObtainPairSerializer):
 
     def validate(self, attrs):
         email = (attrs.get(self.username_field) or "").strip().lower()
+        email = serializers.EmailField().run_validation(email)
+        if "." not in email.rpartition("@")[2]:
+            raise serializers.ValidationError({"email": "Enter a valid email address, such as you@institution.edu."})
         attrs[self.username_field] = email
 
         try:
@@ -308,7 +328,7 @@ class CredenceTokenObtainSerializer(TokenObtainPairSerializer):
 
             if not user.on_chain_authorized:
                 raise AuthenticationFailed(
-                    "Wallet verified — waiting for your Registrar to authorize "
+                    "Wallet verified — waiting for your institution administrator to authorize "
                     "you on-chain. You cannot sign in until then.",
                     code="pending_authorization",
                 )

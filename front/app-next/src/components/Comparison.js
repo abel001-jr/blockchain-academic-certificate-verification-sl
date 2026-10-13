@@ -25,7 +25,7 @@ export default function Comparison() {
 
           <div className="flex items-center gap-3.5 flex-wrap text-[1.06rem]">
             <span className="text-[0.78rem] font-semibold text-white bg-[#08283F] px-2.5 py-1 rounded-full border border-[#08283F]">
-              With Credence
+              With Intelligent Academic Credentialing
             </span>
             <span className="text-[#1B2734]">A certificate ID is entered or scanned</span>
             <span className="text-[#4A5A68] text-[0.9rem]">→</span>

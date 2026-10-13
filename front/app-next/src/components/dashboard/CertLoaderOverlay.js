@@ -73,7 +73,7 @@ export default function CertLoaderOverlay({ variant = "view", open = false }) {
         {/* ── Brand mark ───────────────────────────────────── */}
         <div className="clo-brand" aria-hidden="true">
           <span className="clo-brand-mark" />
-          Credence
+          Intelligent Academic Credentialing
         </div>
 
         {/* ── Text ─────────────────────────────────────────── */}

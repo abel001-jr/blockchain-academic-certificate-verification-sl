@@ -1,3 +1,5 @@
+
+import { ActionButton } from "@/components/ui/AnimatedControls";
 import Link from "next/link";
 import CertificateHero from "@/components/CertificateHero";
 
@@ -28,19 +30,16 @@ export default function HeroSection() {
           </h1>
 
           <p className="cred-hero-lead">
-            Credence gives universities a secure way to issue blockchain-anchored
-            academic credentials — and gives employers, institutions and graduates
-            a simple, instant way to verify them independently, without contacting
-            the records office.
+            Issue secure academic credentials, share them with graduates, and let employers verify the record independently. Wallets, IPFS and blockchain connect each step.
           </p>
 
           <div className="cred-hero-actions">
-            <Link href="#verify"    className="cred-btn cred-btn-primary cred-btn-hero">
+            <ActionButton href="/#verify"    className="cred-btn cred-btn-primary cred-btn-hero">
               Verify a certificate
-            </Link>
-            <Link href="/apply"     className="cred-btn cred-btn-apply   cred-btn-hero">
-              Issue as a university
-            </Link>
+            </ActionButton>
+            <ActionButton href="/apply" className="cred-btn cred-btn-primary cred-btn-hero">
+              Apply as an institution
+            </ActionButton>
             <Link href="#lifecycle" className="cred-btn cred-btn-secondary cred-btn-hero">
               See how it works
             </Link>

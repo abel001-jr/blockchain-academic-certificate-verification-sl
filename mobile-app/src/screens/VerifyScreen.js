@@ -1,3 +1,4 @@
+import AnimatedButton from "../components/AnimatedButton";
 /**
  * VerifyScreen — public certificate verification.
  *
@@ -17,9 +18,11 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import * as ImagePicker from "expo-image-picker";
 import { verifyCertificate } from "../services/certificates";
 import { parseCertificateIdFromScan } from "../utils/parseCertificateScan";
 
@@ -143,7 +146,7 @@ function ScannerView({ onScan, onCancel }) {
         <View style={[sc.corner, { bottom: -1, left: -1, borderRightWidth: 0, borderTopWidth: 0 }]} />
         <View style={[sc.corner, { bottom: -1, right: -1, borderLeftWidth: 0, borderTopWidth: 0 }]} />
       </View>
-      <Text style={sc.hint}>Point at a Credence QR code</Text>
+      <Text style={sc.hint}>Point at an Intelligent Academic Credentialing QR code</Text>
       <TouchableOpacity style={sc.cancelBtn} onPress={onCancel}>
         <Text style={sc.cancelText}>Cancel</Text>
       </TouchableOpacity>
@@ -158,6 +161,7 @@ export default function VerifyScreen() {
   const [query,     setQuery]     = useState("");
   const [loading,   setLoading]   = useState(false);
   const [result,    setResult]    = useState(null);
+  const [uploading, setUploading] = useState(false);
 
   async function verify(raw) {
     const id = parseCertificateIdFromScan(raw ?? query);
@@ -189,6 +193,98 @@ export default function VerifyScreen() {
     setScanning(true);
   }
 
+  async function pickImage() {
+    try {
+      setUploading(true);
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert("Permission required", "Allow access to your photos to upload QR codes.");
+        setUploading(false);
+        return;
+      }
+
+      const pickerResult = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 1,
+        base64: Platform.OS === "web",
+      });
+
+      if (pickerResult.canceled) {
+        setUploading(false);
+        return;
+      }
+
+      const { uri } = pickerResult.assets[0];
+      
+      // Process QR code from image
+      await processQRFromImage(uri);
+      
+    } catch (err) {
+      console.error("Image picker error:", err);
+      Alert.alert("Error", "Failed to process the image. Please try again or use the camera scanner.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function processQRFromImage(uri) {
+    try {
+      if (Platform.OS === "web") {
+        // Web: use jsQR with canvas
+        const jsQR = require("jsqr");
+        
+        const img = new window.Image();
+        img.crossOrigin = "anonymous";
+        img.src = uri;
+        
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+        });
+        
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+        
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        
+        if (code?.data) {
+          const certId = parseCertificateIdFromScan(code.data);
+          setQuery(certId);
+          verify(certId);
+        } else {
+          Alert.alert("No QR code found", "The selected image doesn't contain a valid QR code. Try using the camera scanner instead.");
+        }
+      } else {
+        // Native: We'll use a workaround - ask user to use camera instead
+        // since QR detection from static images requires native modules
+        Alert.alert(
+          "Use Camera Scanner", 
+          "For best results on mobile, please use the camera scanner to scan QR codes directly.",
+          [
+            { text: "Open Camera", onPress: openScanner },
+            { text: "Cancel", style: "cancel" }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error("QR processing error:", error);
+      Alert.alert(
+        "Processing Failed",
+        "Could not read QR code from image. Please use the camera scanner for best results.",
+        [
+          { text: "Open Camera", onPress: openScanner },
+          { text: "Cancel", style: "cancel" }
+        ]
+      );
+    }
+  }
+
   if (scanning) {
     return (
       <ScannerView
@@ -205,7 +301,7 @@ export default function VerifyScreen() {
         <Text style={s.headerEyebrow}>Employers &amp; verifiers · No login needed</Text>
         <Text style={s.headerTitle}>Verify a Certificate</Text>
         <Text style={s.headerSub}>
-          Scan the QR on any Credence credential, or type the certificate ID.
+          Scan the QR on any Intelligent Academic Credentialing credential, upload a QR image, or type the certificate ID.
           Three independent checks returned instantly.
         </Text>
       </View>
@@ -215,11 +311,33 @@ export default function VerifyScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* QR button */}
-        <TouchableOpacity style={s.qrBtn} onPress={openScanner} activeOpacity={0.8}>
-          <Text style={s.qrBtnIcon}>📷</Text>
-          <Text style={s.qrBtnText}>Scan QR Code</Text>
-        </TouchableOpacity>
+        {/* QR options - Camera and Upload */}
+        <View style={s.qrOptions}>
+          <TouchableOpacity 
+            style={[s.qrBtn, s.qrBtnPrimary]} 
+            onPress={openScanner} 
+            activeOpacity={0.8}
+          >
+            <Text style={s.qrBtnIcon}>📷</Text>
+            <Text style={s.qrBtnText}>Scan with Camera</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[s.qrBtn, s.qrBtnSecondary, uploading && s.qrBtnDisabled]} 
+            onPress={pickImage}
+            disabled={uploading}
+            activeOpacity={0.8}
+          >
+            {uploading ? (
+              <ActivityIndicator color={T.navy} size="small" />
+            ) : (
+              <>
+                <Text style={s.qrBtnIcon}>🖼️</Text>
+                <Text style={[s.qrBtnText, { color: T.navy }]}>Upload QR Image</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
 
         {/* Divider */}
         <View style={s.divider}>
@@ -242,17 +360,7 @@ export default function VerifyScreen() {
         />
 
         {/* Verify button */}
-        <TouchableOpacity
-          style={[s.btnPrimary, loading && { opacity: 0.6 }]}
-          onPress={() => verify(query)}
-          disabled={loading}
-          activeOpacity={0.85}
-        >
-          {loading
-            ? <ActivityIndicator color="#fff" size="small" />
-            : <Text style={s.btnPrimaryText}>Verify</Text>
-          }
-        </TouchableOpacity>
+        <AnimatedButton label={loading ? "Verifying�" : "Verify"} onPress={() => verify(query)} busy={loading} />
 
         {/* Result */}
         {result && <ResultPanel result={result} />}
@@ -285,21 +393,43 @@ const s = StyleSheet.create({
     flexGrow: 1,
   },
 
-  // QR button
-  qrBtn: {
+  // QR options container
+  qrOptions: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
     gap: 10,
-    backgroundColor: T.surface,
-    borderRadius: 12,
-    paddingVertical: 16,
-    borderWidth: 1,
-    borderColor: T.border,
     marginBottom: 20,
   },
-  qrBtnIcon: { fontSize: 18 },
-  qrBtnText: { color: T.navy, fontWeight: "700", fontSize: 15 },
+
+  // QR buttons
+  qrBtn: {
+    flex: 1,
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 12,
+    paddingVertical: 18,
+    borderWidth: 1,
+    minHeight: 100,
+  },
+  qrBtnPrimary: {
+    backgroundColor: T.navy,
+    borderColor: T.navy,
+  },
+  qrBtnSecondary: {
+    backgroundColor: T.surface,
+    borderColor: T.border,
+  },
+  qrBtnDisabled: {
+    opacity: 0.6,
+  },
+  qrBtnIcon: { fontSize: 28 },
+  qrBtnText: { 
+    color: "#fff", 
+    fontWeight: "700", 
+    fontSize: 13,
+    textAlign: "center",
+  },
 
   // Divider
   divider:     { flexDirection: "row", alignItems: "center", marginBottom: 18, gap: 8 },

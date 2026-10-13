@@ -1,5 +1,5 @@
 /**
- * Credence UI component library
+ * Intelligent Academic Credentialing UI component library
  * All components adapted from uiverse.io (MIT Licence).
  *
  * ── Loaders ─────────────────────────────────────────────────

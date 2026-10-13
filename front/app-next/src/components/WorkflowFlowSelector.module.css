@@ -1,0 +1,21 @@
+.chooser { min-width: 0; }
+.intro { text-align: left; }
+.intro p { margin-left: 0; max-width: 75ch; line-height: 1.7; }
+.notice { padding: 12px 16px; border-left: 3px solid #780110; border-radius: 6px; background: #78011006; color: #4A5A68; font-size: 13px; line-height: 1.7; }
+.flowCard { min-width: 0; height: 100%; }
+.recommended { border-color: #08283F; box-shadow: 0 6px 24px #08283F0a; }
+.badge { position: absolute; right: 16px; top: 16px; }
+.badge span { background: #08283F; color: #F8F7F2; font-size: 10px; }
+.unavailable { background: #F8F7F2; }
+.unavailable h4 { color: #4A5A68; }
+.selectButton { min-height: 44px; }
+.selectButton:disabled { opacity: 1; color: #687B8E; border-color: #E4E1D6; background: #F2EFE7; cursor: not-allowed; font-size: 12px; }
+@media(max-width:639px) { .intro h3 { font-size: 18px; } }
+
+.flowCard { transition: transform .25s ease,border-color .25s ease,box-shadow .25s ease,background-color .25s ease; }
+.flowCard:not(.unavailable):is(:hover,:focus-within) { transform: translateY(-5px); border-color: #780110; background: #FFFDFA; box-shadow: 0 0 0 2px #78011012,0 14px 30px #08283F12; }
+.flowCard:not(.unavailable):is(:hover,:focus-within) h4 { color: #780110; }
+.flowCard:not(.unavailable):is(:hover,:focus-within) .selectButton { border-color: #780110; }
+.flowCard.selected { border-color: #780110; background: #78011004; box-shadow: 0 0 0 2px #78011014; }
+.unavailable:hover { transform: none; box-shadow: none; border-color: #E4E1D6; }
+@media(prefers-reduced-motion:reduce) { .flowCard { transition: none; } .flowCard:not(.unavailable):is(:hover,:focus-within) { transform: none; } }

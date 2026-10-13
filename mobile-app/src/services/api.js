@@ -1,5 +1,5 @@
 /**
- * Axios instance pre-configured for the Credence Django backend.
+ * Axios instance pre-configured for the Intelligent Academic Credentialing Django backend.
  * Automatically attaches the JWT access token from secure storage.
  */
 import axios from "axios";

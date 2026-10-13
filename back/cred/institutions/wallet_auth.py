@@ -2,7 +2,7 @@
 institutions/wallet_auth.py
 
 SIWE-style (Sign-In With Ethereum) challenge-response authentication.
-Spec §5 — wallet-based auth for Institutional Admin, Registrar, Dean roles.
+Spec §5 — wallet-based auth for Institutional Admin, Registrar, Chancellor roles.
 
 Flow:
   1. POST /api/auth/wallet/challenge/  → returns a nonce-embedded message to sign
@@ -72,7 +72,7 @@ class WalletChallengeView(APIView):
         timestamp = timezone.now().isoformat()
 
         message = (
-            f"Sign in to CREDENCE\n"
+            f"Sign in to INTELLIGENT ACADEMIC CREDENTIALING\n"
             f"address: {address}\n"
             f"nonce: {nonce}\n"
             f"timestamp: {timestamp}\n\n"

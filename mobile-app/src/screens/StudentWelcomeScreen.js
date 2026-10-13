@@ -1,3 +1,4 @@
+import AnimatedButton from "../components/AnimatedButton";
 /**
  * StudentWelcomeScreen
  *
@@ -17,7 +18,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -27,7 +27,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 import * as Google from "expo-auth-session/providers/google";
 import { makeRedirectUri } from "expo-auth-session";
@@ -132,7 +131,7 @@ export default function StudentWelcomeScreen({ navigation, onLoginSuccess, initi
       if (!err?.response) {
         // Network error — wrong API address, server not running, etc.
         setError(
-          "Cannot reach the server. Make sure the Credence backend is running and try again."
+          "Cannot reach the server. Make sure the Intelligent Academic Credentialing backend is running and try again."
         );
       } else if (detail.toLowerCase().includes("expired")) {
         setError(
@@ -153,147 +152,103 @@ export default function StudentWelcomeScreen({ navigation, onLoginSuccess, initi
   const busy = claiming || gBusy;
 
   return (
-    <SafeAreaView style={s.safe} edges={["top", "left", "right", "bottom"]}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={{ flex: 1 }}
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      style={{ flex: 1, backgroundColor: T.cream }}
+    >
+      <ScrollView
+        contentContainerStyle={s.scroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView
-          contentContainerStyle={s.scroll}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* ── Brand ── */}
-          <View style={s.brand}>
-            <View style={s.logoWrap}>
-              <Image
-                source={require("../../assets/logo.png")}
-                style={s.logo}
-                resizeMode="contain"
-              />
-            </View>
-            <Text style={s.brandName}>Credence</Text>
-            <Text style={s.brandSub}>Access your certificate</Text>
+        {/* ── Error / success ── */}
+        {error ? (
+          <View style={s.errorBox}>
+            <Text style={s.errorText}>{error}</Text>
           </View>
-
-          {/* ── Error / success ── */}
-          {error ? (
-            <View style={s.errorBox}>
-              <Text style={s.errorText}>{error}</Text>
-            </View>
-          ) : null}
-          {claimedMsg ? (
-            <View style={s.successBox}>
-              <Text style={s.successText}>{claimedMsg}</Text>
-            </View>
-          ) : null}
-
-          {/* ── Path 1: Google (returning students) ── */}
-          <View style={s.card}>
-            <Text style={s.cardLabel}>Returning student</Text>
-            <Text style={s.cardSub}>
-              Already claimed your certificate? Sign in with Google to open your portal.
-            </Text>
-            <TouchableOpacity
-              style={[s.googleBtn, (busy || !request) && s.disabled]}
-              onPress={handleGooglePress}
-              disabled={busy || !request}
-              activeOpacity={0.85}
-            >
-              {gBusy
-                ? <ActivityIndicator color={T.navy} size="small" />
-                : (
-                  <View style={s.googleBtnInner}>
-                    <Text style={s.gIcon}>G</Text>
-                    <Text style={s.googleBtnText}>Continue with Google</Text>
-                  </View>
-                )
-              }
-            </TouchableOpacity>
+        ) : null}
+        {claimedMsg ? (
+          <View style={s.successBox}>
+            <Text style={s.successText}>{claimedMsg}</Text>
           </View>
+        ) : null}
 
-          {/* ── Divider ── */}
-          <View style={s.divider}>
-            <View style={s.dividerLine} />
-            <Text style={s.dividerText}>or</Text>
-            <View style={s.dividerLine} />
-          </View>
-
-          {/* ── Path 2: Invite token (first-time students) ── */}
-          <View style={s.card}>
-            <Text style={s.cardLabel}>First time? Use your invite link</Text>
-            <Text style={s.cardSub}>
-              Your WhatsApp message contains a link ending with{"\n"}
-              <Text style={s.example}>…student-invite?token=HSt-CquA-2AF…</Text>
-              {"\n\n"}Paste the full link, or just the token after{" "}
-              <Text style={s.example}>token=</Text>
-            </Text>
-
-            <TextInput
-              style={[s.tokenInput, claiming && s.disabled]}
-              placeholder="Paste invite link or token here"
-              placeholderTextColor={T.faint}
-              value={token}
-              onChangeText={setToken}
-              autoCapitalize="none"
-              autoCorrect={false}
-              multiline
-              numberOfLines={2}
-              editable={!claiming}
-            />
-
-            <TouchableOpacity
-              style={[s.btnGold, claiming && s.disabled]}
-              onPress={handleClaimToken}
-              disabled={claiming}
-              activeOpacity={0.85}
-            >
-              {claiming
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={s.btnGoldText}>Claim my certificate →</Text>
-              }
-            </TouchableOpacity>
-          </View>
-
-          {/* ── Staff link ── */}
+        {/* ── Path 1: Google (returning students) ── */}
+        <View style={s.card}>
+          <Text style={s.cardLabel}>Returning student</Text>
+          <Text style={s.cardSub}>
+            Already claimed your certificate? Sign in with Google to open your portal.
+          </Text>
           <TouchableOpacity
-            style={s.staffRow}
-            onPress={() => navigation.navigate("Login")}
+            style={[s.googleBtn, (busy || !request) && s.disabled]}
+            onPress={handleGooglePress}
+            disabled={busy || !request}
+            activeOpacity={0.85}
           >
-            <Text style={s.staffText}>Institution staff sign in →</Text>
+            {gBusy
+              ? <ActivityIndicator color={T.navy} size="small" />
+              : (
+                <View style={s.googleBtnInner}>
+                  <Text style={s.gIcon}>G</Text>
+                  <Text style={s.googleBtnText}>Continue with Google</Text>
+                </View>
+              )
+            }
           </TouchableOpacity>
+        </View>
 
-          {/* ── Verify without signing in ── */}
+        {/* ── Divider ── */}
+        <View style={s.divider}>
+          <View style={s.dividerLine} />
+          <Text style={s.dividerText}>or</Text>
+          <View style={s.dividerLine} />
+        </View>
+
+        {/* ── Path 2: Invite token (first-time students) ── */}
+        <View style={s.card}>
+          <Text style={s.cardLabel}>First time? Use your invite link</Text>
+          <Text style={s.cardSub}>
+            Your WhatsApp message contains a link ending with{"\n"}
+            <Text style={s.example}>…student-invite?token=HSt-CquA-2AF…</Text>
+            {"\n\n"}Paste the full link, or just the token after{" "}
+            <Text style={s.example}>token=</Text>
+          </Text>
+
+          <TextInput
+            style={[s.tokenInput, claiming && s.disabled]}
+            placeholder="Paste invite link or token here"
+            placeholderTextColor={T.faint}
+            value={token}
+            onChangeText={setToken}
+            autoCapitalize="none"
+            autoCorrect={false}
+            multiline
+            numberOfLines={2}
+            editable={!claiming}
+          />
+
           <TouchableOpacity
-            style={s.verifyRow}
-            onPress={() => navigation.navigate("Verify")}
+            style={[s.btnGold, claiming && s.disabled]}
+            onPress={handleClaimToken}
+            disabled={claiming}
+            activeOpacity={0.85}
           >
-            <Text style={s.verifyText}>Verify a certificate (no login needed)</Text>
+            {claiming
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <Text style={s.btnGoldText}>Claim my certificate →</Text>
+            }
           </TouchableOpacity>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        </View>
+
+        {/* ── Verify without signing in ── */}
+        <AnimatedButton label="Verify a certificate (no login needed)" onPress={() => navigation.navigate("Verify")} />
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const s = StyleSheet.create({
-  safe:   { flex: 1, backgroundColor: T.cream },
-  scroll: { paddingHorizontal: 22, paddingBottom: 48 },
-
-  // Brand
-  brand: { alignItems: "center", paddingTop: 44, paddingBottom: 28 },
-  logoWrap: {
-    width: 58,
-    height: 58,
-    borderRadius: 15,
-    backgroundColor: T.navy,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-  },
-  logo:      { width: 36, height: 36 },
-  brandName: { fontSize: 22, fontWeight: "700", color: T.navy, marginBottom: 3 },
-  brandSub:  { fontSize: 14, color: T.muted },
+  scroll: { paddingHorizontal: 22, paddingVertical: 20, paddingBottom: 48 },
 
   // Alerts
   errorBox:   { backgroundColor: T.redBg,   borderRadius: 10, padding: 13, marginBottom: 14 },
@@ -364,9 +319,7 @@ const s = StyleSheet.create({
 
   disabled: { opacity: 0.55 },
 
-  // Bottom links
-  staffRow:  { alignItems: "center", paddingTop: 22, paddingBottom: 6 },
-  staffText: { color: T.muted, fontSize: 13, fontWeight: "500" },
-  verifyRow: { alignItems: "center", paddingTop: 4 },
+  // Bottom link
+  verifyRow: { alignItems: "center", paddingTop: 22 },
   verifyText:{ color: T.faint, fontSize: 12 },
 });

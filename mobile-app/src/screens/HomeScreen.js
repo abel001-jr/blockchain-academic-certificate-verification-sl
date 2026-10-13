@@ -1,3 +1,4 @@
+import AnimatedButton from "../components/AnimatedButton";
 /**
  * HomeScreen — editorial landing page matching the web aesthetic.
  *
@@ -36,7 +37,7 @@ const T = {
 };
 
 const LIFECYCLE = [
-  { n: "01", title: "Institution issues",  body: "Your university creates and approves your certificate on Credence." },
+  { n: "01", title: "Institution issues",  body: "Your university creates and approves your certificate on Intelligent Academic Credentialing." },
   { n: "02", title: "Anchored on-chain",   body: "The certificate hash is written to Ethereum — permanent and tamper-proof." },
   { n: "03", title: "You receive it",      body: "A link arrives via WhatsApp. Sign in with Google to access your certificate." },
   { n: "04", title: "Share with anyone",   body: "Give employers a QR code or share link — they verify in seconds, no login needed." },
@@ -63,7 +64,7 @@ export default function HomeScreen({ navigation }) {
               style={s.navLogo}
               resizeMode="contain"
             />
-            <Text style={s.navName}>Credence</Text>
+            <Text style={s.navName} numberOfLines={2}>Intelligent Academic Credentialing</Text>
           </View>
           <TouchableOpacity
             onPress={() => navigation.navigate("StudentWelcome")}
@@ -86,13 +87,7 @@ export default function HomeScreen({ navigation }) {
           </Text>
           <View style={s.heroCtas}>
             {/* Primary — verifiers (largest audience, no login) */}
-            <TouchableOpacity
-              style={s.btnPrimary}
-              onPress={() => navigation.navigate("Verify")}
-              activeOpacity={0.85}
-            >
-              <Text style={s.btnPrimaryText}>Verify a certificate</Text>
-            </TouchableOpacity>
+            <AnimatedButton label="Verify a certificate" onPress={() => navigation.navigate("Verify")} />
 
             {/* Secondary — students accessing their portal */}
             <TouchableOpacity
@@ -101,14 +96,6 @@ export default function HomeScreen({ navigation }) {
               activeOpacity={0.85}
             >
               <Text style={s.btnNavyText}>Access my certificates</Text>
-            </TouchableOpacity>
-
-            {/* Tertiary — staff only, de-emphasised */}
-            <TouchableOpacity
-              onPress={() => navigation.navigate("Login")}
-              activeOpacity={0.7}
-            >
-              <Text style={s.staffLink}>Institution staff sign in →</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -153,7 +140,7 @@ export default function HomeScreen({ navigation }) {
             Verify in seconds,{"\n"}not days
           </Text>
           <Text style={s.darkSub}>
-            Scan the QR on any Credence certificate or enter the ID.
+            Scan the QR on any Intelligent Academic Credentialing certificate or enter the ID.
             Three independent checks — institution, document, and chain record.
           </Text>
           <View style={s.darkChecks}>
@@ -182,7 +169,7 @@ export default function HomeScreen({ navigation }) {
           <Text style={s.footerText}>
             Built for Sierra Leone · Powered by Ethereum &amp; IPFS
           </Text>
-          <Text style={s.footerText}>© 2026 Credence</Text>
+          <Text style={s.footerText}>© 2026 Intelligent Academic Credentialing</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -206,7 +193,7 @@ const s = StyleSheet.create({
   },
   navBrand:     { flexDirection: "row", alignItems: "center", gap: 8 },
   navLogo:      { width: 26, height: 26, borderRadius: 6 },
-  navName:      { fontSize: 17, fontWeight: "700", color: T.navy, letterSpacing: 0.2 },
+  navName:      { fontSize: 14, fontWeight: "700", color: T.navy, letterSpacing: 0.2, flexShrink: 1, lineHeight: 17 },
   navSignIn:    { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8, borderWidth: 1, borderColor: T.navy },
   navSignInText:{ fontSize: 13, fontWeight: "600", color: T.navy },
 
@@ -254,13 +241,6 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
   btnNavyText: { color: "#fff", fontWeight: "600", fontSize: 15 },
-  staffLink: {
-    color: T.faint,
-    fontSize: 13,
-    fontWeight: "500",
-    textAlign: "center",
-    paddingTop: 4,
-  },
 
   // ── Trust strip ──
   trustStrip: {

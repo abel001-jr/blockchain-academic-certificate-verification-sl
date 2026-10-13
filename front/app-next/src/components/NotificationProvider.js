@@ -1,135 +1,73 @@
 "use client";
-import { createContext, useContext, useState, useEffect } from 'react';
-import { Bell, X, Check } from 'lucide-react';
-import { 
-  requestNotificationPermission, 
-  canShowNotifications,
-  saveNotificationPreference,
-  getNotificationPreference 
-} from '@/lib/notifications';
+import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { usePathname } from "next/navigation";
+import { api, jwtPayload } from "@/lib/api";
+import { enablePush, disablePush, syncPush } from "@/lib/pushNotifications";
+import { saveNotificationPreference } from "@/lib/notifications";
 
 const NotificationContext = createContext({});
-
-export function useNotifications() {
-  return useContext(NotificationContext);
-}
+export function useNotifications() { return useContext(NotificationContext); }
 
 export default function NotificationProvider({ children }) {
-  const [permissionStatus, setPermissionStatus] = useState('loading');
-  const [showBanner, setShowBanner] = useState(false);
-  const [requesting, setRequesting] = useState(false);
-
-  useEffect(() => {
-    // Check permission status on mount
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      const status = Notification.permission;
-      setPermissionStatus(status);
-      
-      // Show banner if permission is 'default' (not yet requested)
-      // and user hasn't previously dismissed it
-      if (status === 'default') {
-        const dismissed = localStorage.getItem('notification_banner_dismissed');
-        if (!dismissed) {
-          // Delay banner show by 2 seconds for better UX
-          setTimeout(() => setShowBanner(true), 2000);
-        }
-      }
-    } else {
-      setPermissionStatus('unsupported');
-    }
-  }, []);
-
-  const requestPermission = async () => {
-    setRequesting(true);
+  const pathname = usePathname();
+  const [inbox, setInbox] = useState({ results: [], unread_count: 0, next_offset: null });
+  const [preferences, setPreferences] = useState(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [permission, setPermission] = useState("default");
+  const refresh = useCallback(async () => {
+    if (!jwtPayload() || !window.location.pathname.startsWith("/dashboard")) return;
+    const session = localStorage.getItem("access_token");
     try {
-      const permission = await requestNotificationPermission();
-      setPermissionStatus(permission);
-      
-      if (permission === 'granted') {
-        saveNotificationPreference(true);
-        setShowBanner(false);
-      } else if (permission === 'denied') {
-        saveNotificationPreference(false);
-        setShowBanner(false);
-      }
-    } catch (error) {
-      console.error('Error requesting notification permission:', error);
-    } finally {
-      setRequesting(false);
+      const data = await api.get("/notifications/");
+      if (localStorage.getItem("access_token") === session) { setInbox(data); setError(""); }
+    } catch (e) { if (localStorage.getItem("access_token") === session) setError(e?.detail || "Could not load notifications."); }
+  }, []);
+  useEffect(() => {
+    let active = true;
+    const reset = () => { active = false; setInbox({ results: [], unread_count: 0, next_offset: null }); setPreferences(null); };
+    const check = async () => { if (document.visibilityState === "visible") await refresh(); };
+    window.addEventListener("credence:session-ended", reset);
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    if (pathname?.startsWith("/dashboard") && jwtPayload()) {
+      Promise.resolve().then(refresh);
+      api.get("/notifications/preferences/").then(async data => {
+        if (!active) return;
+        setPreferences(data); setPermission("Notification" in window ? Notification.permission : "unsupported");
+        saveNotificationPreference(data.push_enabled);
+        if (data.push_enabled && data.push_configured) await syncPush(data.public_key);
+      }).catch(() => { if (active) setError("Could not load notification preferences."); });
     }
-  };
-
-  const dismissBanner = () => {
-    setShowBanner(false);
-    localStorage.setItem('notification_banner_dismissed', 'true');
-  };
-
-  const value = {
-    permissionStatus,
-    canNotify: canShowNotifications(),
-    requestPermission,
-  };
-
-  return (
-    <NotificationContext.Provider value={value}>
-      {children}
-      
-      {/* Notification Permission Banner */}
-      {showBanner && permissionStatus === 'default' && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 animate-slide-up">
-          <div className="bg-gradient-to-r from-[#08283F] to-[#0D3C5C] border-t-2 border-[#B98A28] shadow-2xl">
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4">
-              <div className="flex items-start gap-4">
-                {/* Icon */}
-                <div className="flex-shrink-0 mt-0.5">
-                  <div className="w-10 h-10 rounded-full bg-[#B98A28]/20 flex items-center justify-center">
-                    <Bell size={20} className="text-[#B98A28]" />
-                  </div>
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-white font-bold text-base mb-1">
-                    Stay Updated with Credence
-                  </h3>
-                  <p className="text-white/80 text-sm leading-relaxed">
-                    Enable notifications to receive instant updates about certificate approvals, 
-                    on-chain transactions, and important system events. You can change this anytime in settings.
-                  </p>
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    onClick={requestPermission}
-                    disabled={requesting}
-                    className="inline-flex items-center gap-2 bg-[#B98A28] hover:bg-[#C59A3A] text-white font-semibold px-4 py-2 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {requesting ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Requesting...
-                      </>
-                    ) : (
-                      <>
-                        <Check size={16} />
-                        Enable
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={dismissBanner}
-                    className="p-2 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors"
-                    title="Dismiss"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </NotificationContext.Provider>
-  );
+    const timer = setInterval(check, 30000);
+    return () => { active = false; clearInterval(timer); window.removeEventListener("credence:session-ended", reset); document.removeEventListener("visibilitychange", check); window.removeEventListener("focus", check); };
+  }, [pathname, refresh]);
+  async function setPush(enabled) {
+    setBusy(true); setError("");
+    try {
+      if (enabled) await enablePush(preferences?.public_key); else await disablePush();
+      const data = await api.patch("/notifications/preferences/", { push_enabled: enabled });
+      setPreferences(data); saveNotificationPreference(enabled);
+      setPermission("Notification" in window ? Notification.permission : "unsupported");
+    } catch (e) { setError(e?.detail || e?.message || "Could not update push notifications."); }
+    finally { setBusy(false); }
+  }
+  async function markRead(id) {
+    try { await api.patch("/notifications/", id ? { id } : { all: true }); await refresh(); }
+    catch (e) { setError(e?.detail || "Could not mark notifications as read."); }
+  }
+  async function loadMore() {
+    if (inbox.next_offset === null) return;
+    try {
+      const next = await api.get(`/notifications/?offset=${inbox.next_offset}`);
+      setInbox(previous => ({ ...next, results: [...previous.results, ...next.results.filter(row => !previous.results.some(old => old.id === row.id))] }));
+    } catch { setError("Could not load more notifications."); }
+  }
+  async function sendTest() {
+    setBusy(true); setError("");
+    try { await api.post("/notifications/test/"); await refresh(); }
+    catch (e) { setError(e?.detail || "Could not send a test notification."); }
+    finally { setBusy(false); }
+  }
+  return <NotificationContext.Provider value={{ ...inbox, preferences, permission, busy, error, refresh, markRead, loadMore, setPush, sendTest }}>{children}</NotificationContext.Provider>;
 }

@@ -6,6 +6,16 @@ import { deployFixture } from "./helpers/fixtures.js";
 const { ethers } = await network.create();
 
 describe("IssuerRegistry", function () {
+  it("requires three separate signer roles and excludes institution admin wallets", async function () {
+    const {issuerRegistry, owner, instAdmin, registrar, vc} = await deployFixture(ethers);
+    await issuerRegistry.connect(owner).registerIssuer(await instAdmin.getAddress(), "SEPARATE", "Separate University");
+    await issuerRegistry.connect(instAdmin).authorizeRegistrar(await registrar.getAddress());
+    await expect(issuerRegistry.connect(instAdmin).authorizeVC(await registrar.getAddress())).to.be.revertedWith("IssuerRegistry: signer already has another role");
+    await issuerRegistry.connect(instAdmin).authorizeVC(await vc.getAddress());
+    await expect(issuerRegistry.connect(instAdmin).authorizeChancellor(await vc.getAddress())).to.be.revertedWith("IssuerRegistry: signer already has another role");
+    await expect(issuerRegistry.connect(instAdmin).authorizeVC(await instAdmin.getAddress())).to.be.revertedWith("IssuerRegistry: institution admin is not a signer");
+    await expect(issuerRegistry.connect(instAdmin).authorizeChancellor(await instAdmin.getAddress())).to.be.revertedWith("IssuerRegistry: institution admin is not a signer");
+  });
   describe("Deployment", function () {
     it("sets the deployer as owner", async function () {
       const { issuerRegistry, owner } = await deployFixture(ethers);

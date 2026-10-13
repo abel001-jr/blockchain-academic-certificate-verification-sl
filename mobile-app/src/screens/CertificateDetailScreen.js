@@ -1,3 +1,4 @@
+import AnimatedButton from "../components/AnimatedButton";
 /**
  * CertificateDetailScreen — full certificate detail.
  *
@@ -5,8 +6,16 @@
  *   • Navy hero card with degree title + anchor badge
  *   • Live verification result banner (re-runs /api/verify on mount)
  *   • Metadata table (student, institution, grade, year…)
- *   • Blockchain record section (tx hash, IPFS CIDs as tappable links)
- *   • Action buttons: View PDF, open verification link
+ *   • Blockchain record section (tx hash)
+ *   • Action buttons: download my documents, open verification link
+ *
+ * On documents: this screen used to render `ipfs_cid_pdf` / `ipfs_cid_json`
+ * from the public verify payload and link straight to a Pinata gateway URL.
+ * That stopped being true in REMAINING_WORK item 1, which removed document
+ * locations from public verification — the rows rendered an em dash and the
+ * "View PDF" button never appeared. The documents are now fetched from the
+ * owner-scoped endpoint instead, which needs the signed-in student's JWT and
+ * therefore cannot be a plain `Linking.openURL`.
  */
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -21,7 +30,9 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { verifyCertificate } from "../services/certificates";
+import { File, Paths } from "expo-file-system";
+import * as Sharing from "expo-sharing";
+import { downloadMyDocuments, verifyCertificate } from "../services/certificates";
 
 const T = {
   navy:       "#08283F",
@@ -64,19 +75,11 @@ function Section({ title, children }) {
   );
 }
 
-function MetaRow({ label, value, mono, link }) {
-  const textStyle = [s.metaValue, mono && s.mono];
+function MetaRow({ label, value, mono }) {
   return (
     <View style={s.metaRow}>
       <Text style={s.metaLabel}>{label}</Text>
-      {link && value && value !== "—"
-        ? (
-          <TouchableOpacity onPress={() => Linking.openURL(link)}>
-            <Text style={[...textStyle, s.link]}>{value}</Text>
-          </TouchableOpacity>
-        )
-        : <Text style={textStyle}>{value || "—"}</Text>
-      }
+      <Text style={[s.metaValue, mono && s.mono]}>{value || "—"}</Text>
     </View>
   );
 }
@@ -152,6 +155,8 @@ export default function CertificateDetailScreen({ route }) {
   const [verifyResult, setVerifyResult] = useState(null);
   const [verifyLoading, setVerifyLoading] = useState(true);
   const [refreshing,    setRefreshing]    = useState(false);
+  const [downloading,   setDownloading]   = useState(false);
+  const [downloadError, setDownloadError] = useState("");
 
   const runVerify = useCallback(async () => {
     if (!cert.certificate_id) return;
@@ -169,12 +174,50 @@ export default function CertificateDetailScreen({ route }) {
 
   useEffect(() => { runVerify(); }, [runVerify]);
 
+  /**
+   * Fetch the certificate + transcript pair and hand it to the system share
+   * sheet, which is how a graduate actually keeps a copy — "Save to Files",
+   * AirDrop, mail it to themselves. The archive is written to the cache
+   * directory rather than the document directory because it is a transient
+   * copy of a credential the app can always re-fetch; leaving decrypted
+   * documents in a permanent location would outlive the session for no reason.
+   */
+  const handleDownload = useCallback(async () => {
+    if (!cert.certificate_id || downloading) return;
+    setDownloading(true);
+    setDownloadError("");
+    try {
+      const bytes = await downloadMyDocuments(cert.certificate_id);
+      const file = new File(Paths.cache, `${cert.certificate_id}-documents.zip`);
+      file.write(new Uint8Array(bytes));
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(file.uri, {
+          mimeType: "application/zip",
+          dialogTitle: "Your certificate and transcript",
+          UTI: "public.zip-archive",
+        });
+      } else {
+        // Web and any host without a share sheet. A cache URI is not reachable
+        // by a browser, so say where the file is rather than silently doing
+        // nothing on a tap.
+        setDownloadError(`Saved to ${file.uri}`);
+      }
+    } catch (err) {
+      const detail =
+        err?.response?.data?.detail ??
+        err?.message ??
+        "Could not download your documents.";
+      setDownloadError(detail);
+    } finally {
+      setDownloading(false);
+    }
+  }, [cert.certificate_id, downloading]);
+
   const live       = verifyResult?.certificate ?? {};
   const txHash     = live.tx_hash      || cert.tx_hash      || "";
   const issuedAt   = live.chain_issued_at || cert.chain_issued_at || "";
-  const pinataBase = "https://gateway.pinata.cloud/ipfs/";
-  const pdfUrl     = live.ipfs_url_pdf ||
-    (live.ipfs_cid_pdf ? `${pinataBase}${live.ipfs_cid_pdf}` : null);
+  const hasTranscript = Boolean(live.has_transcript ?? cert.has_transcript);
 
   return (
     <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
@@ -223,6 +266,10 @@ export default function CertificateDetailScreen({ route }) {
           <MetaRow label="Year"        value={String(live.graduation_year || cert.graduation_year || "—")} />
           <MetaRow label="Grade"       value={live.grade           || cert.grade || "—"} />
           <MetaRow label="Issued by"   value={live.issued_by       || cert.issued_by_name || "—"} />
+          <MetaRow
+            label="Transcript"
+            value={hasTranscript ? "Included with this award" : "Not attached"}
+          />
         </Section>
 
         {/* ── Certificate identity ── */}
@@ -233,7 +280,10 @@ export default function CertificateDetailScreen({ route }) {
             : null}
         </Section>
 
-        {/* ── Blockchain record ── */}
+        {/* ── Blockchain record ──
+            No document CIDs: public verification no longer exposes document
+            locations, and a CID shown here would be a location with no access
+            control attached to it. */}
         <Section title="Blockchain Record">
           <MetaRow
             label="Transaction"
@@ -241,36 +291,19 @@ export default function CertificateDetailScreen({ route }) {
             mono
           />
           <MetaRow label="Anchored" value={fmtDate(issuedAt)} />
-          {live.ipfs_cid_json
-            ? (
-              <MetaRow
-                label="IPFS Metadata"
-                value={shortHash(live.ipfs_cid_json)}
-                mono
-                link={`${pinataBase}${live.ipfs_cid_json}`}
-              />
-            ) : null}
-          {live.ipfs_cid_pdf
-            ? (
-              <MetaRow
-                label="IPFS PDF"
-                value={shortHash(live.ipfs_cid_pdf)}
-                mono
-                link={pdfUrl}
-              />
-            ) : null}
         </Section>
 
         {/* ── Actions ── */}
-        {pdfUrl
+        {cert.certificate_id
           ? (
-            <TouchableOpacity
-              style={s.actionBtn}
-              onPress={() => Linking.openURL(pdfUrl)}
-              activeOpacity={0.85}
-            >
-              <Text style={s.actionBtnText}>📄  View PDF Certificate</Text>
-            </TouchableOpacity>
+            <AnimatedButton variant="download" label={downloading ? "Preparing your documents�" : "Download Certificate & Transcript"} onPress={handleDownload} busy={downloading} />
+          ) : null}
+
+        {downloadError
+          ? (
+            <View style={s.notice}>
+              <Text style={s.noticeText}>{downloadError}</Text>
+            </View>
           ) : null}
 
         {live.certificate_id
@@ -390,5 +423,18 @@ const s = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: T.navy,
   },
+  actionBtnBusy:   { opacity: 0.6 },
   actionBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+
+  // Inline notice (e.g. where a downloaded file landed)
+  notice: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: T.amberLight,
+    borderWidth: 1,
+    borderColor: T.amberBdr,
+  },
+  noticeText: { fontSize: 12, color: T.muted, lineHeight: 17 },
 });

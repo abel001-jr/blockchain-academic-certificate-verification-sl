@@ -1,0 +1,20 @@
+.button { position: relative; display: inline-flex; align-items: center; min-height: 44px; padding: 0 46px 0 0; border: 1px solid #08283f; border-radius: 8px; background: #08283f; color: #f8f7f2; overflow: hidden; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; line-height: 1.4; transition: background .3s,transform .15s; }
+.text { padding: 12px 16px; transition: opacity .25s,transform .3s; }
+.panel { position: absolute; right: 0; top: 0; bottom: 0; width: 44px; background: #f8f7f212; display: grid; place-items: center; transition: width .35s,background .3s; }
+.bin { position: relative; width: 25px; height: 29px; }
+.lid { position: absolute; left: 1px; top: 3px; width: 23px; height: 6px; transform-origin: 100% 70%; transition: transform .25s .32s; z-index: 3; }
+.bottom { position: absolute; left: 4px; top: 11px; width: 17px; height: 19px; z-index: 2; }
+.paper { position: absolute; width: 9px; height: 10px; top: 12px; left: 8px; background: #f8f7f2; opacity: 0; border-radius: 1px; }
+.button:not(:disabled):is(:hover,:focus-visible) { background: #780110; border-color: #780110; }
+.button:not(:disabled):is(:hover,:focus-visible) .text { opacity: 0; transform: translateX(-12px); }
+.button:not(:disabled):is(:hover,:focus-visible) .panel { width: 100%; background: #780110; }
+.button:not(:disabled):is(:hover,:focus-visible) .lid { transform: translateY(-3px) rotate(42deg); }
+.button:not(:disabled):is(:hover,:focus-visible) .paper { animation: discard 1.5s .58s infinite; }
+.button:focus-visible { outline: 2px solid #780110; outline-offset: 4px; }
+.button:disabled { opacity: .55; cursor: not-allowed; }
+.button:not(:disabled):active { transform: scale(.97); }
+@keyframes discard { 0% { transform: translate(-50px,-55px) rotate(-35deg); opacity: 0; } 12% { opacity: 1; } 42% { transform: translate(0,-7px) rotate(15deg); opacity: 1; } 58%,100% { transform: translate(0,8px); opacity: 0; } }
+@media(prefers-reduced-motion:reduce) { .button,.text,.panel,.lid { transition: none; } .button:not(:disabled):is(:hover,:focus-visible) .paper { animation: none; } .button:not(:disabled):is(:hover,:focus-visible) .text { opacity: 1; transform: none; } .button:not(:disabled):is(:hover,:focus-visible) .panel { width: 44px; } .button:not(:disabled):active { transform: none; } }
+
+.button.iconOnly { width: 44px; height: 44px; padding: 0; flex-shrink: 0; }
+.button.iconOnly .panel { width: 100%; }

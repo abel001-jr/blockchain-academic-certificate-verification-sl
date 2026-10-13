@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import LandingCard from "./ui/LandingCard";
+import { ShieldCheck, BadgeCheck } from "lucide-react";
 import VerifyInline from "@/components/VerifyInline";
 import { parseCertificateIdFromScan } from "@/lib/parseCertificateScan";
 import { useCaptcha } from "@/hooks/useCaptcha";
@@ -28,7 +30,7 @@ const OUTCOME_LABELS = {
 function ResultPanel({ result, loading }) {
   if (loading) {
     return (
-      <div className="bg-[#F8F7F2] text-[#1B2734] rounded-md p-8">
+      <div className="bg-[#F8F7F2] text-[#1B2734] rounded-md min-w-0 p-0">
         <p className="text-[#4A5A68] text-sm">Checking certificate record…</p>
       </div>
     );
@@ -40,8 +42,8 @@ function ResultPanel({ result, loading }) {
   const isValid = data.verification_outcome === "valid" && data.found;
 
   return (
-    <div className="bg-[#F8F7F2] text-[#1B2734] rounded-md p-8">
-      <div className={`flex items-center gap-2.5 ${outcome.color} font-semibold text-[1.05rem] pb-[18px] border-b border-[#E4E1D6] mb-5`}>
+    <div className="bg-[#F8F7F2] text-[#1B2734] rounded-md min-w-0 p-0">
+      <div className={`flex items-center gap-2.5 ${outcome.color} font-semibold text-[1.05rem] pb-3 border-b border-[#E4E1D6] mb-2`}>
         {isValid && (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
             <path d="M20 6 9 17l-5-5" />
@@ -52,24 +54,24 @@ function ResultPanel({ result, loading }) {
 
       {data.found && cert ? (
         <>
-          <div className="flex justify-between py-2 text-[0.92rem] border-b border-dashed border-[#E4E1D6]">
+          <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-4 py-2 text-[0.92rem] border-b border-dashed border-[#E4E1D6]">
             <span className="text-[#4A5A68]">Credential</span>
-            <span className="font-semibold text-right">{cert.degree_title}</span>
+            <span className="min-w-0 font-semibold break-words [overflow-wrap:anywhere] sm:text-right">{cert.degree_title}</span>
           </div>
-          <div className="flex justify-between py-2 text-[0.92rem] border-b border-dashed border-[#E4E1D6]">
+          <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-4 py-2 text-[0.92rem] border-b border-dashed border-[#E4E1D6]">
             <span className="text-[#4A5A68]">Recipient</span>
-            <span className="font-semibold text-right">{cert.student_name}</span>
+            <span className="min-w-0 font-semibold break-words [overflow-wrap:anywhere] sm:text-right">{cert.student_name}</span>
           </div>
-          <div className="flex justify-between py-2 text-[0.92rem] border-b border-dashed border-[#E4E1D6]">
+          <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-4 py-2 text-[0.92rem] border-b border-dashed border-[#E4E1D6]">
             <span className="text-[#4A5A68]">Institution</span>
-            <span className="font-semibold text-right">{cert.institution_name}</span>
+            <span className="min-w-0 font-semibold break-words [overflow-wrap:anywhere] sm:text-right">{cert.institution_name}</span>
           </div>
-          <div className="flex justify-between py-2 text-[0.92rem]">
+          <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-4 py-2 text-[0.92rem]">
             <span className="text-[#4A5A68]">Issued</span>
-            <span className="font-semibold text-right">{cert.chain_issued_at ?? cert.graduation_year ?? "—"}</span>
+            <span className="min-w-0 font-semibold break-words [overflow-wrap:anywhere] sm:text-right">{cert.chain_issued_at ?? cert.graduation_year ?? "—"}</span>
           </div>
           {isValid && (
-            <div className="mt-5 pt-4 border-t border-[#E4E1D6] flex flex-col gap-2.5">
+            <div className="mt-3 pt-3 border-t border-[#E4E1D6] flex flex-col gap-1.5">
               {["Institution confirmed", "Document integrity valid", "Blockchain record verified"].map((item) => (
                 <div key={item} className="flex items-center gap-2 text-[0.88rem] text-[#2F6F4E] font-medium">
                   ✓ {item}
@@ -119,28 +121,32 @@ export default function VerifySection() {
   }, []);
 
   return (
-    <section className="scroll-anchor bg-[#08283F] text-[#F8F7F2] py-[100px]" id="verify">
+    <section className="scroll-anchor bg-[#08283F] text-[#F8F7F2] py-14 sm:py-20 lg:py-[100px]" id="verify">
       <div className="landing-wrap">
-        <div className="max-w-[560px] mb-14">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] gap-6 sm:gap-8 xl:gap-14 items-start">
+          <div className="min-w-0">
+        <div className="max-w-[560px] mb-6 sm:mb-8">
           <h2 className="font-serif text-[2.1rem] font-medium leading-[1.22]">What a verification actually returns</h2>
-          <p className="mt-3.5 text-[#B9C6D2] text-[1.02rem] max-w-[52ch]">
+          <p className="mt-3.5 text-[#F8F7F2]/80 text-[1.02rem] max-w-[52ch]">
             Three checks, each confirmed independently — the document, the institution, and the chain record.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[0.95fr_1.05fr] gap-14 items-center">
-          <div>
+          <LandingCard variant="luminous" borderless icon={ShieldCheck} title="Verify a credential">
             <VerifyInline
               variant="dark"
               defaultValue=""
               onVerify={verify}
               className="!mt-0"
             />
-            <p className="mt-[18px] text-[#B9C6D2] text-[0.92rem] max-w-[38ch]">
+            <p className="mt-[18px] text-[#F8F7F2]/80 text-[0.92rem] max-w-[38ch]">
               Scan the QR with this page, or open the public verify link encoded on the certificate — no account required.
             </p>
+          </LandingCard>
           </div>
-          <ResultPanel result={result} loading={loading} />
+          <LandingCard compact className="!h-auto" icon={BadgeCheck} title={result || loading ? "Verification result" : "Example verification result"} footer={!result && !loading ? "Illustrative preview. Enter a credential ID to check a real record." : undefined} href="#verify" cta="Check another credential">
+            <div role="status" aria-live="polite" aria-atomic="true"><ResultPanel result={result} loading={loading} /></div>
+          </LandingCard>
         </div>
       </div>
 

@@ -12,8 +12,16 @@ pytesseract==0.3.13
 requests==2.32.3
 cryptography==50.0.1
 eth-account==0.13.4
+# Required by `manage.py sync_chain_events`, the only consumer. Pinned to 7.0.0
+# deliberately: web3 >=7.13 requires eth-account>=0.13.6, which conflicts with the
+# eth-account pin above, and eth-account is load-bearing here (institutions/
+# wallet_auth.py recovers a signer address for every wallet login). web3 6.x is
+# not an option either — it requires eth-account<0.13. So 7.0.0 is the newest web3
+# whose declared constraint the existing eth-account pin actually satisfies.
+web3==7.0.0
 reportlab==4.4.0
 qrcode==8.2
+pywebpush==2.5.0
 
 # Uncomment when switching to PostgreSQL:
 # psycopg2-binary==2.9.10

@@ -1,5 +1,5 @@
 /**
- * CREDENCE wallet / chain actions
+ * INTELLIGENT ACADEMIC CREDENTIALING wallet / chain actions
  *
  * Matrix (what needs MetaMask):
  *
@@ -8,13 +8,13 @@
  * | Officer form / set password                 | Off-chain       | No               |
  * | Officer setup: connect + prove wallet       | Signature       | Yes (free sign)  |
  * | Session login (wallet roles)                | Signature       | Yes (free sign)  |
- * | Registrar authorize VC / Dean               | On-chain tx     | Yes (gas)        |
- * | Registrar revoke VC / Dean                  | On-chain tx     | Yes (gas)        |
+ * | Registrar authorize VC / Chancellor               | On-chain tx     | Yes (gas)        |
+ * | Registrar revoke VC / Chancellor                  | On-chain tx     | Yes (gas)        |
  * | Prepare cert (dataHash) / branding preview  | Off-chain       | No               |
  * | Submit for approval (dataHash)              | On-chain tx     | Yes (gas)        |
  * | Submit uploaded doc (+ transcript) hashes   | On-chain tx     | Yes (gas)        |
- * | VC / Dean review (preview)                  | Off-chain       | No               |
- * | VC approve / Dean approve                   | On-chain tx     | Yes (gas)        |
+ * | VC / Chancellor review (preview)                  | Off-chain       | No               |
+ * | VC approve / Chancellor approve                   | On-chain tx     | Yes (gas)        |
  * | Finalize PDF + IPFS                         | Off-chain       | No               |
  * | Finalize certificate on-chain               | On-chain tx     | Yes (gas)        |
  * | Employer verify                             | Public read     | Never            |
@@ -40,6 +40,12 @@
  * instead. Its document is generated, so a review rendering is committed before
  * approval and the issued rendering — which adds the signature block — is
  * committed after. Only hashes cross the chain in either case.
+ *
+ * A system-designed credential that carries a transcript is still two documents,
+ * so it is sealed rather than submitted plainly, but it goes through
+ * submitCredentialForSealedReview so the transcript hash is committed in the
+ * same transaction. submitForSealedReview writes bytes32(0) to transcriptDocHash,
+ * which on-chain is indistinguishable from having no transcript.
  *
  * Prefer submitUploadedCredentialForApprovalOnChain / finalizeUploadedCredentialOnChain
  * in the upload flows: they pick the right function from the hashes on record.
@@ -117,6 +123,20 @@ const CERT_ABI = [
       { name: "reviewDocHash", type: "bytes32" },
     ],
     name: "submitForSealedReview",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    // Sealed review for a credential that is two documents: the rendered review
+    // copy and the transcript committed with it in one transaction.
+    inputs: [
+      { name: "certificateId", type: "string" },
+      { name: "dataHash", type: "bytes32" },
+      { name: "reviewDocHash", type: "bytes32" },
+      { name: "transcriptDocHash", type: "bytes32" },
+    ],
+    name: "submitCredentialForSealedReview",
     outputs: [],
     stateMutability: "nonpayable",
     type: "function",
@@ -211,7 +231,15 @@ const CERT_ABI = [
   },
 ];
 
-function requireEthereum() {
+import { api } from "./api";
+
+const walletProviders = new WeakMap();
+
+export function isWalletCancellation(error) {
+  return [error, error?.cause, error?.error, error?.info?.error, error?.data?.originalError].some(item => item?.code === 4001 || item?.code === "4001" || item?.code === "ACTION_REJECTED");
+}
+
+export function requireEthereum() {
   if (typeof window === "undefined" || !window.ethereum) {
     throw new Error("MetaMask is not installed.");
   }
@@ -224,7 +252,21 @@ function requireEthereum() {
     : [window.ethereum];
   const metaMask = providers.find(provider => provider?.isMetaMask);
   if (!metaMask) throw new Error("MetaMask provider not detected. Enable the MetaMask extension and reload.");
-  return metaMask;
+  if (!walletProviders.has(metaMask)) {
+    const request = async (...args) => {
+      try { return await metaMask.request(...args); }
+      catch (error) {
+        if (isWalletCancellation(error)) window.dispatchEvent(new CustomEvent("credence:wallet-cancelled"));
+        throw error;
+      }
+    };
+    walletProviders.set(metaMask, new Proxy(metaMask, { get(target, key) {
+      if (key === "request") return request;
+      const value = Reflect.get(target, key, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    } }));
+  }
+  return walletProviders.get(metaMask);
 }
 
 /** 
@@ -254,18 +296,41 @@ export async function signMessage(message, address) {
   return { address: addr, signature };
 }
 
-async function getSignerContract(registryAddress, abi) {
+async function getSignerContract(registryAddress, abi, registrarOnly = false, certificateId = null) {
   const ethereum = requireEthereum();
+  const config = await api.get(certificateId ? `/certificate-chain-config/?certificate_id=${encodeURIComponent(certificateId)}` : "/chain-config/");
+  registryAddress = abi === CERT_ABI ? config.certificate_registry_address : config.issuer_registry_address;
   if (!registryAddress) throw new Error("Registry contract address is not configured.");
   const { ethers } = await import("ethers");
 
   // Request the account directly from MetaMask so issuance and approvals always
   // use the wallet's current authenticated account, even with other extensions installed.
-  const accounts = await ethereum.request({ method: "eth_requestAccounts" });
+  let accounts = await ethereum.request({ method: "eth_requestAccounts" });
   if (!accounts?.[0]) throw new Error("No MetaMask account selected.");
+  if (registrarOnly) {
+    const user = await api.get("/auth/me/");
+    const expected = user.wallet_address;
+    if (!expected) throw new Error("Your Registrar account has no bound wallet. Contact the system admin to configure it.");
+    if (accounts[0].toLowerCase() !== expected.toLowerCase()) {
+      await ethereum.request({ method: "wallet_requestPermissions", params: [{ eth_accounts: {} }] });
+      accounts = await ethereum.request({ method: "eth_accounts" });
+      if (accounts?.[0]?.toLowerCase() !== expected.toLowerCase()) {
+        throw new Error(`Select your Registrar wallet ${expected} in MetaMask. The connected wallet ${accounts?.[0] || "(none)"} does not match your profile.`);
+      }
+    }
+  }
 
   const provider = new ethers.BrowserProvider(ethereum);
+  const network = await provider.getNetwork();
+  if (config.chain_id && network.chainId !== BigInt(config.chain_id)) throw new Error(`Switch your wallet to chain ${config.chain_id} before signing.`);
   const signer = await provider.getSigner(accounts[0]);
+  if (registrarOnly) {
+    const registry = new ethers.Contract(config.issuer_registry_address, ISSUER_ABI, provider);
+    const address = await signer.getAddress();
+    const [authorized, admin] = await Promise.all([registry.isAuthorizedRegistrar(address), registry.isActiveIssuer(address)]);
+    if (admin) throw new Error(`Wallet ${address} is registered as an institution admin. Contact the system admin to bind a separate Registrar wallet.`);
+    if (!authorized) throw new Error(`Registrar wallet ${address} is not authorized on chain ${config.chain_id}. The institution admin must authorize this wallet in Officers before you can sign.`);
+  }
 
   // Guard: verify the contract exists at the given address before sending gas.
   // After a Hardhat node restart the chain is empty — contracts need redeploying.
@@ -330,7 +395,9 @@ export async function authorizeOfficerOnChain(officer, expectedSignerAddress) {
   }
 
   const tx =
-    officer.role === "vc"
+    officer.role === "registrar"
+      ? await contract.authorizeRegistrar(officer.wallet_address)
+      : officer.role === "vc"
       ? await contract.authorizeVC(officer.wallet_address)
       : await contract.authorizeChancellor(officer.wallet_address);
   return waitTx(tx);
@@ -359,7 +426,9 @@ export async function revokeOfficerOnChain(officer, expectedSignerAddress) {
   }
 
   const tx =
-    officer.role === "vc"
+    officer.role === "registrar"
+      ? await contract.revokeRegistrar(officer.wallet_address)
+      : officer.role === "vc"
       ? await contract.revokeVC(officer.wallet_address)
       : await contract.revokeChancellor(officer.wallet_address);
   return waitTx(tx);
@@ -367,10 +436,10 @@ export async function revokeOfficerOnChain(officer, expectedSignerAddress) {
 
 /**
  * On-chain: Registrar submits structured dataHash for dual approval (gas).
- * Submit the certificate data hash before VC and Dean approvals.
+ * Submit the certificate data hash before VC and Chancellor approvals.
  */
 export async function submitForApprovalOnChain(certData) {
-  const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI);
+  const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI, true, certData.certificate_id);
   const dataHashBytes = ethers.hexlify(certData.cert_hash);
   const tx = await contract.submitForApproval(
     certData.certificate_id,
@@ -381,7 +450,7 @@ export async function submitForApprovalOnChain(certData) {
 
 /** Submit the fixed certificate/transcript hash pair for officer review. */
 export async function submitCredentialForApprovalOnChain(credentialData) {
-  const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI);
+  const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI, true, credentialData.certificate_id);
   const tx = await contract.submitCredentialForApproval(
     credentialData.certificate_id,
     ethers.hexlify(credentialData.cert_hash),
@@ -400,7 +469,7 @@ export async function submitCredentialForApprovalOnChain(credentialData) {
  * final anchoring transaction.
  */
 export async function submitDocumentForApprovalOnChain(certData) {
-  const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI);
+  const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI, true, certData.certificate_id);
   const tx = await contract.submitDocumentForApproval(
     certData.certificate_id,
     ethers.hexlify(certData.cert_hash),
@@ -450,7 +519,7 @@ export async function submitCertificateOnChain(certData) {
  * the backend so a graduate's sharing window can actually revoke access.
  */
 export async function finalizeCertificateOnChain(certData) {
-  const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI);
+  const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI, true, certData.certificate_id);
   const docHashBytes = ethers.hexlify(certData.doc_hash);
   const tx = await contract.finalizeCertificate(
     certData.certificate_id,
@@ -461,7 +530,7 @@ export async function finalizeCertificateOnChain(certData) {
 
 /** Complete issuance after both approvals; document hashes stay unchanged. */
 export async function finalizeCredentialOnChain(certificateId) {
-  const { contract } = await getSignerContract(certAddress(), CERT_ABI);
+  const { contract } = await getSignerContract(certAddress(), CERT_ABI, true, certificateId);
   const tx = await contract.finalizeCredential(certificateId);
   return waitTx(tx);
 }
@@ -490,13 +559,30 @@ export async function finalizeUploadedCredentialOnChain(credentialData) {
  * the approvals are in. The review rendering carries no signature block, so
  * hashing it here is stable.
  */
+/**
+ * Anchor a generated credential for dual approval.
+ *
+ * Picks the paired overload when the record carries a transcript, so the
+ * transcript hash is committed in the same transaction as the review copy. The
+ * three-argument path cannot carry it, and committing only the review copy would
+ * leave the chain record claiming no transcript exists while one is sitting in
+ * Django — the officers would be approving a half of the student record.
+ */
 export async function submitForSealedReviewOnChain(certData) {
-  const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI);
-  const tx = await contract.submitForSealedReview(
-    certData.certificate_id,
-    ethers.hexlify(certData.cert_hash),
-    ethers.hexlify(certData.doc_hash),
-  );
+  const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI, true, certData.certificate_id);
+  const transcriptHash = certData.transcript_hash;
+  const tx = transcriptHash
+    ? await contract.submitCredentialForSealedReview(
+        certData.certificate_id,
+        ethers.hexlify(certData.cert_hash),
+        ethers.hexlify(certData.doc_hash),
+        ethers.hexlify(transcriptHash),
+      )
+    : await contract.submitForSealedReview(
+        certData.certificate_id,
+        ethers.hexlify(certData.cert_hash),
+        ethers.hexlify(certData.doc_hash),
+      );
   return waitTx(tx);
 }
 
@@ -506,7 +592,7 @@ export async function submitForSealedReviewOnChain(certData) {
  * distinguishable and the relationship between them remains auditable.
  */
 export async function finalizeWithSealedDocumentOnChain(certData) {
-  const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI);
+  const { ethers, contract } = await getSignerContract(certAddress(), CERT_ABI, true, certData.certificate_id);
   const tx = await contract.finalizeWithSealedDocument(
     certData.certificate_id,
     ethers.hexlify(certData.sealed_doc_hash),
@@ -517,7 +603,8 @@ export async function finalizeWithSealedDocumentOnChain(certData) {
 
 /** On-chain: VC or Chancellor approval (gas). Reviewing stays off-chain. */
 export async function approveCertificateOnChain(certificateId, asRole) {
-  const { contract } = await getSignerContract(certAddress(), CERT_ABI);
+  if (!["vc", "chancellor"].includes(asRole)) throw new Error("Only Vice-Chancellor or Chancellor may approve this step.");
+  const { contract } = await getSignerContract(certAddress(), CERT_ABI, false, certificateId);
   const tx =
     asRole === "vc"
       ? await contract.approveAsVC(certificateId)
@@ -527,7 +614,7 @@ export async function approveCertificateOnChain(certificateId, asRole) {
 
 /** On-chain: revoke an Issued certificate (gas). */
 export async function revokeCertificateOnChain(certificateId, reason) {
-  const { contract } = await getSignerContract(certAddress(), CERT_ABI);
+  const { contract } = await getSignerContract(certAddress(), CERT_ABI, false, certificateId);
   const tx = await contract.revokeCertificate(certificateId, reason || "");
   return waitTx(tx);
 }

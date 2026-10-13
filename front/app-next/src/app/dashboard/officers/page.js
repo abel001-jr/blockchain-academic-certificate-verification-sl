@@ -1,9 +1,10 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
+import OfficerDetailPanel from "@/components/dashboard/OfficerDetailPanel";
+import FloatingDetailDialog from "@/components/dashboard/FloatingDetailDialog";
 import { Loader2, Plus, Wallet, CheckCircle2, Clock, X, Eye, Ban, AlertTriangle, Pencil } from "lucide-react";
 import { api } from "@/lib/api";
-import { useAuth, isInstitutionHead } from "@/lib/useAuth";
+import { useAuth, isInstitutionSetupAdmin, ROLES } from "@/lib/useAuth";
 import { authorizeOfficerOnChain, revokeOfficerOnChain } from "@/lib/walletActions";
 import { stashOfficerTempPassword } from "@/lib/officerTempPassword";
 import { notifyOfficerAuthorized } from "@/lib/notifications";
@@ -28,6 +29,7 @@ export default function OfficersPage() {
   const [txBusy,   setTxBusy]   = useState(null);
   const [form, setForm] = useState({ first_name: "", last_name: "", email: "", role: "vc" });
   const [editingOfficer, setEditingOfficer] = useState(null);
+  const [viewOfficerId, setViewOfficerId] = useState(null);
 
   // The institution's on-chain admin wallet — MetaMask must be on this account
   const [instWallet,    setInstWallet]    = useState("");
@@ -36,11 +38,12 @@ export default function OfficersPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [vcs, chans] = await Promise.all([
+      const [vcs, chans, regs] = await Promise.all([
         api.get("/users/?role=vc"),
         api.get("/users/?role=chancellor"),
+        api.get("/users/?role=registrar"),
       ]);
-      setOfficers([...(vcs.results ?? vcs), ...(chans.results ?? chans)]);
+      setOfficers([...(vcs.results ?? vcs), ...(chans.results ?? chans), ...(regs.results ?? regs)]);
     } catch { setError("Failed to load officers."); }
     finally  { setLoading(false); }
   }, []);
@@ -65,8 +68,11 @@ export default function OfficersPage() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (isInstitutionHead(role)) { load(); refreshWallet(); }
-    else setLoading(false);
+    const timer = setTimeout(() => {
+      if (isInstitutionSetupAdmin(role)) { void load(); void refreshWallet(); }
+      else setLoading(false);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [authLoading, role, load, refreshWallet]);
 
   async function handleCreate(e) {
@@ -85,7 +91,7 @@ export default function OfficersPage() {
         setEditingOfficer(null);
       } else {
         // Check officer limit before creating new officer
-        if (officers.filter(officer => officer.is_active).length >= 2) {
+        if (["vc", "chancellor"].includes(form.role) && officers.filter(officer => officer.is_active && officer.role !== "registrar").length >= 2) {
           setError("Maximum of 2 active officers allowed per institution. Deactivate an existing officer to add a new one.");
           setSaving(false);
           return;
@@ -151,7 +157,10 @@ export default function OfficersPage() {
       setSuccess(`Authorized on-chain. Tx: ${hash}`);
       
       // Send notification
-      notifyOfficerAuthorized(officer.first_name, officer.last_name, officer.role);
+      notifyOfficerAuthorized(
+        `${officer.first_name || ''} ${officer.last_name || ''}`.trim(),
+        officer.role,
+      );
       
       load();
     } catch (e) { setError(e?.reason || e?.shortMessage || e?.message || JSON.stringify(e)); }
@@ -171,26 +180,28 @@ export default function OfficersPage() {
   }
 
   if (authLoading || loading) return <div className="flex justify-center py-16"><Loader2 size={26} className="text-[#08283F] animate-spin" /></div>;
-  if (!isInstitutionHead(role)) return <p className="text-[#A23B34] text-sm">Registrar access only.</p>;
+  if (!isInstitutionSetupAdmin(role)) return <p className="text-[#A23B34] text-sm">Institution administrator access required.</p>;
 
   return (
     <div className="flex flex-col gap-5 w-full">
+      {viewOfficerId && <FloatingDetailDialog title="Officer details" onClose={() => { setViewOfficerId(null); void load(); }}><OfficerDetailPanel id={viewOfficerId} onClose={() => { setViewOfficerId(null); void load(); }} /></FloatingDetailDialog>}
 
       {/* Header */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-[#08283F] font-bold text-2xl">Officers</h2>
           <p className="text-[#4A5A68] text-sm mt-0.5">
-            VC and Dean accounts. Temporary password shown once after creation.
+            Choose Registrar, Vice-Chancellor or Chancellor when adding an officer. Each officer links their own wallet during setup.
           </p>
+          <p className="mt-2 text-sm font-semibold text-[#08283F]">3 credential signers: Registrar, Vice-Chancellor and Chancellor. Institution administrators manage authorization and do not sign.</p>
         </div>
         <button 
           onClick={() => setShowForm(true)}
-          disabled={officers.filter(officer => officer.is_active).length >= 2}
+          disabled={saving}
           className="flex items-center gap-2 bg-[#08283F] text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 self-start disabled:opacity-50 disabled:cursor-not-allowed"
-          title={officers.filter(officer => officer.is_active).length >= 2 ? "Maximum of 2 active officers reached" : "Add a new officer"}
+          title="Add a new officer"
         >
-          <Plus size={15} /> Add Officer
+          <Plus size={15} /> Add officer
         </button>
       </div>
 
@@ -198,13 +209,13 @@ export default function OfficersPage() {
       {success && <div className="bg-[#E7F1EB] text-[#2F6F4E] text-sm px-4 py-3 rounded-lg break-all">{success}</div>}
 
       {/* Officer limit info banner */}
-      {officers.filter(officer => officer.is_active).length >= 2 && (
+      {["vc", "chancellor"].includes(form.role) && officers.filter(officer => officer.is_active && officer.role !== "registrar").length >= 2 && (
         <div className="bg-[#FFF8E7] border border-[#B98A28]/30 rounded-xl px-4 py-3.5 flex items-start gap-2.5">
           <AlertTriangle size={15} className="text-[#B98A28] shrink-0 mt-0.5" />
           <div>
             <p className="text-[#08283F] text-sm font-semibold">Officer Limit Reached</p>
             <p className="text-[#4A5A68] text-xs mt-0.5">
-              Maximum of 2 active officers (VC and Dean) per institution. To add a new officer, first deactivate an existing officer.
+              Maximum of 2 active officers (VC and Chancellor) per institution. To add a new officer, first deactivate an existing officer.
             </p>
           </div>
         </div>
@@ -259,7 +270,7 @@ export default function OfficersPage() {
         <form onSubmit={handleCreate} className="dash-card p-5 flex flex-col gap-3">
           <div className="flex justify-between items-center">
             <h3 className="text-[#08283F] font-semibold text-sm">
-              {editingOfficer ? "Edit Officer" : "Invite Officer"}
+              {editingOfficer ? "Edit Officer" : "Add officer"}
             </h3>
             <button type="button" onClick={cancelEdit} className="text-[#4A5A68] hover:text-[#08283F] p-1">
               <X size={16} />
@@ -277,15 +288,16 @@ export default function OfficersPage() {
               value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
             <select className="cd-input sm:col-span-2" value={form.role}
               onChange={e => setForm({ ...form, role: e.target.value })}>
+              {role === ROLES.INSTITUTIONAL_ADMIN && <option value="registrar">Registrar</option>}
               <option value="vc">Vice Chancellor</option>
-              <option value="chancellor">Dean</option>
+              <option value="chancellor">Chancellor</option>
             </select>
           </div>
           <div className="flex gap-2">
             <button type="submit" disabled={saving} className="cd-btn-primary disabled:opacity-50"
               style={{ background: "#B98A28" }}>
               {saving ? <Loader2 size={14} className="animate-spin" /> : editingOfficer ? <Pencil size={14} /> : <Plus size={14} />}
-              {saving ? (editingOfficer ? "Updating…" : "Creating…") : (editingOfficer ? "Update Officer" : "Create Officer")}
+              {saving ? (editingOfficer ? "Updating…" : "Creating…") : (editingOfficer ? "Update Officer" : "Add officer")}
             </button>
             <button type="button" onClick={cancelEdit} className="cd-btn-secondary">Cancel</button>
           </div>
@@ -295,7 +307,7 @@ export default function OfficersPage() {
       {/* Officer list */}
       <div className="bg-white rounded-xl border border-[#E4E1D6] overflow-hidden w-full">
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#E4E1D6]">
-          <h3 className="text-[#08283F] font-semibold text-sm">VC & Dean Accounts</h3>
+          <h3 className="text-[#08283F] font-semibold text-sm">Officer accounts</h3>
           <span className="text-[#4A5A68] text-xs">{officers.length} officer{officers.length !== 1 ? "s" : ""}</span>
         </div>
         <div className="overflow-x-auto">
@@ -309,7 +321,7 @@ export default function OfficersPage() {
             </thead>
             <tbody className="divide-y divide-[#E4E1D6]">
               {officers.length === 0 && (
-                <tr><td colSpan={5} className="text-center py-10 text-[#4A5A68] text-sm">No VC or Dean accounts yet.</td></tr>
+                <tr><td colSpan={5} className="text-center py-10 text-[#4A5A68] text-sm">No officer accounts yet.</td></tr>
               )}
               {officers.map(o => {
                 const st = statusLabel(o);
@@ -321,7 +333,7 @@ export default function OfficersPage() {
                     </td>
                     <td className="dash-td">
                       <span className="text-xs font-semibold text-[#B98A28] bg-[#B98A28]/10 px-2 py-0.5 rounded-full">
-                        {o.role === "vc" ? "VC" : "Dean"}
+                        {o.role === "registrar" ? "Registrar" : o.role === "vc" ? "VC" : "Chancellor"}
                       </span>
                     </td>
                     <td className="dash-td text-[#4A5A68] text-sm">{o.email}</td>
@@ -336,10 +348,10 @@ export default function OfficersPage() {
                     </td>
                     <td className="dash-td">
                       <div className="flex items-center gap-2 justify-end">
-                        <Link href={`/dashboard/officers/${o.id}`}
+                        <button type="button" onClick={() => setViewOfficerId(o.id)}
                           className="flex items-center gap-1.5 border border-[#E4E1D6] text-[#08283F] px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-[#EAF2FB] transition-colors">
                           <Eye size={13} /> View
-                        </Link>
+                        </button>
                         <button
                           onClick={() => startEdit(o)}
                           className="flex items-center gap-1.5 border border-[#E4E1D6] text-[#08283F] px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-[#EAF2FB] transition-colors"

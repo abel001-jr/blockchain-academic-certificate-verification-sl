@@ -3,7 +3,7 @@
  * A document whose pages flip one by one — ideal for the certificate
  * verify loading state and any document-processing wait.
  * Source: document_page_flip_loader.html (uiverse, MIT licence)
- * Adapted: gradient swapped to Credence navy→gold, text uses ink-soft.
+ * Adapted: gradient swapped to Intelligent Academic Credentialing navy→gold, text uses ink-soft.
  *
  * Props:
  *   label — string shown below (default "Verifying…")

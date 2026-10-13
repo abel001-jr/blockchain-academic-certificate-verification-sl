@@ -1,0 +1,24 @@
+.section { padding: 80px 0; background: #f8f7f2; border-block: 1px solid #e4e1d6; }
+.layout { display: grid; gap: 40px; align-items: start; }
+.intro { min-width: 0; max-width: 760px; }
+.lead { margin-top: 20px; max-width: 70ch; color: #4a5a68; font-size: 1rem; line-height: 1.8; }
+.proof { margin-top: 28px; padding: 22px; border-radius: 18px; background: #08283f; color: #f8f7f2; }
+.proofLabel { display: block; font-size: .72rem; letter-spacing: .07em; }
+.steps { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin: 20px 0 0; padding: 0; list-style: none; }
+.steps li { min-width: 0; border-top: 1px solid #f8f7f244; padding-top: 12px; }
+.steps span { display: block; color: #f8f7f299; font-size: .68rem; margin-bottom: 8px; }
+.steps strong { display: block; font-size: .84rem; }
+.steps small { display: block; font-size: .68rem; color: #f8f7f2bb; margin-top: 4px; }
+.benefits { display: grid; gap: 16px; }
+.benefit { position: relative; overflow: hidden; display: flex; flex-direction: column; padding: 24px; border: 1px solid #e4e1d6; border-radius: 20px; background: #f8f7f2; text-decoration: none; transition: transform .25s, border-color .25s, box-shadow .25s; }
+.benefit::before { content: ''; position: absolute; top: 0; left: 24px; width: 36px; height: 2px; background: #780110; }
+.icon { display: grid; place-items: center; width: 42px; height: 42px; margin-bottom: 18px; border-radius: 12px; color: #780110; background: #78011009; }
+.benefit h3 { color: #08283f; font-size: .95rem; font-weight: 700; line-height: 1.4; }
+.benefit p { margin: 9px 0 18px; color: #4a5a68; font-size: .84rem; line-height: 1.65; }
+.cta { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; font-size: .73rem; font-weight: 600; color: #780110; }
+.benefit:hover { transform: translateY(-3px); border-color: #78011066; box-shadow: 0 10px 24px #08283f0a; }
+.benefit:focus-visible { outline: 2px solid #780110; outline-offset: 4px; }
+@media(min-width:540px) { .benefits { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media(min-width:1024px) { .layout { gap: 48px; } .benefits { grid-template-columns: repeat(3,minmax(0,1fr)); } }
+@media(max-width:539px) { .section { padding: 56px 0; } .proof { padding: 18px; } }
+@media(prefers-reduced-motion:reduce) { .benefit { transition: none; } .benefit:hover { transform: none; } }

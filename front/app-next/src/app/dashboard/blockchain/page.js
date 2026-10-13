@@ -1,4 +1,6 @@
 "use client";
+import NavigationButton from "@/components/ui/NavigationButton";
+
 import { useState, useEffect, useCallback } from "react";
 import { Link2, ShieldCheck, Loader2, Search, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
@@ -61,7 +63,7 @@ export default function BlockchainPage() {
             <p className="text-white/70 text-xs font-semibold uppercase tracking-widest mb-0.5">Network</p>
             <p className="text-white font-bold text-2xl leading-tight">Ethereum</p>
             <p className="text-white/60 text-sm mt-0.5">
-              {process.env.NEXT_PUBLIC_ETH_RPC_URL ?? "Credence Local"}
+              {process.env.NEXT_PUBLIC_ETH_RPC_URL ?? "Local development node"}
             </p>
           </div>
         </div>
@@ -171,20 +173,20 @@ export default function BlockchainPage() {
             Page {page} of {totalPages || 1} · {count} total record{count !== 1 ? "s" : ""}
           </p>
           <div className="flex gap-2.5">
-            <button
+            <NavigationButton direction="back"
               disabled={page <= 1}
               onClick={() => setPage(p => p - 1)}
               className="dash-pagination-btn"
             >
               ← Previous
-            </button>
-            <button
+            </NavigationButton>
+            <NavigationButton
               disabled={page >= totalPages}
               onClick={() => setPage(p => p + 1)}
               className="dash-pagination-btn"
             >
               Next →
-            </button>
+            </NavigationButton>
           </div>
         </div>
       </div>

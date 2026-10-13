@@ -1,5 +1,5 @@
 /**
- * Hardhat Ignition deploy module for CREDENCE.
+ * Hardhat Ignition deploy module for INTELLIGENT ACADEMIC CREDENTIALING.
  *
  * Deploys two contracts in dependency order:
  *   1. IssuerRegistry  — no constructor args

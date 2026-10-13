@@ -5,7 +5,7 @@ import "./IssuerRegistry.sol";
 
 /**
  * @title  CertificateRegistry
- * @notice Dual-approval certificate trust layer for CREDENCE.
+ * @notice Dual-approval certificate trust layer for INTELLIGENT ACADEMIC CREDENTIALING.
  *
  * Privacy invariant: this contract never stores or emits a document
  * location. Only hashes, addresses, roles, and timestamps are public. The
@@ -53,6 +53,21 @@ import "./IssuerRegistry.sol";
  *   4. Registrar finalizeWithSealedDocument(certId,
  *      sealedDocHash)                                    â†’ Issued
  *
+ * Lifecycle (review-then-seal flow, generated certificate with transcript):
+ *   1. Registrar submitCredentialForSealedReview(certId,
+ *      dataHash, reviewDocHash, transcriptDocHash)       â†’ PendingApproval
+ *   2. VC approveAsVC                                    â†’ records VC approval
+ *   3. Chancellor approveAsChancellor                    â†’ PendingFinalize
+ *   4. Registrar finalizeWithSealedDocument(certId,
+ *      sealedDocHash)                                    â†’ Issued
+ *
+ * A system-designed credential is one student record made of two documents, so
+ * it is sealed like any other generated credential but must commit its
+ * transcript hash alongside the review copy. The three-argument
+ * submitForSealedReview cannot do that: it writes bytes32(0) to
+ * transcriptDocHash, which on-chain is indistinguishable from a credential with
+ * no transcript at all.
+ *
  * The issued document of this flow carries the signature block, so it cannot
  * be rendered before the officers sign. The officers therefore approve a
  * signature-free review rendering, which is committed as cert.docHash, and the
@@ -75,7 +90,10 @@ contract CertificateRegistry {
         uint256         submittedAt
     );
 
-    // New paired-document path: records final hashes without publishing CIDs.
+    // Covers both paired paths: submitCredentialForApproval (documents already
+    // final) and submitCredentialForSealedReview (review copy committed before
+    // the issued copy is rendered). In both cases transcriptDocHash is non-zero,
+    // which is what distinguishes a paired credential from a single-document one.
     event CredentialSubmitted(
         string  indexed certificateId,
         address indexed issuer,
@@ -192,8 +210,8 @@ contract CertificateRegistry {
 
     modifier onlyActiveRegistrar() {
         require(
-            issuerRegistry.isActiveIssuer(msg.sender) ||
-            issuerRegistry.isAuthorizedRegistrar(msg.sender),
+            issuerRegistry.isAuthorizedRegistrar(msg.sender) &&
+            !issuerRegistry.isActiveIssuer(msg.sender),
             "CertificateRegistry: caller is not an active registrar/issuer"
         );
         _;
@@ -441,6 +459,74 @@ contract CertificateRegistry {
         _certificateIds.push(certificateId);
         _issuerCertificates[msg.sender].push(certificateId);
         emit CertificateSubmitted(certificateId, msg.sender, instId, dataHash, block.timestamp);
+    }
+
+    /**
+     * @notice Commit a review document and its transcript for approval together.
+     * @dev This is submitForSealedReview for a credential that is two documents
+     *      rather than one. A system-designed certificate is a single student
+     *      record made of the rendered certificate and the transcript uploaded
+     *      with it; the officers approve both, so both hashes have to be fixed
+     *      here or the transcript they were shown would sit off-chain with no
+     *      commitment to it at all.
+     *
+     *      The three-argument overload cannot carry the transcript: it stores
+     *      bytes32(0) for transcriptDocHash, and a zero hash is indistinguishable
+     *      on-chain from "this credential has no transcript". Using it for a
+     *      transcript-bearing credential would produce a chain record that
+     *      looks like the single-document case while a transcript exists off
+     *      chain, which is exactly the state a verifier cannot detect. Requiring
+     *      a non-zero transcript hash here makes the paired path explicit and
+     *      makes the omission fail loudly rather than silently.
+     *
+     *      sealRequired stays true, so issuance still goes through
+     *      finalizeWithSealedDocument with the signature block, and
+     *      approveAsChancellor sends this to PendingFinalize rather than
+     *      auto-issuing.
+     */
+    function submitCredentialForSealedReview(
+        string  calldata certificateId,
+        bytes32          dataHash,
+        bytes32          reviewDocHash,
+        bytes32          transcriptDocHash
+    ) external onlyActiveRegistrar {
+        require(bytes(certificateId).length > 0, "CertificateRegistry: empty certificateId");
+        require(dataHash != bytes32(0), "CertificateRegistry: empty dataHash");
+        require(reviewDocHash != bytes32(0), "CertificateRegistry: empty review document hash");
+        require(transcriptDocHash != bytes32(0), "CertificateRegistry: empty transcript hash");
+        require(
+            _certificates[certificateId].submittedAt == 0,
+            "CertificateRegistry: certificate already submitted"
+        );
+
+        string memory instId = _resolveInstitutionId(msg.sender);
+        _certificates[certificateId] = Certificate({
+            certificateId:         certificateId,
+            certHash:              dataHash,
+            docHash:               reviewDocHash,
+            transcriptDocHash:     transcriptDocHash,
+            sealedDocHash:         bytes32(0),
+            issuer:                msg.sender,
+            institutionId:         instId,
+            status:                CertificateStatus.PendingApproval,
+            sealRequired:          true,
+            finalizeRequired:      false,
+            vcApprover:            address(0),
+            vcApprovedAt:          0,
+            chancellorApprover:    address(0),
+            chancellorApprovedAt:  0,
+            issuedAt:              0,
+            submittedAt:           block.timestamp,
+            revokedAt:             0,
+            revocationReason:      ""
+        });
+
+        _certificateIds.push(certificateId);
+        _issuerCertificates[msg.sender].push(certificateId);
+        emit CredentialSubmitted(
+            certificateId, msg.sender, dataHash, reviewDocHash,
+            transcriptDocHash, block.timestamp
+        );
     }
 
     /**

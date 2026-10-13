@@ -26,9 +26,25 @@ def _cipher() -> AESGCM:
     return AESGCM(bytes.fromhex(key_hex))
 
 
+#: AAD domains. The document kind is part of the associated data, so a blob
+#: sealed under one domain can never be opened as another — that is the point of
+#: listing them rather than interpolating a free-form string.
+#:
+#: `certificate-review` is the signature-less document rendered by `prepare/` and
+#: committed to officers as `doc_hash`. It is deliberately its own domain: it is
+#: a commitment, not a deliverable, and nothing in the product decrypts it. If it
+#: shared the `certificate` domain, an unauthenticated party holding the review
+#: blob could serve it in place of the issued certificate.
+#: `certificate`/`transcript` are the only kinds `fetch_verified_document` opens,
+#: and they are what a student is entitled to download.
+_AAD_DOMAINS = frozenset({"certificate", "transcript", "certificate-review"})
+
+
 def _aad(certificate_id: str, document_kind: str) -> bytes:
-    if document_kind not in {"certificate", "transcript"}:
-        raise DocumentEncryptionError("Unsupported credential document type.")
+    if document_kind not in _AAD_DOMAINS:
+        raise DocumentEncryptionError(
+            f"Unsupported credential document type: {document_kind!r}."
+        )
     return f"credence:v1:{certificate_id}:{document_kind}".encode("utf-8")
 
 
@@ -61,3 +77,32 @@ def is_encrypted_document(payload: bytes) -> bool:
 def document_sha256(pdf_bytes: bytes) -> str:
     """SHA-256 of the original PDF bytes (before encryption)."""
     return "0x" + hashlib.sha256(pdf_bytes).hexdigest()
+
+
+def fetch_verified_document(
+    cid: str, associated_id: str, document_kind: str, expected_hash: str,
+) -> bytes:
+    """Fetch, decrypt and re-verify one credential document.
+
+    Lives here rather than in a view because the re-hash check is the whole
+    point of the function: any route that hands a decrypted document to somebody
+    has to go through it, or a stored blob that no longer matches its anchored
+    hash could still be served. Two routes need it — the share-code download and
+    the graduate's own copy — and a shared helper is what keeps them from
+    drifting apart.
+
+    `expected_hash` is compared case-insensitively because the chain returns
+    lowercase hex while some rows were written before the `0x` prefix was
+    standardised.
+    """
+    from .ipfs import fetch_file_from_ipfs
+
+    encrypted = fetch_file_from_ipfs(cid)
+    if not is_encrypted_document(encrypted):
+        raise DocumentEncryptionError(
+            "This credential contains a legacy document that has not been re-encrypted."
+        )
+    document = decrypt_document(encrypted, associated_id, document_kind)
+    if document_sha256(document).lower() != (expected_hash or "").lower():
+        raise DocumentEncryptionError("Decrypted document does not match its anchored hash.")
+    return document

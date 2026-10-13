@@ -19,7 +19,7 @@ from .serializers import (
     BindWalletSerializer, AnchorOnChainSerializer, AuthorizeRegistrarSerializer,
 )
 from accounts.models import User, Role
-from accounts.permissions import IsSuperAdmin, IsAdminOrAbove, IsInstitutionalAdmin, IsFullSession
+from accounts.permissions import IsSuperAdmin, IsInstitutionSetupAdmin, IsInstitutionalAdmin, IsFullSession
 from audit.utils import log_action
 
 
@@ -58,7 +58,17 @@ class InstitutionListCreateView(generics.ListCreateAPIView):
 class InstitutionDetailView(generics.RetrieveUpdateAPIView):
     queryset           = Institution.objects.all()
     serializer_class   = InstitutionSerializer
-    permission_classes = [IsAdminOrAbove]
+    permission_classes = [IsInstitutionSetupAdmin]
+
+    def get_permissions(self):
+        if self.request.method in ("GET", "HEAD", "OPTIONS"):
+            return [IsFullSession()]
+        return [IsFullSession(), IsInstitutionSetupAdmin()]
+
+    def get_queryset(self):
+        if self.request.user.role == Role.SUPER_ADMIN:
+            return Institution.objects.all()
+        return Institution.objects.filter(pk=self.request.user.institution_id)
 
     def update(self, request, *args, **kwargs):
         """Require and audit a reason for an institution status change."""
@@ -242,6 +252,9 @@ class BindWalletView(APIView):
         if request.user.role != Role.INSTITUTIONAL_ADMIN:
             return Response(status=status.HTTP_403_FORBIDDEN)
 
+        if institution.wallet_address or institution.is_chain_active:
+            return Response({"detail": "Contact the system admin to change an existing institution wallet."}, status=status.HTTP_403_FORBIDDEN)
+
         serializer = BindWalletSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -312,7 +325,7 @@ class InviteRegistrarView(APIView):
     POST /api/institutions/registrars/invite/
     Institutional Admin creates a pending Registrar profile.
     """
-    permission_classes = [IsAdminOrAbove]
+    permission_classes = [IsInstitutionSetupAdmin]
 
     def post(self, request):
         data = request.data
@@ -354,7 +367,7 @@ class AuthorizeRegistrarOnChainView(APIView):
     Institutional Admin records the tx_hash after calling authorizeRegistrar()
     via MetaMask. Activates the registrar in Django.
     """
-    permission_classes = [IsAdminOrAbove]
+    permission_classes = [IsInstitutionSetupAdmin]
 
     def post(self, request):
         serializer = AuthorizeRegistrarSerializer(data=request.data)
@@ -392,7 +405,7 @@ class RevokeRegistrarOnChainView(APIView):
     POST /api/institutions/registrars/<user_id>/revoke/
     Records the on-chain revocation and deactivates in Django.
     """
-    permission_classes = [IsAdminOrAbove]
+    permission_classes = [IsInstitutionSetupAdmin]
 
     def post(self, request, pk):
         registrar = get_object_or_404(

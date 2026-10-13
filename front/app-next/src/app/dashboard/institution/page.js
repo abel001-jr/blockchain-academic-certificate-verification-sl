@@ -11,14 +11,18 @@ export default function InstitutionPage() {
   const [inst,    setInst]    = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
+  const [editing, setEditing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error,   setError]   = useState("");
   const [form,    setForm]    = useState({
-    name: "", short_name: "", website: "", email: "", phone: "", address: "",
+    name: "", short_name: "", website: "", email: "", phone: "", address: "", country: "", logo_url: "",
   });
 
   useEffect(() => {
-    if (!user?.institution) { setLoading(false); return; }
+    if (!user?.institution) {
+      const timer = setTimeout(() => setLoading(false), 0);
+      return () => clearTimeout(timer);
+    }
     api.get(`/institutions/${user.institution}/`)
       .then((data) => {
         setInst(data);
@@ -29,6 +33,8 @@ export default function InstitutionPage() {
           email:      data.email      ?? "",
           phone:      data.phone      ?? "",
           address:    data.address    ?? "",
+          country:    data.country    ?? "",
+          logo_url:   data.logo_url   ?? "",
         });
       })
       .catch(() => setError("Failed to load institution."))
@@ -37,16 +43,18 @@ export default function InstitutionPage() {
 
   async function handleSave(e) {
     e.preventDefault();
+    if (!editing || !canEdit) return;
     setSaving(true);
     setSuccess(false);
     setError("");
     try {
       const updated = await api.patch(`/institutions/${inst.id}/`, form);
       setInst(updated);
+      setEditing(false);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (e) {
-      setError(JSON.stringify(e));
+      setError(e?.detail || Object.entries(e || {}).map(([field, messages]) => `${field.replaceAll("_", " ")}: ${Array.isArray(messages) ? messages.join(" ") : messages}`).join(" ") || "Unable to save changes.");
     } finally {
       setSaving(false);
     }
@@ -116,6 +124,7 @@ export default function InstitutionPage() {
       {canEdit && (
         <div className="bg-white rounded-[14px] shadow-card border border-[#c4c6cf]/10 p-6">
           <h3 className="text-[#022448] font-semibold text-sm mb-5">Update Institution Profile</h3>
+          <p className="mb-5 text-sm text-[#43474e]">Update your institution&apos;s profile below. Institution ID, wallet and blockchain registration are read-only here.</p>
 
           {error   && <div className="bg-[#ffdad6] text-[#93000a] text-xs px-4 py-2 rounded-lg mb-4">{error}</div>}
           {success && (
@@ -131,11 +140,18 @@ export default function InstitutionPage() {
               ["website",    "Website",          false],
               ["email",      "Email",            false],
               ["phone",      "Phone",            false],
+              ["country",    "Country",          false],
+              ["logo_url",   "Logo URL",         true],
               ["address",    "Address",          true],
             ].map(([field, label, full]) => (
               <div key={field} className={full ? "sm:col-span-2" : ""}>
-                <label className="text-[#022448] text-xs font-semibold uppercase tracking-widest block mb-1.5">{label}</label>
+                <label htmlFor={`institution-${field}`} className="text-[#022448] text-xs font-semibold uppercase tracking-widest block mb-1.5">{label}</label>
                 <input
+                  id={`institution-${field}`}
+                  type={field === "email" ? "email" : ["website", "logo_url"].includes(field) ? "url" : field === "phone" ? "tel" : "text"}
+                  required={field === "name" || field === "country"}
+                  disabled={saving || !editing}
+                  maxLength={{name: 255, short_name: 20, website: 200, email: 254, phone: 30, country: 100, logo_url: 200}[field]}
                   value={form[field]}
                   onChange={(e) => setForm({ ...form, [field]: e.target.value })}
                   className="w-full bg-[#eef4ff] border border-transparent focus:border-[#022448] rounded-[10px] px-4 py-3 text-sm text-[#121c28] outline-none transition-all"
@@ -144,6 +160,7 @@ export default function InstitutionPage() {
               </div>
             ))}
             <div className="sm:col-span-2">
+              {!editing ? <button type="button" onClick={() => { setEditing(true); setSuccess(false); setError(""); }} className="cd-btn-secondary">Edit institution profile</button> : <div className="flex items-center gap-3">
               <button
                 type="submit"
                 disabled={saving}
@@ -152,6 +169,8 @@ export default function InstitutionPage() {
                 {saving ? <Loader2 size={15} className="animate-spin" /> : null}
                 {saving ? "Saving…" : "Save Changes"}
               </button>
+              <button type="button" disabled={saving} className="cd-btn-secondary" onClick={() => { setForm(Object.fromEntries(Object.keys(form).map(key => [key, inst[key] || ""]))); setEditing(false); setError(""); }}>Cancel</button>
+              </div>}
             </div>
           </form>
         </div>

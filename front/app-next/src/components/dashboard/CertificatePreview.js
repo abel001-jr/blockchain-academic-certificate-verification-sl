@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import { getPreset } from "@/lib/certPresets";
+import TemplatePdfPreview from "./TemplatePdfPreview";
 import { awardParts } from "@/lib/qualificationWording";
 import { formatVerifiedDate, shortTxHash } from "@/lib/signatureCanvas";
 
@@ -62,8 +64,14 @@ export default function CertificatePreview({
   logoUrl = "",
   institutionName,
   className = "",
+  onStatusChange,
 }) {
+  const usesTemplate = Boolean(certificate?.template_revision && certificate?.id);
+  useEffect(() => { if (!usesTemplate) onStatusChange?.("ready"); }, [usesTemplate, onStatusChange]);
   const theme = getPreset(presetId || certificate?.branding_preset || "classic_navy");
+  if (certificate?.template_revision && certificate?.id) {
+    return <TemplatePdfPreview key={`${certificate.id}-${certificate.doc_hash || "draft"}-${certificate.sealed_doc_hash || "review"}`} certificate={certificate} className={className} onStatusChange={onStatusChange} />;
+  }
   const name = institutionName || certificate?.institution_name || "Institution";
   const student = certificate?.student_name || "—";
   const dept = certificate?.department || "";
@@ -167,7 +175,7 @@ export default function CertificatePreview({
           />
           <SignerBlock
             name={chName}
-            title="Dean"
+            title="Chancellor"
             signedAt={certificate?.chancellor_approved_at}
             signatureUrl={certificate?.chancellor_signature_url}
             txHash={certificate?.chancellor_approval_tx_hash}

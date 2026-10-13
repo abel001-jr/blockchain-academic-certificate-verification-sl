@@ -1,0 +1,28 @@
+.tile { position: relative; display: flex; flex-direction: column; width: 100%; min-width: 0; height: 100%; min-height: 155px; padding: 16px 16px 10px; overflow: hidden; border-radius: 12px; color: #f8f7f2; text-decoration: none; transition: transform .2s, box-shadow .2s; }
+.tile:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgb(8 40 63 / 18%); }
+.tone0,.tone2 { background: var(--cd-primary,#08283f); }
+.tone1,.tone3 { background: var(--cd-paper,#f8f7f2); border: 1px solid var(--cd-line,#e4e1d6); color: #08283f; }
+.arrow { position: absolute; right: 16px; top: 20px; color: #f8f7f2; }
+.value { display: block; color: #f8f7f2; font-size: 30px; font-weight: 600; line-height: 1.1; margin-right: 24px; }
+.tile h3 { color: #f8f7f2; margin: 8px 24px 0 0; font-size: 17px; font-weight: 500; }
+.tile p { color: rgb(248 247 242 / 85%); font-size: 12px; line-height: 1.5; margin: 8px 0 12px; }
+.chart { margin-top: auto; color: rgb(248 247 242 / 55%); }
+.chart svg { display: block; width: 100%; height: 48px; }
+.chart span { display: block; font-size: 9px; margin-top: 4px; color: rgb(248 247 242 / 75%); }
+.taskIcon { margin-top: auto; align-self: flex-end; color: rgb(248 247 242 / 55%); }
+@media(max-width:639px) { .tile { min-height: 0; padding: 12px 16px; } .tile p { margin-bottom: 0; } .taskIcon { display: none; } .chart svg { height: 32px; } .value { font-size: 24px; } }
+@media(prefers-reduced-motion:reduce) { .tile { transition: none; } .tile:hover { transform: none; } }
+
+.tile:is(.tone1,.tone3) :is(h3,.value) { color: var(--cd-primary,#08283f); }
+.tile:is(.tone1,.tone3) :is(.arrow,.taskIcon,.chart) { color: var(--cd-accent,#780110); }
+.tile:is(.tone1,.tone3) :is(p,.chart span) { color: #4A5A68; }
+.tile:focus-visible { outline: 2px solid var(--cd-accent,#780110); outline-offset: 3px; }
+
+.actionLabel { display: flex; align-items: center; gap: 6px; margin-top: auto;  font-size: 12px; font-weight: 600; color: #f8f7f2; align-self: flex-start; min-height: 38px; padding: 8px 12px; }
+.tile:is(.tone1,.tone3) .actionLabel { color: var(--cd-accent,#780110); }
+
+.tile:is(.tone0,.tone2) .actionLabel { border-color: rgb(248 247 242 / 65%); color: #f8f7f2; }
+.tile:is(.tone1,.tone3) .actionLabel { border-color: var(--cd-primary,#08283f); }
+
+.tile { padding-bottom: 16px; }
+.tile .taskIcon,.tile .chart { margin-bottom: 16px; }

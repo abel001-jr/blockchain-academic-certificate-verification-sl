@@ -1,4 +1,5 @@
 from django.urls import path
+from .analytics_views import InstitutionAnalyticsView
 from .views import (
     InstitutionListCreateView,
     InstitutionDetailView,
@@ -22,9 +23,27 @@ from .catalog_views import (
     GradeClassificationDetailView,
     GradeClassificationReorderView,
 )
-from .branding_views import CertificateBrandingView
+from .branding_views import CertificateBrandingView, InstitutionEmailSettingsView
+from .template_views import TemplateSetupView, TemplateRevisionView, TemplatePageView, TemplateSampleView, CredentialTemplatePreviewView, CredentialPreflightView, TemplateRestartView, TemplateSuggestionsView
+from .chain_config_views import ChainConfigView, CertificateChainConfigView
+from .template_views import TemplateAISuggestionsView, TemplateDisableView, TemplateEnableView, TemplateEditView
 
 urlpatterns = [
+    path("institution-analytics/", InstitutionAnalyticsView.as_view(), name="institution-analytics"),
+    path("certificate-templates/<uuid:pk>/edit/", TemplateEditView.as_view(), name="certificate-template-edit"),
+    path("certificate-templates/enable/", TemplateEnableView.as_view(), name="certificate-template-enable"),
+    path("certificate-templates/disable/", TemplateDisableView.as_view(), name="certificate-template-disable"),
+    path("certificate-templates/<uuid:pk>/ai-suggestions/", TemplateAISuggestionsView.as_view(), name="certificate-template-ai-suggestions"),
+    path("certificate-chain-config/", CertificateChainConfigView.as_view(), name="certificate-chain-config"),
+    path("institution-email-settings/", InstitutionEmailSettingsView.as_view(), name="institution-email-settings"),
+    path("certificate-templates/restart/", TemplateRestartView.as_view(), name="certificate-template-restart"),
+    path("certificates/<uuid:pk>/preflight/", CredentialPreflightView.as_view(), name="credential-preflight"),
+    path("certificate-templates/", TemplateSetupView.as_view(), name="certificate-templates"),
+    path("certificate-templates/<uuid:pk>/", TemplateRevisionView.as_view(), name="certificate-template-revision"),
+    path("certificate-templates/<uuid:pk>/page/", TemplatePageView.as_view(), name="certificate-template-page"),
+    path("certificate-templates/<uuid:pk>/sample/", TemplateSampleView.as_view(), name="certificate-template-sample"),
+    path("certificate-templates/<uuid:pk>/suggestions/", TemplateSuggestionsView.as_view(), name="certificate-template-suggestions"),
+    path("certificates/<uuid:pk>/template-preview/", CredentialTemplatePreviewView.as_view(), name="credential-template-preview"),
     path("institutions/",            InstitutionListCreateView.as_view(), name="institution-list-create"),
     path("institutions/<uuid:pk>/",  InstitutionDetailView.as_view(),     name="institution-detail"),
 
@@ -76,4 +95,8 @@ urlpatterns = [
     # Certificate branding (Settings → Certificate Branding)
     path("certificate-branding/",
          CertificateBrandingView.as_view(),       name="certificate-branding"),
+
+    # Deployment-wide chain coordinates (Settings → Blockchain)
+    path("chain-config/",
+         ChainConfigView.as_view(),               name="chain-config"),
 ]

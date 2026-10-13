@@ -1,49 +1,35 @@
 "use client";
 
+
 import { useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
+import AnimatedBrandMark from "./ui/AnimatedBrandMark";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
+import { publicNavigation, publicNavigationHref } from "@/lib/publicNavigation";
 
-const navLinks = [
-  { label: "How it works",   anchor: "lifecycle"    },
-  { label: "Why blockchain", anchor: "why"          },
-  { label: "Who it's for",   anchor: "stakeholders" },
-  { label: "Verify",         anchor: "verify"       },
-];
+const navLinks = publicNavigation;
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const isHome = pathname === "/";
 
-  function href(anchor) {
-    return isHome ? `#${anchor}` : `/#${anchor}`;
-  }
 
   return (
-    <nav className="cred-nav-wrap">
+    <nav className="cred-nav-wrap" aria-label="Main navigation" onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}>
       <div className="cred-nav">
 
         {/* Brand */}
-        <Link href="/" className="cred-brand" aria-label="Credence home">
-          <span className="cred-brand-mark" aria-hidden="true">
-            <Image
-              src="/fav.png"
-              alt=""
-              width={96}
-              height={96}
-              priority
-            />
-          </span>
-          <span className="cred-brand-name">Credence</span>
+        <Link href="/" onClick={() => setOpen(false)} className="cred-brand" aria-label="Intelligent Academic Credentialing home">
+          <AnimatedBrandMark priority />
+          <span className="cred-brand-name">Intelligent Academic Credentialing</span>
         </Link>
 
         {/* Desktop nav links */}
         <div className="cred-nav-links">
-          {navLinks.map(({ label, anchor }) => (
-            <Link key={anchor} href={href(anchor)} className="cred-nav-link">
+          {navLinks.map(({ label, anchor, destination }) => (
+            <Link key={destination || anchor} href={publicNavigationHref({ anchor, destination }, isHome)} className={`cred-nav-link${destination === pathname ? " active" : ""}`} aria-current={destination === pathname ? "page" : undefined}>
               {label}
             </Link>
           ))}
@@ -52,10 +38,7 @@ export default function Navbar() {
         {/* Desktop CTA buttons */}
         <div className="cred-nav-actions">
           <Link href="/login" className="cred-btn cred-btn-secondary">
-            Institution sign in
-          </Link>
-          <Link href={href("verify")} className="cred-btn cred-btn-primary">
-            Verify a certificate
+            Sign in
           </Link>
         </div>
 
@@ -65,6 +48,8 @@ export default function Navbar() {
           onClick={() => setOpen(!open)}
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
+          aria-controls="public-navigation-menu"
+          type="button"
         >
           {open ? <X size={22} /> : <Menu size={22} />}
         </button>
@@ -72,12 +57,13 @@ export default function Navbar() {
 
       {/* Mobile drawer */}
       {open && (
-        <div className="cred-nav-drawer">
-          {navLinks.map(({ label, anchor }) => (
+        <div id="public-navigation-menu" className="cred-nav-drawer">
+          {navLinks.map(({ label, anchor, destination }) => (
             <Link
-              key={anchor}
-              href={href(anchor)}
+              key={destination || anchor}
+              href={publicNavigationHref({ anchor, destination }, isHome)}
               className="cred-nav-drawer-link"
+              aria-current={destination === pathname ? "page" : undefined}
               onClick={() => setOpen(false)}
             >
               {label}
@@ -85,10 +71,7 @@ export default function Navbar() {
           ))}
           <div className="cred-nav-drawer-actions">
             <Link href="/login"  className="cred-btn cred-btn-secondary w-full text-center" onClick={() => setOpen(false)}>
-              Institution sign in
-            </Link>
-            <Link href={href("verify")} className="cred-btn cred-btn-primary  w-full text-center" onClick={() => setOpen(false)}>
-              Verify a certificate
+              Sign in
             </Link>
           </div>
         </div>

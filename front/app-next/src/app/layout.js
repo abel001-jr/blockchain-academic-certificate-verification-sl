@@ -1,3 +1,4 @@
+import WalletCancellationToast from "@/components/WalletCancellationToast";
 import { Inter, Newsreader } from "next/font/google";
 import "./globals.css";
 import NotificationProvider from "@/components/NotificationProvider";
@@ -19,7 +20,7 @@ const newsreader = Newsreader({
 });
 
 export const metadata = {
-  title: "Credence — Academic Credential Verification",
+  title: "Intelligent Academic Credentialing — Academic Credential Verification",
   description:
     "Verify academic certificates independently — blockchain-anchored credentials from Central University Sierra Leone.",
   icons: {
@@ -38,6 +39,7 @@ export default function RootLayout({ children }) {
     >
       <body className="min-h-full flex flex-col">
         <ExtensionErrorHandler />
+        <WalletCancellationToast />
         <NotificationProvider>
           {children}
         </NotificationProvider>

@@ -2,7 +2,7 @@ const steps = [
   {
     number: "01",
     title: "Registrar Signs In",
-    body: "The registrar authenticates into the CREDENCE dashboard. Institutional admins manage access and roles.",
+    body: "The registrar authenticates into the INTELLIGENT ACADEMIC CREDENTIALING dashboard. Institutional admins manage access and roles.",
     active: true,
   },
   {

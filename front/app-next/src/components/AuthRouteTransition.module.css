@@ -1,0 +1,11 @@
+.surface { position: relative; isolation: isolate; }
+.sweepOne, .sweepTwo { pointer-events: none; position: absolute; top: 0; bottom: 0; width: 150%; background: var(--color-navy); opacity: 0; z-index: 20; }
+.sweepOne { left: 0; transform-origin: 0 100%; transform: rotate(-45deg); }
+.sweepTwo { right: 0; transform-origin: 100% 100%; }
+.leaving { overflow: hidden; }
+.leaving .sweepOne { animation: cover .75s ease-in-out forwards; }
+.entering { overflow: hidden; }
+.entering .sweepTwo { animation: reveal .75s ease-in-out both; }
+@keyframes cover { from { opacity: 1; transform: rotate(-90deg); } to { opacity: 1; transform: rotate(0); } }
+@keyframes reveal { from { opacity: 1; transform: rotate(0); } to { opacity: 0; transform: rotate(45deg); } }
+@media (prefers-reduced-motion: reduce) { .sweepOne, .sweepTwo { display: none; } }

@@ -1,0 +1,5 @@
+.anchor { position: relative; display: flex; min-width: 0; width: 100%; height: 100%; }
+.anchor > :first-child { flex: 1; min-width: 0; width: 100%; }
+.tooltip { position: fixed; z-index: 100; width: 260px; max-width: calc(100vw - 24px); padding: 12px 14px; background: #08283f; color: #f8f7f2; border: 1px solid #f8f7f244; border-radius: 10px; box-shadow: 0 8px 24px #08283f26; pointer-events: none; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.tooltip strong { display: block; margin-bottom: 4px; font-size: 13px; }
+.tooltip span { display: block; color: #f8f7f2cc; }

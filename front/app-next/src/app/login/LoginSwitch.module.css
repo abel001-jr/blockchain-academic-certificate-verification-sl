@@ -1,0 +1,60 @@
+.page { min-height: 100svh; }
+.sidebar { width: 340px; padding: 28px 30px; background-image: url('/auth/waves-navy.svg'); background-repeat: no-repeat; background-size: 160% 100%; background-position: 60% 50%; animation: authWaves 20s alternate infinite linear; }
+.workspace { min-width: 0; padding: 20px 24px; background-color: var(--color-paper); background-image: url('/auth/waves-cream.svg'); background-repeat: no-repeat; background-size: 160% 100%; background-position: 60% 50%; animation: authWaves 20s alternate infinite linear; }
+.card { position: relative; isolation: isolate; width: 100%; height: clamp(380px, calc(100svh - 210px), 500px); overflow: hidden; background: white; border: 1px solid var(--color-paper-line); border-radius: 12px; box-shadow: 0 10px 30px rgb(8 40 63 / 6%); }
+.background { position: absolute; inset: 0 auto 0 0; width: 50%; z-index: 2; background: var(--color-navy); transform: translateX(0); transition: transform .5s ease-in-out; }
+.wallet .background { transform: translateX(100%); }
+.hero, .panel { position: absolute; top: 0; bottom: 0; width: 50%; padding: 28px; display: flex; flex-direction: column; justify-content: center; transition: opacity .5s ease-in-out, transform .5s ease-in-out, visibility .5s; }
+.hero { z-index: 3; align-items: center; text-align: center; gap: 18px; color: var(--color-paper); }
+.hero h2 { font-family: var(--font-newsreader), Georgia, serif; font-size: 28px; font-weight: 500; line-height: 1.15; color: inherit; margin: 0; }
+.hero p { font-size: 14px; line-height: 1.65; color: var(--color-navy-muted); margin: 0; }
+.hero span { font-size: 12px; line-height: 1.5; color: var(--color-navy-muted); }
+.panel { z-index: 1; background: white; gap: 18px; overflow-y: auto; }
+.panel h2 { margin: 0; font-size: 20px; font-weight: 600; line-height: 1.3; color: var(--color-navy); }
+.panel h2::after { content: ""; display: block; width: 24px; height: 2px; margin-top: 8px; background: #8c0f1e; }
+.description { margin: 0; font-size: 13px; line-height: 1.6; color: var(--color-ink-soft); }
+.joinPrompt { margin: 0; padding-top: 12px; border-top: 1px solid var(--color-paper-line); color: var(--color-ink-soft); font-size: 12px; line-height: 1.6; text-align: center; }
+.joinPrompt a { display: inline-block; color: #8c0f1e; font-weight: 600; }
+.joinPrompt a:hover { text-decoration: underline; }
+.joinPrompt a:focus-visible { outline: 2px solid #a31d31; outline-offset: 3px; }
+.application { display: flex; flex-direction: column; }
+.applicationProgress { height: 4px; background: var(--color-paper-line); flex-shrink: 0; overflow: hidden; }
+.applicationProgress span { display: block; height: 100%; background: #8c0f1e; transition: width .6s ease-in-out; }
+.applicationSteps { display: flex; align-items: center; gap: 16px; flex-shrink: 0; padding: 16px 24px; background: var(--color-navy); color: var(--color-paper); }
+.applicationSteps > div { display: flex; align-items: center; gap: 9px; flex: 1; font-size: 12px; color: var(--color-navy-muted); }
+.applicationSteps span { width: 27px; height: 27px; display: grid; place-items: center; flex-shrink: 0; border: 1px solid rgb(248 247 242 / 35%); border-radius: 50%; }
+.applicationSteps [aria-current] { color: var(--color-paper); font-weight: 600; }
+.applicationSteps [aria-current] span { background: var(--color-paper); color: var(--color-navy); }
+.applicationBody { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px; background: #fff; }
+.applicationFields { max-width: 740px; margin: 0 auto; }
+.applicationFields :global(.cd-input) { padding: 9px 12px; font-size: 14px; }
+.applicationFields :global(.cd-label) { font-size: 13px; margin-bottom: 4px; }
+.applicationFields :global(.gap-4) { gap: 12px; }
+.applicationFields :global(.cd-btn-primary), .applicationFields :global(.cd-btn-secondary) { padding: 10px 20px; font-size: 14px; }
+.emailHero { left: 0; }
+.emailPanel { left: 50%; }
+.walletHero { left: 50%; opacity: 0; visibility: hidden; transform: translateX(25%); }
+.walletPanel { left: 0; opacity: 0; visibility: hidden; transform: translateX(50%); }
+.wallet .emailHero { opacity: 0; visibility: hidden; transform: translateX(-25%); }
+.wallet .emailPanel { opacity: 0; visibility: hidden; transform: translateX(-50%); }
+.wallet .walletHero, .wallet .walletPanel { opacity: 1; visibility: visible; transform: translateX(0); }
+.panel :global(.text-\[\#B98A28\]) { color: #8c0f1e; }
+.panel :global(.hidden.sm\:block) { display: none; }
+@media (max-width: 640px) {
+  .workspace { padding: 16px; }
+  .card { height: max(510px, calc(100svh - 240px)); }
+  .background { width: 100%; height: 170px; bottom: auto; }
+  .wallet .background { transform: none; }
+  .hero { left: 0; width: 100%; height: 170px; bottom: auto; padding: 16px 24px; gap: 8px; }
+  .hero h2 { font-size: 26px; } .hero > svg { display: none; }
+  .hero span { display: none; }
+  .hero p { font-size: 12px; }
+  .panel { left: 0; top: 170px; width: 100%; padding: 20px; gap: 12px; }
+  .walletPanel { transform: translateX(20%); }
+  .wallet .emailPanel { transform: translateX(-20%); }
+  .applicationSteps { gap: 8px; padding: 12px; }
+  .applicationSteps > div { font-size: 10px; gap: 5px; }
+  .applicationBody { padding: 16px; }
+}
+@keyframes authWaves { to { background-position: 0% 50%; } }
+@media (prefers-reduced-motion: reduce) { .sidebar, .workspace { animation: none; } .card * { transition: none !important; } }

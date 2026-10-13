@@ -2,7 +2,7 @@
  * IntroLoader
  * Three concentric rings that expand in sequence — fullscreen page/route loading.
  * Source: intro_loader.html (uiverse, MIT licence)
- * Adapted: uses Credence navy neumorphic shadows on the paper background.
+ * Adapted: uses Intelligent Academic Credentialing navy neumorphic shadows on the paper background.
  *
  * Props:
  *   size — outer ring px size (default 90)

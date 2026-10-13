@@ -6,10 +6,10 @@ POST /api/auth/google/
 Accepts a Google ID token from the mobile app (obtained via expo-auth-session)
 or the web frontend.  Verifies the token against Google's tokeninfo endpoint,
 then either:
-  - Finds the matching Credence user by email → issues JWT (login)
+  - Finds the matching Intelligent Academic Credentialing user by email → issues JWT (login)
   - Creates a new student account if none exists → issues JWT (registration)
 
-This is the only way students link their Google identity to Credence.
+This is the only way students link their Google identity to Intelligent Academic Credentialing.
 Officers (VC, Chancellor) use their existing email+password+MetaMask flow;
 this endpoint is intentionally restricted to student / unassigned accounts.
 

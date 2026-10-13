@@ -49,7 +49,7 @@ describe("CertificateRegistry", function () {
       expect(await certRegistry.certificateCount()).to.equal(1n);
     });
 
-    it("active institution admin can submit without a registrar wallet", async function () {
+    it("institution admin cannot sign or submit in place of a registrar", async function () {
       const ctx = await deployFixture(ethers);
       const { certRegistry, issuerRegistry, owner, instAdmin, dataHash } = ctx;
       const instAdminAddr = await instAdmin.getAddress();
@@ -58,10 +58,8 @@ describe("CertificateRegistry", function () {
         .connect(owner)
         .registerIssuer(instAdminAddr, "CUSL-001", "Central University SL");
 
-      await certRegistry.connect(instAdmin).submitForApproval(CERT_ID, dataHash);
-      const cert = await certRegistry.getCertificate(CERT_ID);
-      expect(cert.issuer).to.equal(instAdminAddr);
-      expect(cert.institutionId).to.equal("CUSL-001");
+      await expect(certRegistry.connect(instAdmin).submitForApproval(CERT_ID, dataHash)).to.be.revertedWith("CertificateRegistry: caller is not an active registrar/issuer");
+      await expect(issuerRegistry.connect(instAdmin).authorizeRegistrar(instAdminAddr)).to.be.revertedWith("IssuerRegistry: institution admin is not a signer");
     });
 
     it("reverts when caller is not an authorized registrar or issuer", async function () {
@@ -816,6 +814,298 @@ describe("CertificateRegistry", function () {
       ).to.be.revertedWith(
         "CertificateRegistry: credential was not submitted for sealed review"
       );
+    });
+  });
+
+  describe("review-then-seal path with a transcript", function () {
+    /**
+     * A system-designed credential is one student record made of two documents,
+     * so it is sealed like any generated credential but must commit its
+     * transcript alongside the review copy. These cover the paired overload and,
+     * just as importantly, that the single-document overload still writes a zero
+     * transcript hash — the property that makes picking the wrong function a
+     * silent, undetectable mistake rather than a loud failure.
+     */
+    it("commits the transcript alongside the review copy in one transaction", async function () {
+      const ctx = await deployFixture(ethers);
+      const {
+        certRegistry,
+        owner,
+        instAdmin,
+        registrar,
+        dataHash,
+        docHash,
+        transcriptHash,
+      } = ctx;
+      await fullSetup(
+        ctx.issuerRegistry,
+        owner,
+        instAdmin,
+        registrar,
+        ctx.vc,
+        ctx.chancellor
+      );
+
+      await expect(
+        certRegistry
+          .connect(registrar)
+          .submitCredentialForSealedReview(
+            CERT_ID,
+            dataHash,
+            docHash,
+            transcriptHash
+          )
+      )
+        .to.emit(certRegistry, "CredentialSubmitted")
+        .withArgs(
+          CERT_ID,
+          await registrar.getAddress(),
+          dataHash,
+          docHash,
+          transcriptHash,
+          anyValue
+        );
+
+      const cert = await certRegistry.getCertificate(CERT_ID);
+      expect(cert.status).to.equal(Status.PendingApproval);
+      expect(cert.docHash).to.equal(docHash);
+      expect(cert.transcriptDocHash).to.equal(transcriptHash);
+      // Still the sealed path, so issuance cannot skip the signature block.
+      expect(cert.sealRequired).to.equal(true);
+    });
+
+    it("rejects a paired sealed submission that is missing the transcript hash", async function () {
+      const ctx = await deployFixture(ethers);
+      const {
+        certRegistry,
+        owner,
+        instAdmin,
+        registrar,
+        dataHash,
+        docHash,
+      } = ctx;
+      await fullSetup(
+        ctx.issuerRegistry,
+        owner,
+        instAdmin,
+        registrar,
+        ctx.vc,
+        ctx.chancellor
+      );
+
+      await expect(
+        certRegistry
+          .connect(registrar)
+          .submitCredentialForSealedReview(CERT_ID, dataHash, docHash, ethers.ZeroHash)
+      ).to.be.revertedWith("CertificateRegistry: empty transcript hash");
+    });
+
+    it("rejects a paired sealed submission with an empty review document hash", async function () {
+      const ctx = await deployFixture(ethers);
+      const {
+        certRegistry,
+        owner,
+        instAdmin,
+        registrar,
+        dataHash,
+        transcriptHash,
+      } = ctx;
+      await fullSetup(
+        ctx.issuerRegistry,
+        owner,
+        instAdmin,
+        registrar,
+        ctx.vc,
+        ctx.chancellor
+      );
+
+      await expect(
+        certRegistry
+          .connect(registrar)
+          .submitCredentialForSealedReview(
+            CERT_ID,
+            dataHash,
+            ethers.ZeroHash,
+            transcriptHash
+          )
+      ).to.be.revertedWith("CertificateRegistry: empty review document hash");
+    });
+
+    it("does not auto-issue on Chancellor approval", async function () {
+      const ctx = await deployFixture(ethers);
+      const {
+        certRegistry,
+        owner,
+        instAdmin,
+        registrar,
+        vc,
+        chancellor,
+        dataHash,
+        docHash,
+        transcriptHash,
+      } = ctx;
+      await fullSetup(
+        ctx.issuerRegistry,
+        owner,
+        instAdmin,
+        registrar,
+        vc,
+        chancellor
+      );
+
+      await certRegistry
+        .connect(registrar)
+        .submitCredentialForSealedReview(CERT_ID, dataHash, docHash, transcriptHash);
+      await certRegistry.connect(vc).approveAsVC(CERT_ID);
+      await certRegistry.connect(chancellor).approveAsChancellor(CERT_ID);
+
+      // A transcript hash alone must not push this onto the legacy auto-issue
+      // branch, which requires a document hash with no transcript hash.
+      const cert = await certRegistry.getCertificate(CERT_ID);
+      expect(cert.status).to.equal(Status.PendingFinalize);
+    });
+
+    it("issues with the transcript hash still committed after sealing", async function () {
+      const ctx = await deployFixture(ethers);
+      const {
+        certRegistry,
+        owner,
+        instAdmin,
+        registrar,
+        vc,
+        chancellor,
+        dataHash,
+        docHash,
+        sealedHash,
+        transcriptHash,
+      } = ctx;
+      await fullSetup(
+        ctx.issuerRegistry,
+        owner,
+        instAdmin,
+        registrar,
+        vc,
+        chancellor
+      );
+
+      await certRegistry
+        .connect(registrar)
+        .submitCredentialForSealedReview(CERT_ID, dataHash, docHash, transcriptHash);
+      await certRegistry.connect(vc).approveAsVC(CERT_ID);
+      await certRegistry.connect(chancellor).approveAsChancellor(CERT_ID);
+      await expect(
+        certRegistry.connect(registrar).finalizeWithSealedDocument(CERT_ID, sealedHash)
+      )
+        .to.emit(certRegistry, "CertificateIssued");
+
+      const cert = await certRegistry.getCertificate(CERT_ID);
+      expect(cert.status).to.equal(Status.Issued);
+      // The issued rendering is a different document, but the transcript the
+      // officers reviewed has to remain part of the issued record.
+      expect(cert.sealedDocHash).to.equal(sealedHash);
+      expect(cert.docHash).to.equal(docHash);
+      expect(cert.transcriptDocHash).to.equal(transcriptHash);
+    });
+
+    it("cannot be finalized through finalizeCredential, so sealing cannot be skipped", async function () {
+      const ctx = await deployFixture(ethers);
+      const {
+        certRegistry,
+        owner,
+        instAdmin,
+        registrar,
+        vc,
+        chancellor,
+        dataHash,
+        docHash,
+        transcriptHash,
+      } = ctx;
+      await fullSetup(
+        ctx.issuerRegistry,
+        owner,
+        instAdmin,
+        registrar,
+        vc,
+        chancellor
+      );
+
+      await certRegistry
+        .connect(registrar)
+        .submitCredentialForSealedReview(CERT_ID, dataHash, docHash, transcriptHash);
+      await certRegistry.connect(vc).approveAsVC(CERT_ID);
+      await certRegistry.connect(chancellor).approveAsChancellor(CERT_ID);
+
+      await expect(
+        certRegistry.connect(registrar).finalizeCredential(CERT_ID)
+      ).to.be.revertedWith(
+        "CertificateRegistry: sealed path must use finalizeWithSealedDocument"
+      );
+    });
+
+    it("cannot reuse a certificate id that is already submitted", async function () {
+      const ctx = await deployFixture(ethers);
+      const {
+        certRegistry,
+        owner,
+        instAdmin,
+        registrar,
+        dataHash,
+        docHash,
+        transcriptHash,
+      } = ctx;
+      await fullSetup(
+        ctx.issuerRegistry,
+        owner,
+        instAdmin,
+        registrar,
+        ctx.vc,
+        ctx.chancellor
+      );
+
+      await certRegistry
+        .connect(registrar)
+        .submitCredentialForSealedReview(CERT_ID, dataHash, docHash, transcriptHash);
+
+      await expect(
+        certRegistry
+          .connect(registrar)
+          .submitCredentialForSealedReview(CERT_ID, dataHash, docHash, transcriptHash)
+      ).to.be.revertedWith("CertificateRegistry: certificate already submitted");
+    });
+
+    it("leaves a transcript hash of zero on the single-document overload", async function () {
+      const ctx = await deployFixture(ethers);
+      const {
+        certRegistry,
+        owner,
+        instAdmin,
+        registrar,
+        dataHash,
+        docHash,
+        transcriptHash,
+      } = ctx;
+      await fullSetup(
+        ctx.issuerRegistry,
+        owner,
+        instAdmin,
+        registrar,
+        ctx.vc,
+        ctx.chancellor
+      );
+
+      // Submitting a credential that does have a transcript through the
+      // single-document overload succeeds, and leaves transcriptDocHash at zero.
+      // Nothing on-chain records that a transcript exists, which is exactly why
+      // submitForSealedReviewOnChain picks the paired overload when the hash is
+      // present. This test documents the trap rather than endorsing it.
+      await certRegistry
+        .connect(registrar)
+        .submitForSealedReview(CERT_ID, dataHash, docHash);
+
+      const cert = await certRegistry.getCertificate(CERT_ID);
+      expect(cert.transcriptDocHash).to.equal(ethers.ZeroHash);
+      expect(cert.docHash).to.equal(docHash);
+      expect(transcriptHash).to.not.equal(ethers.ZeroHash);
     });
   });
 

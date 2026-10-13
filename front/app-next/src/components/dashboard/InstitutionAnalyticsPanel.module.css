@@ -1,0 +1,41 @@
+.panel article {
+  border: 1px solid var(--cd-line);
+  border-radius: 20px;
+  box-shadow: 0 5px 24px color-mix(in srgb, var(--cd-primary) 5%, transparent);
+  padding: 24px;
+}
+.panel article:focus-visible {
+  outline: 2px solid var(--cd-accent);
+  outline-offset: 3px;
+}
+.panel article h4 { color: var(--cd-primary); }
+.panel > div:nth-last-child(2) article {
+  background: linear-gradient(135deg, white 45%, var(--cd-tint));
+  border-top: 3px solid var(--cd-accent);
+}
+.panel > div:last-child > article > h4 {
+  font-size: 16px;
+  margin-bottom: 24px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--cd-line);
+}
+.donut svg { filter: drop-shadow(0 6px 8px color-mix(in srgb, var(--cd-primary) 8%, transparent)); }
+.donut > div:last-child > div {
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: var(--cd-paper);
+}
+.monthly { position: relative; padding: 20px 0 0 28px; margin-top: 24px; }
+.guides { position: absolute; inset: 20px 0 auto 0; height: 180px; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; }
+.guides > div { display: flex; align-items: center; gap: 8px; }
+.guides span { width: 20px; font-size: 10px; color: #687b8e; text-align: right; }
+.guides i { flex: 1; border-top: 1px dashed var(--cd-line); }
+.columns { display: flex; align-items: flex-end; gap: 8px; position: relative; }
+.column { display: flex; width: 100%; flex-direction: column; align-items: center; border-radius: 8px; }
+.column:hover, .column:focus-visible { background: color-mix(in srgb, var(--cd-tint) 65%, transparent); outline-color: var(--cd-accent); }
+.barSpace { height: 180px; display: flex; width: 100%; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; }
+.barValue { font-size: 11px; font-weight: 700; color: var(--cd-primary); margin-bottom: 5px; }
+.bar { width: 60%; flex-shrink: 0; border-radius: 7px 7px 0 0; background: linear-gradient(to top, var(--cd-primary), color-mix(in srgb, var(--cd-primary) 65%, var(--cd-accent))); box-shadow: 0 3px 8px color-mix(in srgb, var(--cd-primary) 12%, transparent); transition: height 250ms; }
+.monthLabel { margin-top: 12px; text-align: center; font-size: 10px; color: #687b8e; min-height: 30px; }
+.panel div[aria-hidden="true"].h-3 { height: 9px; background: var(--cd-tint); }
+.panel div[aria-hidden="true"].h-3 > div { background: linear-gradient(90deg, var(--cd-primary), var(--cd-accent)); }

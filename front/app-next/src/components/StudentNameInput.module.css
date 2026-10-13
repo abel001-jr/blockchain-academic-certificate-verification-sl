@@ -1,0 +1,8 @@
+.composite { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); min-height: 96px; border: 1px solid var(--cd-line, #E4E1D6); border-radius: 12px; background: var(--cd-tint, #F2EFE7); }
+.composite:focus-within { outline: 2px solid var(--cd-primary, #08283F); outline-offset: 2px; }
+.cell { min-width: 0; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; color: var(--cd-muted, #687B8E); font-size: 12px; }
+.cell + .cell { border-left: 1px solid var(--cd-line, #E4E1D6); }
+.optional { font-weight: 400; }
+.input { width: 100%; min-width: 0; padding: 4px 0; background: transparent; border: 0; outline: none; color: var(--cd-primary, #08283F); font: inherit; font-size: 16px; }
+.input::placeholder { color: #95A1AD; }
+@media (max-width: 380px) { .cell { padding: 12px 10px; } }

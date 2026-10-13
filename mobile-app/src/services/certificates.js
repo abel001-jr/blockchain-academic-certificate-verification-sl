@@ -36,3 +36,26 @@ export async function getCertificateDetail(id) {
   const res = await api.get(`/certify/certificates/${id}/`);
   return res.data;
 }
+
+/**
+ * Download the graduate's own copy of a credential: the certificate and its
+ * transcript as one zip.
+ *
+ * Endpoint: GET /api/my-certificates/<certificate_id>/documents/  (IsFullSession)
+ *
+ * Public verification deliberately serves no documents (REMAINING_WORK item 1),
+ * so this owner-scoped route is the only way a student gets the PDFs. It returns
+ * the *pair* because the design doc treats the two as one credential — making a
+ * graduate assemble their own award from two downloads would be handing back a
+ * worse version of the same record.
+ *
+ * `responseType: "arraybuffer"` because the body is a zip, not JSON. The
+ * interceptor on `api` still attaches the JWT, which is what authorises it.
+ */
+export async function downloadMyDocuments(certificateId) {
+  const res = await api.get(
+    `/my-certificates/${encodeURIComponent(certificateId)}/documents/`,
+    { responseType: "arraybuffer", timeout: 30000 },
+  );
+  return res.data; // Uint8Array / ArrayBuffer
+}

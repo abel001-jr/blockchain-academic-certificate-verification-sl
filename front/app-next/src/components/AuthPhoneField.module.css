@@ -1,0 +1,6 @@
+.row { display: flex; align-items: start; gap: 12px; }
+.code { position: relative; flex: 0 0 125px; }
+.code input { padding-left: 26px; }
+.plus { position: absolute; z-index: 1; left: 13px; top: 20px; font-size: 15px; color: var(--color-ink-soft); pointer-events: none; }
+.hint { margin: 6px 0 0; font-size: 11px; color: var(--color-ink-soft); }
+@media (max-width: 480px) { .code { flex-basis: 112px; } .row { gap: 8px; } }

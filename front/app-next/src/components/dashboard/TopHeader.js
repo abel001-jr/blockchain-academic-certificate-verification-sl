@@ -3,21 +3,23 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, Bell, Search, ChevronDown, LogOut, Settings, User } from "lucide-react";
 import Link from "next/link";
-import { jwtPayload } from "@/lib/api";
+import { clearSession } from "@/lib/api";
+import { useAuth } from "@/lib/useAuth";
+import ProfileAvatar from "./ProfileAvatar";
+import NotificationInbox from "./NotificationInbox";
 
 const pageTitles = {
   "/dashboard":                          "Dashboard",
   "/dashboard/institution":              "Institution",
   "/dashboard/institution/bind-wallet":  "Bind Wallet",
-  "/dashboard/registrars":               "Registrars",
-  "/dashboard/registrars/authorize":     "Authorize Registrar",
-  "/dashboard/officers":                 "Officers (VC / Dean)",
+  "/dashboard/registrars":               "Officers",
+  "/dashboard/registrars/authorize":     "Authorize officers",
+  "/dashboard/officers":                 "Officers (VC / Chancellor)",
   "/dashboard/approvals":                "Approvals",
   "/dashboard/certificates":             "Certificates",
   "/dashboard/certificates/new":         "Issue Certificate",
   "/dashboard/credentials":              "Credentials",
   "/dashboard/credentials/new":          "Issue Credential",
-  "/dashboard/transcripts":              "Transcripts",
   "/dashboard/my-certificates":          "My Certificates",
   "/dashboard/verification":             "Verification",
   "/dashboard/blockchain":               "Blockchain Records",
@@ -30,13 +32,12 @@ const pageTitles = {
   "/dashboard/admin/users":              "All Users",
 };
 
-export default function TopHeader({ onMenuClick }) {
+export default function TopHeader({ onMenuClick, sidebarOpen = false }) {
   const pathname = usePathname();
-  const [payload,      setPayload]      = useState(null);
+  const { user, role: currentRole } = useAuth();
   const [profileOpen,  setProfileOpen]  = useState(false);
   const profileRef = useRef(null);
 
-  useEffect(() => { setPayload(jwtPayload()); }, []);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -49,9 +50,8 @@ export default function TopHeader({ onMenuClick }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const fullName = payload?.full_name ?? "User";
-  const role     = payload?.role ?? "";
-  const initials = fullName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  const fullName = user?.full_name || "User";
+  const role     = currentRole ?? "";
 
   let title = pageTitles[pathname] ?? "Dashboard";
   if (pathname?.startsWith("/dashboard/officers/") && pathname !== "/dashboard/officers") {
@@ -75,7 +75,7 @@ export default function TopHeader({ onMenuClick }) {
     title = "Governance Console";
   }
 
-  const roleLabel = role === "chancellor" ? "Dean" : role.replace(/_/g, " ");
+  const roleLabel = role === "chancellor" ? "Chancellor" : role.replace(/_/g, " ");
 
   return (
     <header className="sticky top-0 z-20 h-16 shrink-0 bg-white border-b border-[#E4E1D6] flex items-center justify-between px-5 md:px-8">
@@ -84,8 +84,10 @@ export default function TopHeader({ onMenuClick }) {
       <div className="flex items-center gap-4">
         <button
           onClick={onMenuClick}
-          className="lg:hidden text-[#08283F] p-1.5 hover:bg-[#EAF2FB] rounded-lg transition-colors"
+          className="lg:hidden text-[#08283F] p-3 hover:bg-[#EAF2FB] rounded-lg transition-colors"
           aria-label="Open navigation"
+          aria-controls="dashboard-sidebar"
+          aria-expanded={sidebarOpen}
         >
           <Menu size={22} />
         </button>
@@ -111,13 +113,7 @@ export default function TopHeader({ onMenuClick }) {
         </div>
 
         {/* Notifications — wired to show count when available */}
-        <button
-          className="relative p-2 rounded-xl hover:bg-[#EAF2FB] transition-colors text-[#08283F]"
-          aria-label="Notifications"
-        >
-          <Bell size={19} strokeWidth={1.8} />
-          {/* Dot only shown when there are real notifications — currently hidden */}
-        </button>
+        <NotificationInbox />
 
         {/* Profile dropdown */}
         <div className="relative" ref={profileRef}>
@@ -127,9 +123,7 @@ export default function TopHeader({ onMenuClick }) {
             aria-label="Profile menu"
             aria-expanded={profileOpen}
           >
-            <div className="w-8 h-8 rounded-full bg-[#08283F] flex items-center justify-center text-white text-xs font-bold shrink-0">
-              {initials}
-            </div>
+            <ProfileAvatar user={user} size={32} />
             <span className="hidden md:block text-[#08283F] text-sm font-medium max-w-[120px] truncate">
               {fullName}
             </span>
@@ -158,7 +152,7 @@ export default function TopHeader({ onMenuClick }) {
                   Settings
                 </Link>
                 <button
-                  onClick={() => { localStorage.clear(); window.location.href = "/login"; }}
+                  onClick={() => { clearSession(); window.location.replace("/login"); }}
                   className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#A23B34] hover:bg-[#F5E5E3] transition-colors"
                 >
                   <LogOut size={15} />

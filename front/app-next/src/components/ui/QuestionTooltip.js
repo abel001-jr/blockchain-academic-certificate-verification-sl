@@ -4,7 +4,7 @@
  * QuestionTooltip
  * A pill-shaped ? badge — hover floats a label up above it.
  * Source: question_tip.html (uiverse, MIT licence)
- * Adapted: Credence navy/paper palette, accessible via focus as well as hover.
+ * Adapted: Intelligent Academic Credentialing navy/paper palette, accessible via focus as well as hover.
  *
  * Props:
  *   tip      — string shown in the tooltip (required)

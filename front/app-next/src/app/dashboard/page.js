@@ -1,35 +1,27 @@
 "use client";
-import { useEffect, useState } from "react";
-import { jwtPayload } from "@/lib/api";
-import { ROLES, isInstitutionHead } from "@/lib/useAuth";
+import { ROLES, isInstitutionHead, useAuth } from "@/lib/useAuth";
 import SuperAdminDashboard from "@/components/dashboard/SuperAdminDashboard";
 import RegistrarDashboard  from "@/components/dashboard/RegistrarDashboard";
+import InstAdminDashboard from "@/components/dashboard/InstAdminDashboard";
 import OfficerDashboard    from "@/components/dashboard/OfficerDashboard";
 import StudentDashboard    from "@/components/dashboard/StudentDashboard";
 import DashboardLoader     from "@/components/dashboard/DashboardLoader";
+import WelcomeCard from "@/components/dashboard/WelcomeCard";
 
 export default function DashboardPage() {
-  const [role,    setRole]    = useState(null);
-  const [mounted, setMounted] = useState(false);
+  const { role, loading } = useAuth();
 
-  useEffect(() => {
-    const p = jwtPayload();
-    if (!p) {
-      window.location.href = "/login";
-      return;
-    }
-    setRole(p.role ?? "unknown");
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
+  if (loading || !role) {
     return <DashboardLoader label="Loading dashboard workspace" />;
   }
 
-  if (role === ROLES.SUPER_ADMIN) return <SuperAdminDashboard />;
-  if (isInstitutionHead(role))    return <RegistrarDashboard />;
-  if (role === ROLES.VC || role === ROLES.CHANCELLOR) return <OfficerDashboard role={role} />;
-  if (role === ROLES.STUDENT)     return <StudentDashboard />;
+  let dashboard;
+  if (role === ROLES.SUPER_ADMIN) dashboard = <SuperAdminDashboard />;
+  else if (role === ROLES.INSTITUTIONAL_ADMIN) dashboard = <InstAdminDashboard />;
+  else if (isInstitutionHead(role)) dashboard = <RegistrarDashboard />;
+  else if (role === ROLES.VC || role === ROLES.CHANCELLOR) dashboard = <OfficerDashboard role={role} />;
+  else if (role === ROLES.STUDENT) dashboard = <StudentDashboard />;
+  if (dashboard) return role === ROLES.STUDENT ? <><WelcomeCard />{dashboard}</> : dashboard;
 
   return (
     <div className="bg-white rounded-[14px] border border-[#c4c6cf]/15 p-8 max-w-lg">

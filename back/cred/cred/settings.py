@@ -1,5 +1,5 @@
 """
-CREDENCE – Django Settings
+INTELLIGENT ACADEMIC CREDENTIALING – Django Settings
 """
 
 from pathlib import Path
@@ -12,6 +12,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Load .env from the project root (same folder as manage.py)
 load_dotenv(BASE_DIR / ".env")
+
+# VAPID keys stay server-side; only the public key is returned to signed-in clients.
+WEB_PUSH_PUBLIC_KEY = os.getenv("WEB_PUSH_PUBLIC_KEY", "").strip()
+WEB_PUSH_PRIVATE_KEY = os.getenv("WEB_PUSH_PRIVATE_KEY", "").strip()
+WEB_PUSH_SUBJECT = os.getenv("WEB_PUSH_SUBJECT", "").strip()
+WEB_PUSH_ALLOWED_HOSTS = os.getenv("WEB_PUSH_ALLOWED_HOSTS", "fcm.googleapis.com,updates.push.services.mozilla.com,web.push.apple.com").split(",")
+
+# Optional absolute executable path; otherwise pytesseract uses PATH.
+TESSERACT_CMD = os.getenv("TESSERACT_CMD", "").strip()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b").strip()
 
 # ── Security ───────────────────────────────────────────────────────────────
 SECRET_KEY = os.environ["SECRET_KEY"]
@@ -176,9 +187,24 @@ SIMPLE_JWT = {
 }
 
 # ── CORS ───────────────────────────────────────────────────────────────────
-CORS_ALLOWED_ORIGINS = os.getenv(
-    "CORS_ALLOWED_ORIGINS", "http://localhost:3000"
-).split(",")
+# `localhost` and `127.0.0.1` are different origins to a browser, and the frontend
+# reaches the API at whichever one it was started on: `NEXT_PUBLIC_API_BASE`
+# defaults to `http://127.0.0.1:8000`, and Next's dev server answers on both. So a
+# single entry silently rejects half the local setups, and it fails in a way that
+# is hard to read from the browser: JSON requests without a preflight sometimes
+# still succeed, while every multipart upload is blocked at the preflight and the
+# `fetch` rejection looks like a server error in the UI.
+#
+# Both spellings are therefore allowed by default. This is a development default
+# only — set CORS_ALLOWED_ORIGINS explicitly for any deployed instance.
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",")
+    if origin.strip()
+]
 CORS_ALLOW_CREDENTIALS = True
 
 # ── Pinata / IPFS ──────────────────────────────────────────────────────────
@@ -186,11 +212,17 @@ CORS_ALLOW_CREDENTIALS = True
 PINATA_API_KEY        = os.getenv("PINATA_API_KEY", "")
 PINATA_SECRET_API_KEY = os.getenv("PINATA_SECRET_API_KEY", "")
 PINATA_JWT            = os.getenv("PINATA_JWT", "")
+# Published free-tier quota; override when the account plan changes.
+PINATA_STORAGE_QUOTA_BYTES = int(os.getenv("PINATA_STORAGE_QUOTA_BYTES", "1000000000"))
 PINATA_GATEWAY        = os.getenv("PINATA_GATEWAY", "https://gateway.pinata.cloud")
 CREDENTIAL_DOCUMENT_ENCRYPTION_KEY = os.getenv("CREDENTIAL_DOCUMENT_ENCRYPTION_KEY", "")
 
 # ── Blockchain ─────────────────────────────────────────────────────────────
+# These seed the ChainConfig singleton (institutions.models.ChainConfig) on first use.
+# They are not read on every request: after that first read the database row is the
+# source of truth and Settings → Blockchain is what changes it.
 ETH_RPC_URL                      = os.getenv("ETH_RPC_URL", "http://127.0.0.1:8545")
+ETH_CHAIN_ID                     = int(os.getenv("ETH_CHAIN_ID", "31337") or 0) or None
 CERTIFICATE_REGISTRY_ADDRESS     = os.getenv("CERTIFICATE_REGISTRY_ADDRESS", "")
 ISSUER_REGISTRY_ADDRESS          = os.getenv("ISSUER_REGISTRY_ADDRESS", "")
 
@@ -239,7 +271,7 @@ HCAPTCHA_SECRET_KEY = os.getenv("HCAPTCHA_SECRET_KEY", "")
 
 # ── Google OAuth ───────────────────────────────────────────────────────────
 # Used by POST /api/auth/google/ to verify ID tokens from the mobile app.
-# Web client ID from Google Cloud Console / Credence-Web.json
+# Web client ID from Google Cloud Console / Intelligent Academic Credentialing-Web.json (research/Google-Auth)
 GOOGLE_CLIENT_ID = os.getenv(
     "GOOGLE_CLIENT_ID",
     "335667631038-vouui7i0uqde3v04jcs2lb1l9sk9h0pr.apps.googleusercontent.com",

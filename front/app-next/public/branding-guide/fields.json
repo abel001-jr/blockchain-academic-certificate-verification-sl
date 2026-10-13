@@ -1,0 +1,102 @@
+[
+  {
+    "key": "institution_name",
+    "page": 1,
+    "x": 0.2599067156307142,
+    "y": 0.167060836184167,
+    "width": 0.48016025203715196,
+    "height": 0.058796297957704274,
+    "font": "Times-Bold",
+    "font_size": 28,
+    "clear": false,
+    "align": "center",
+    "color": "#7D3C3C"
+  },
+  {
+    "key": "student_name",
+    "page": 1,
+    "x": 0.28611405411902774,
+    "y": 0.32046602095048754,
+    "width": 0.4277329966922154,
+    "height": 0.04703703836616342,
+    "font": "Times-Bold",
+    "font_size": 23,
+    "clear": false,
+    "align": "center"
+  },
+  {
+    "key": "degree_title",
+    "page": 1,
+    "x": 0.3285666633945993,
+    "y": 0.4790654563034227,
+    "width": 0.3428667819575015,
+    "height": 0.05594722441670482,
+    "font": "Times-Italic",
+    "font_size": 22,
+    "clear": false,
+    "align": "center",
+    "color": "#7D3C3C"
+  },
+  {
+    "key": "static_text",
+    "page": 1,
+    "x": 0.3336381020017948,
+    "y": 0.5452995208138628,
+    "width": 0.3327572537311355,
+    "height": 0.03191799031989661,
+    "font": "Times-Roman",
+    "font_size": 15,
+    "clear": false,
+    "align": "center",
+    "text": "Computer Science"
+  },
+  {
+    "key": "grade",
+    "page": 1,
+    "x": 0.3880156569148909,
+    "y": 0.5890330098600481,
+    "width": 0.22396864992131812,
+    "height": 0.03338456545912307,
+    "font": "Times-Italic",
+    "font_size": 12,
+    "clear": false,
+    "align": "center"
+  },
+  {
+    "key": "institution_name",
+    "page": 1,
+    "x": 0.5169111993296563,
+    "y": 0.695279296257201,
+    "width": 0.17674042931167253,
+    "height": 0.02687830763780767,
+    "font": "Times-Roman",
+    "font_size": 12,
+    "clear": false,
+    "align": "center"
+  },
+  {
+    "key": "static_text",
+    "page": 1,
+    "x": 0.41658624244047315,
+    "y": 0.7288771808044606,
+    "width": 0.1280927380258646,
+    "height": 0.02687830763780767,
+    "font": "Times-Roman",
+    "font_size": 12,
+    "clear": false,
+    "align": "center",
+    "text": "12 October"
+  },
+  {
+    "key": "graduation_year",
+    "page": 1,
+    "x": 0.5397092200237184,
+    "y": 0.7288771808044606,
+    "width": 0.06145700133729442,
+    "height": 0.02687830763780767,
+    "font": "Times-Roman",
+    "font_size": 12,
+    "clear": false,
+    "align": "center"
+  }
+]

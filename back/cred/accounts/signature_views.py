@@ -60,7 +60,7 @@ class OfficerSignatureView(APIView):
 
     def _ensure_officer(self, request):
         if request.user.role not in (
-            Role.REGISTRAR, Role.INSTITUTIONAL_ADMIN, Role.VC, Role.CHANCELLOR,
+            Role.REGISTRAR, Role.VC, Role.CHANCELLOR,
         ):
             return Response(
                 {"detail": "Only institution signers may manage a signature."},

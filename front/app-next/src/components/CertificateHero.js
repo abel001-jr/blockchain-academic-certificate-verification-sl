@@ -6,7 +6,7 @@
  */
 export default function CertificateHero() {
   return (
-    <div className="cred-cert" aria-label="Generic Credence certificate preview">
+    <div className="cred-cert" aria-label="Generic Intelligent Academic Credentialing certificate preview">
 
       {/* Gold scan-line sweep */}
       <div className="cred-cert-scan" aria-hidden="true" />
@@ -65,7 +65,7 @@ export default function CertificateHero() {
           </div>
           <div className="cred-cert-sig">
             <div className="cred-cert-sig-line" />
-            <div className="cred-cert-sig-name">Dean</div>
+            <div className="cred-cert-sig-name">Chancellor</div>
             <div className="cred-cert-sig-role">Institutional approval</div>
             <div className="cred-cert-sig-note">Signature / approval</div>
           </div>

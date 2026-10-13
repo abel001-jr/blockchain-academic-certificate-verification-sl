@@ -1,4 +1,8 @@
 "use client";
+import NavigationButton from "@/components/ui/NavigationButton";
+
+import { ActionButton } from "@/components/ui/AnimatedControls";
+
 import { Suspense, useState, useEffect, useCallback } from "react";
 import { Search, Plus, Loader2, Pencil, ExternalLink } from "lucide-react";
 import StatusBadge from "@/components/dashboard/StatusBadge";
@@ -11,7 +15,7 @@ import { verificationPath } from "@/lib/parseCertificateScan";
 import CertLoaderOverlay from "@/components/dashboard/CertLoaderOverlay";
 
 const STATUS_FILTERS = ["all", "draft", "pending_vc", "pending_chancellor", "pending_finalize", "issued", "revoked"];
-const STATUS_LABELS = { pending_chancellor: "Pending Dean" };
+const STATUS_LABELS = { pending_vc: "Pending VC", pending_chancellor: "Pending Chancellor", pending_finalize: "Pending finalization", issued: "Issued", revoked: "Revoked" };
 const PAGE_SIZE = 20;
 
 function CertificatesContent() {
@@ -40,8 +44,8 @@ function CertificatesContent() {
   const [error, setError] = useState("");
   const [revoking, setRevoking] = useState(null);
 
-  const canIssue = [ROLES.REGISTRAR, ROLES.INSTITUTIONAL_ADMIN].includes(role);
-  const canRevoke = [ROLES.REGISTRAR, ROLES.INSTITUTIONAL_ADMIN, ROLES.SUPER_ADMIN].includes(role);
+  const canIssue = role === ROLES.REGISTRAR;
+  const canRevoke = [ROLES.REGISTRAR, ROLES.SUPER_ADMIN].includes(role);
 
   useEffect(() => {
     if (!isSuperAdmin || institutions.length) return;
@@ -74,7 +78,7 @@ function CertificatesContent() {
   async function handleRevoke(cert) {
     const reason = prompt(`Reason for revoking ${cert.certificate_id}?`);
     if (!reason) return;
-    if (!confirm("Revoke on-chain via MetaMask (gas required), then record in CREDENCE?")) return;
+    if (!confirm("Revoke on-chain via MetaMask (gas required), then record in INTELLIGENT ACADEMIC CREDENTIALING?")) return;
     setRevoking(cert.id);
     setError("");
     try {
@@ -103,10 +107,10 @@ function CertificatesContent() {
           </p>
         </div>
         {canIssue && (
-          <Link href="/dashboard/certificates/new"
+          <ActionButton href="/dashboard/certificates/new"
             className="flex items-center gap-2 bg-[#08283F] text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 transition-all self-start">
             <Plus size={15} /> Issue Certificate
-          </Link>
+          </ActionButton>
         )}
       </div>
 
@@ -118,7 +122,7 @@ function CertificatesContent() {
             placeholder="Search by name, ID, email, or degree…" />
         </div>
         {isSuperAdmin && (
-          <select
+          <select data-dropdown="compact"
             value={institution}
             onChange={e => { setInstitutionOverride(e.target.value); setPage(1); }}
             className="rounded-lg border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#08283F] outline-none focus:border-[#08283F] max-w-[240px]"
@@ -190,7 +194,7 @@ function CertificatesContent() {
                   </td>
                   <td className="dash-td">
                     <div className="flex items-center gap-2">
-                      <Link
+                      <ActionButton
                         href={verificationPath(cert.certificate_id)}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -198,7 +202,7 @@ function CertificatesContent() {
                         title="Open the public verification page for this certificate"
                       >
                         Verify <ExternalLink size={11} />
-                      </Link>
+                      </ActionButton>
                       <button
                         onClick={() => { setViewing(true); router.push(`/dashboard/certificates/${cert.id}`); }}
                         className="text-[#B98A28] text-xs font-semibold hover:underline"
@@ -207,10 +211,21 @@ function CertificatesContent() {
                       </button>
 
                       {canIssue && cert.status === "draft" && cert.flow_type === "system_designed" && (
-                        <Link href={`/dashboard/certificates/new?flow=system_designed&draft=${encodeURIComponent(cert.id)}`}
+                        <NavigationButton href={`/dashboard/certificates/new?flow=system_designed&draft=${encodeURIComponent(cert.id)}`}
                           className="inline-flex items-center gap-1 text-[#08283F] text-xs font-semibold hover:underline">
                           <Pencil size={12} /> Continue issuing
-                        </Link>
+                        </NavigationButton>
+                      )}
+                      {/* The upload flows are resumable too — their documents are
+                          saved to the draft as they are chosen — so a draft
+                          created by one of them must be re-enterable rather than
+                          stranded in the list with no way back into the wizard. */}
+                      {canIssue && cert.status === "draft"
+                        && (cert.flow_type === "full_upload" || cert.flow_type === "transcript_then_cert") && (
+                        <NavigationButton href={`/dashboard/certificates/new?flow=${encodeURIComponent(cert.flow_type)}&draft=${encodeURIComponent(cert.id)}`}
+                          className="inline-flex items-center gap-1 text-[#08283F] text-xs font-semibold hover:underline">
+                          <Pencil size={12} /> Continue upload
+                        </NavigationButton>
                       )}
                       {canRevoke && cert.status === "issued" && (
                         <button onClick={() => handleRevoke(cert)} disabled={!!revoking}
@@ -228,8 +243,8 @@ function CertificatesContent() {
         <div className="px-5 py-3 border-t border-[#E4E1D6] flex items-center justify-between">
           <p className="text-[#4A5A68] text-sm">Page {page} of {totalPages || 1} · {count} total</p>
           <div className="flex gap-2">
-            <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="dash-pagination-btn">← Prev</button>
-            <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="dash-pagination-btn">Next →</button>
+            <NavigationButton direction="back" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="dash-pagination-btn">Previous</NavigationButton>
+            <NavigationButton disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="dash-pagination-btn">Next →</NavigationButton>
           </div>
         </div>
       </div>

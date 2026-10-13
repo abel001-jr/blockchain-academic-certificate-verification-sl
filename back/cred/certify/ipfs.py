@@ -1,14 +1,20 @@
 """
 certify/ipfs.py
 
-Pinata IPFS pinning service for CREDENCE.
+Pinata IPFS pinning service for INTELLIGENT ACADEMIC CREDENTIALING.
 Uses the Pinata JWT for all requests.
 Spec §8 steps 6-7.
 """
 
 import json
+import hashlib
 import requests
 from django.conf import settings
+from django.core.cache import cache
+
+
+def _payload_cache_key(cid):
+    return "encrypted-ipfs:" + hashlib.sha256(cid.encode()).hexdigest()
 
 PINATA_PIN_FILE_URL = "https://api.pinata.cloud/pinning/pinFileToIPFS"
 PINATA_PIN_JSON_URL = "https://api.pinata.cloud/pinning/pinJSONToIPFS"
@@ -31,7 +37,7 @@ def pin_file_to_ipfs(
     """Pin a file to IPFS. Credential payloads should be encrypted bytes."""
     headers  = _auth_headers()
     metadata = json.dumps({
-        "name":      f"CREDENCE-{certificate_id}-{filename}",
+        "name":      f"INTELLIGENT ACADEMIC CREDENTIALING-{certificate_id}-{filename}",
         "keyvalues": {"certificate_id": certificate_id, "type": "document"},
     })
     try:
@@ -47,6 +53,12 @@ def pin_file_to_ipfs(
         )
         res.raise_for_status()
         cid = res.json()["IpfsHash"]
+        # Keep only encrypted document envelopes, never a plaintext upload.
+        from .encrypted_documents import is_encrypted_document
+        file_obj.seek(0)
+        payload = file_obj.read()
+        if is_encrypted_document(payload):
+            cache.set(_payload_cache_key(cid), payload, timeout=86400)
         url = f"{settings.PINATA_GATEWAY}/ipfs/{cid}"
         return {"cid": cid, "ipfs_url": url}
     except requests.RequestException as e:
@@ -57,10 +69,16 @@ def fetch_file_from_ipfs(cid: str) -> bytes:
     """Fetch a pinned payload for server-side decryption; never expose this URL."""
     if not cid:
         raise ValueError("An IPFS CID is required.")
+    cached = cache.get(_payload_cache_key(cid))
+    if cached is not None:
+        return cached
     url = f"{settings.PINATA_GATEWAY.rstrip('/')}/ipfs/{cid}"
     try:
         res = requests.get(url, timeout=60)
         res.raise_for_status()
+        from .encrypted_documents import is_encrypted_document
+        if is_encrypted_document(res.content):
+            cache.set(_payload_cache_key(cid), res.content, timeout=86400)
         return res.content
     except requests.RequestException as e:
         raise RuntimeError(f"IPFS document retrieval failed: {e}") from e
@@ -72,7 +90,7 @@ def pin_json_to_ipfs(data: dict, certificate_id: str) -> dict:
     payload = {
         "pinataContent":  data,
         "pinataMetadata": {
-            "name":      f"CREDENCE-{certificate_id}-metadata.json",
+            "name":      f"INTELLIGENT ACADEMIC CREDENTIALING-{certificate_id}-metadata.json",
             "keyvalues": {"certificate_id": certificate_id, "type": "metadata"},
         },
         "pinataOptions": {"cidVersion": 1},

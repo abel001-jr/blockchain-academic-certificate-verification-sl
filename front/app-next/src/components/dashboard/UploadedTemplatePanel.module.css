@@ -1,0 +1,99 @@
+.switchTrack {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex: 0 0 44px;
+  border-radius: 999px;
+}
+
+.switchThumb {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 150ms;
+}
+
+.panel input:not([type="file"]):not([type="checkbox"]),
+.panel select {
+  border: 2px solid #8a9baa;
+  border-radius: 8px;
+  background-color: white;
+  padding: 8px;
+  color: #08283f;
+  transition: border-color 150ms, box-shadow 150ms, background-color 150ms;
+}
+
+.panel input:not([type="file"]):not([type="checkbox"]):hover:not(:disabled),
+.panel select:hover:not(:disabled) {
+  border-color: #b98a28;
+  background-color: #fffcf6;
+}
+
+.panel input:focus-visible,
+.panel select:focus-visible,
+.panel button:focus-visible {
+  outline: 2px solid #b98a28;
+  outline-offset: 3px;
+}
+
+.panel select,
+.panel input[type="checkbox"],
+.panel input[type="color"],
+.panel button {
+  cursor: pointer;
+}
+
+.panel button:not(:disabled):hover {
+  filter: brightness(0.94);
+}
+
+.panel input:disabled,
+.panel select:disabled,
+.panel button:disabled,
+.panel fieldset:disabled input,
+.panel fieldset:disabled select,
+.panel fieldset:disabled button {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.panel input[type="file"]:not([class*="absolute"]) {
+  width: 100%;
+  border: 2px solid #8a9baa;
+  border-radius: 8px;
+  background: white;
+  padding: 10px;
+  cursor: pointer;
+  transition: border-color 150ms, background-color 150ms;
+}
+
+.panel input[type="file"]:not([class*="absolute"]):hover:not(:disabled) {
+  border-color: #b98a28;
+  background: #f5ebdb;
+}
+
+.panel input[type="file"]::file-selector-button {
+  border: 1px solid #08283f;
+  border-radius: 6px;
+  background: #eaf2fb;
+  color: #08283f;
+  padding: 6px 10px;
+  margin-right: 8px;
+  font-weight: 600;
+  cursor: inherit;
+}
+
+.panel { min-width: 0; }
+.panel fieldset { min-width: 0; gap: 12px; }
+.panel label { min-width: 0; overflow-wrap: anywhere; }
+.panel label > :is(input,select) { margin-top: 6px; }
+.panel :is(button,a) { flex-shrink: 0; }
+.panel input[type="file"]::file-selector-button { background: #F8F7F2; }
+
+.panel select { background-color: #F8F7F2; color: #08283F; border: 1px solid #E4E1D6; border-radius: 8px; min-height: 40px; padding: 8px 12px; max-width: 100%; }
+.panel select:focus-visible { outline: 2px solid #780110; outline-offset: 2px; }

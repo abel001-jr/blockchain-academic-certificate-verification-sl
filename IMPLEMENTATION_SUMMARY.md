@@ -1,3 +1,67 @@
+# Current implementation check ? 10 October 2026
+
+## Branding restart and consent ? 10 October 2026
+
+Added **Start branding from scratch** above the upload workflow. Its consent dialog lists the number of unused drafts to discard and explains that uploaded masters, fields and crest/seal assets are removed. After confirmation the institution-scoped restart API deletes only the explicitly supplied unused drafts, removes their referenced files after commit, and returns the UI to initial file selection. Approved, active and credential-linked templates are protected; configured officer signatures and issued credentials are unchanged.
+
+Separate amber actions clear field configuration (local/undoable) or reset a draft's fields and branding assets (saved, master retained). Consent is also required before replacement, field removal and approval. Native modal dialogs support Cancel/Escape and prevent interacting with the underlying editor while awaiting consent. Success and error notices are dismissible fixed notifications at the top-right rather than inline paragraphs. Buttons distinguish primary save/upload, green approval, amber reset/replacement and red full restart/removal.
+
+Verification: 28 backend template tests and frontend ESLint passed. No destructive restart was performed against real institution records during implementation; interactive browser verification remains outstanding.
+
+
+## Template editor navigation ? 10 October 2026
+
+Upload guidance is now visible before file selection. A placeholder certificate is suitable as a layout reference, but printed placeholders must be removed in the source or explicitly cleared over their full area. Clean, upright, text-based blank masters are preferred; scans need clear full-page imagery. Unsupported date/other placeholders require deliberate treatment rather than being silently interpreted as graduation data.
+
+The document editor now has select/move, drag-to-draw, eight resize handles, zoom, fit-to-width, scrolling, pan, keyboard arrows with larger Shift steps, right-click/X/Delete removal, double-click/Enter editing, and undo/redo with keyboard shortcuts. Labels are outside field boxes and can be hidden. Field overlaps produce warnings; new fields choose an area free of existing field boxes when available (not a semantic assessment of the master). Coordinates remain normalized and page-bound at any zoom. History resets when switching template versions.
+
+Verification: all five geometry tests and ESLint for the changed components passed. Interactive browser verification remains outstanding.
+
+
+## Certificate input validation ? 10 October 2026
+
+Implemented shared backend validation before PDF generation, including preset rendering, plus field configuration and issuance form controls. Names allow 2?200 characters with letters/combining marks, spaces, initials, apostrophes and hyphens; digits, control characters and hidden formatting are refused. Official capitalization is retained. Graduation year is an integer from 1900 through the current year plus one, optionally narrowed by the template. Text fields have configurable minimum/maximum lengths within the database's capacities; graduation year uses numeric input, while textual labels use text input. Minimum readable font size is configurable from 6pt up to the selected font size.
+
+Programs remain selected from active institutional catalog entries with department ownership checks. Catalog titles/classifications reject invalid text and lengths. New program titles are checked against the active template, and approving a template checks existing active programs. Credential creation validates catalog snapshots and template constraints before storing the record. A preflight endpoint checks actual credential values and measures configured text boxes without generating a PDF. Invalid data/overflow blocks generation; font reduction yields actionable warnings to widen the field or adjust typography, rather than shorten official names or award titles. Required signature snapshots remain enforced for final template rendering.
+
+Validation: 31 focused data/template tests passed, the earlier 48 renderer/preparation regression checks passed, and ESLint passed for all four changed frontend files. Browser interaction and full wallet/IPFS issuance were not exercised.
+
+
+This update takes precedence over the historical completion claims below.
+
+## Uploaded institutional templates ? 10 October 2026
+
+Validation: 18 new template tests and 30 existing renderer/preparation checks passed; frontend ESLint passed. Migrations are applied and no model drift was detected. No interactive browser or full wallet/IPFS run was performed.
+
+Certificate Branding now starts with an uploaded institutional master and manually labelled fields. PDF/JPEG/PNG sources, text/OCR evidence, page selection, draw-to-place rectangles, coordinate editing, font/size/alignment/color controls, crest/seal uploads and manual artwork extraction, sample PDF rendering, approval and fixed template revisions are implemented. Generated credentials capture the active approved revision; later template changes do not switch existing credentials. Prepared previews serve hash-verified original review/sealed bytes. The preset renderer remains a fallback for old records and institutions without an approved uploaded master.
+
+The renderer preserves the master and populates approved field areas, with explicit region clearing and overflow errors. Officer signature areas use the existing approval-captured assets. This implements institutional template setup; automatic layout suggestions and the separate unsigned-document issuance flow remain future work. See [INSTITUTION_TEMPLATE_SETUP.md](INSTITUTION_TEMPLATE_SETUP.md) for configuration and limits.
+
+
+## Flow 1 scan intake ? 10 October 2026
+
+Validation: 63 backend tests passed covering intake conversion, page order, byte preservation, rotation/hash changes, draft permissions, document review and draft persistence. ESLint passed for the changed upload wizard. Full wallet/IPFS issuance and browser interaction were not exercised.
+
+The completed-document upload wizard now accepts PDFs, JPEGs and PNGs. Select all certificate pages and, separately, all transcript pages in reading order. Each selection becomes one PDF; include the transcript grading key where relevant. Preview the complete PDF and use the rotation control for all pages or a specific page number before running analysis. Replacement and rotation reset review decisions; the same prepared PDF bytes are saved, analysed, encrypted and submitted to the existing hash-bound review gate.
+
+The preparation endpoint is institution-scoped and Registrar-only, accepts editable drafts only, and does not store files or pin to IPFS. It validates file content, combined input/output limits of 20 MB, a maximum of 50 pages, and image dimensions. A single unchanged PDF retains its original bytes. OCR uses grayscale/autocontrast on its working image, retains bounding boxes and confidence, and has a per-page timeout; the stored document remains the prepared scan.
+
+All ten supplied `research/Draft-Temp` photos were exercised through conversion and OCR. Sideways samples were explicitly rotated; automatic orientation, perspective correction, dense course-table reconstruction and model-backed institutional-mark detection are not implemented. OCR output varied substantially, especially on cursive certificates and faint tables. Covered identity fields remained unavailable: these examples must not be interpreted as verified student identities. Request clear, complete source scans or document a justified Registrar decision using the existing review controls. Academic-year rows, handwritten signature dates, and grading keys are not graduation-year evidence by themselves.
+
+
+- **Flow 1: upload completed certificate and transcript ? implemented.** Both uploads are reviewed against the credential record before submission; encrypted storage and paired on-chain hashes are supported.
+- **Flow 2: generated certificate plus existing transcript ? implemented.** The wizard includes transcript upload and review. It follows the review-then-seal design: officers approve the review copy and transcript; the Registrar generates and anchors the sealed certificate afterwards.
+- **Flow 3: unsigned documents with assisted signature placement ? planned.** The issuance selector now describes the intended workflow and opens an informational preview. It does not submit an unsupported flow type to the backend. Model inference, recommended field locations, draggable/manual placement, applying signatures to uploaded PDFs, and hash invalidation after edits remain unimplemented.
+- **Legacy certificate-only upload:** `transcript_then_cert` remains supported for existing draft URLs. It is not the unsigned-document placement workflow, and is no longer advertised as the third intended flow.
+- **Document reading:** PyMuPDF reads embedded text first; Tesseract is used for insufficient text layers. Tesseract is installed and available on this PC's PATH. Added optional `TESSERACT_CMD` backend configuration for installations outside PATH, with an actionable error if unavailable.
+- **Review:** field extraction, comparisons, persisted Registrar decisions, and document-byte-bound submission gates exist. Tabular/multiple-column extraction and representative scan tuning remain open; text extraction does not authenticate seals or signatures.
+- **Shared UI:** each flow card explains three stages, with a shared prepare/review ? attest/approve ? finalize/issue overview. Corrected the generated flow's misleading ?Nothing to upload? description.
+- **Remaining architecture/deployment work:** no shared enforced state machine; model-backed mark detection and placement are pending. Contract address/deployment compatibility and a full wallet/IPFS issuance run were not verified in this check.
+
+Validation: a generated embedded-text PDF used PyMuPDF without OCR; an image-only copy used installed Tesseract successfully and returned text coordinates. The focused field extraction suite passed 30/30 checks. The 40 backend tests covering document review, certificate preparation, and transcript attachment passed; ESLint passed for both changed frontend files. These checks do not establish end-to-end wallet/IPFS deployment readiness.
+
+---
+
 # Implementation Summary
 
 ## Overview
@@ -86,13 +150,13 @@ This document summarizes the implementation of CRUD operations for institutions 
   4. Pin both files to IPFS
   5. Finalize on blockchain
 
-#### 2. Design with Credence (`system_designed`) - RECOMMENDED
-- **Description**: Upload transcript, then design and generate certificate in Credence
+#### 2. Design with Intelligent Academic Credentialing (`system_designed`) - RECOMMENDED
+- **Description**: Upload transcript, then design and generate certificate in Intelligent Academic Credentialing
 - **Icon**: Sparkles icon
 - **Steps**:
   1. Upload student transcript (PDF)
   2. Registrar submits (first approval)
-  3. Design certificate with Credence
+  3. Design certificate with Intelligent Academic Credentialing
   4. Registrar, VC, and Dean approval (quorum)
   5. System generates certificate PDF
   6. Pin transcript to IPFS, finalize on blockchain
@@ -112,7 +176,7 @@ This document summarizes the implementation of CRUD operations for institutions 
 - Two variants: Full card view and Compact view
 - Visual flow selection with icons and colors
 - Detailed workflow steps for each flow
-- "Recommended" badge on Design with Credence flow
+- "Recommended" badge on Design with Intelligent Academic Credentialing flow
 - Selection state management
 - Export of flow IDs for easy reference
 
@@ -145,7 +209,7 @@ This document summarizes the implementation of CRUD operations for institutions 
 ### Certificate Creation Validation:
 ```python
 valid_flows = (
-    FlowType.SYSTEM_DESIGNED,      # Design with Credence
+    FlowType.SYSTEM_DESIGNED,      # Design with Intelligent Academic Credentialing
     FlowType.FULL_UPLOAD,          # Upload both
     FlowType.TRANSCRIPT_THEN_CERT  # Transcript first
 )
@@ -163,7 +227,7 @@ valid_flows = (
 **File:** `back/cred/certify/models.py`
 ```python
 class FlowType(models.TextChoices):
-    SYSTEM_DESIGNED      = "system_designed"      # Design with Credence
+    SYSTEM_DESIGNED      = "system_designed"      # Design with Intelligent Academic Credentialing
     FULL_UPLOAD          = "full_upload"          # Upload both
     TRANSCRIPT_THEN_CERT = "transcript_then_cert" # Transcript first
     EXTERNAL_UPLOAD      = "external_upload"      # Legacy (not shown in UI)
@@ -231,7 +295,7 @@ class FlowType(models.TextChoices):
 
 ### Certificate Workflows:
 - [ ] Three workflow cards display correctly
-- [ ] "Recommended" badge shows on Design with Credence
+- [ ] "Recommended" badge shows on Design with Intelligent Academic Credentialing
 - [ ] Selecting each flow routes to correct component
 - [ ] Flow type passed to backend correctly
 - [ ] ExternalUploadFlow shows correct header for each flow type
@@ -249,7 +313,7 @@ class FlowType(models.TextChoices):
 Based on README notes:
 
 ### ✅ 1. Three Workflows
-- Implemented: Upload both, Design with Credence, Transcript first
+- Implemented: Upload both, Design with Intelligent Academic Credentialing, Transcript first
 - All tied to single student record
 - Proper approval flow for each
 
@@ -326,7 +390,7 @@ Registrar Navigation
 WorkflowFlowSelector (3 flows)
        ↓
 1. Full Upload (full_upload)
-2. Design with Credence (system_designed) ← RECOMMENDED
+2. Design with Intelligent Academic Credentialing (system_designed) ← RECOMMENDED
 3. Upload Certificate to Transcript (transcript_then_cert)
        ↓
 ExternalUploadFlow / SystemDesignedFlow
@@ -439,3 +503,10 @@ View credential → /dashboard/credentials/{id}
 - Ready for integration testing
 - Cache clearing commands documented
 - All routes connected and functional
+
+
+## Groq template assistance (2026-10-11)
+
+Backend-only Groq integration is configured through `GROQ_API_KEY` and `GROQ_MODEL` (default `openai/gpt-oss-20b`). The draft editor offers Ask AI for suggestions with consent before transmitting extracted text. No PDF, image, signature asset or graduate issuance record is transmitted by this action. Model-selected line IDs are mapped to local PyMuPDF/OCR rectangles and checked by the existing layout validator. Suggestions remain unsaved until individually accepted and the draft is saved. AI does not approve templates or enable the third issuance flow.
+
+Twelve focused backend tests passed. The real API key/model connection and a synthetic student-name placeholder suggestion were verified successfully. Browser behavior has not been verified.

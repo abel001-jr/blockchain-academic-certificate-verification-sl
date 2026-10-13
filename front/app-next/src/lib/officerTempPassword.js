@@ -35,10 +35,10 @@ export function clearOfficerTempPassword(officerId) {
 }
 
 export function officerInviteShareText({ officer, tempPassword, loginUrl }) {
-  const role = officer?.role === "vc" ? "Vice Chancellor" : "Dean";
+  const role = officer?.role === "registrar" ? "Registrar" : officer?.role === "vc" ? "Vice Chancellor" : "Chancellor";
   const name = `${officer?.first_name || ""} ${officer?.last_name || ""}`.trim();
   return (
-    `CREDENCE officer invite\n` +
+    `INTELLIGENT ACADEMIC CREDENTIALING officer invite\n` +
     `Name: ${name}\n` +
     `Role: ${role}\n` +
     `Email: ${officer?.email}\n` +

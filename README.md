@@ -1,6 +1,6 @@
-# Credence
+# Intelligent Academic Credentialing
 
-Credence is a monorepo for a blockchain-backed academic certificate issuance and verification platform.
+Intelligent Academic Credentialing is a monorepo for a blockchain-backed academic certificate issuance and verification platform.
 
 ## Documentation — look up in this order
 
@@ -57,6 +57,8 @@ cd chain
 npm install
 npm run node
 npm run deploy:local
+
+npx hardhat clean
 ```
 
 ### 2) Backend

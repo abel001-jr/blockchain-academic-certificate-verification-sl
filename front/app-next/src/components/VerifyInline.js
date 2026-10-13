@@ -1,4 +1,5 @@
 "use client";
+import { ActionButton } from "@/components/ui/AnimatedControls";
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
@@ -64,20 +65,17 @@ export default function VerifyInline({
             <button
               type="button"
               onClick={() => setScanning(true)}
-              className={`flex-1 inline-flex items-center justify-center gap-2 rounded px-4 py-3 font-semibold text-[0.95rem] cursor-pointer ${
-                isDark
-                  ? "border border-white/30 text-[#F8F7F2] hover:bg-white/10"
-                  : "border border-[#E4E1D6] text-[#08283F] hover:bg-[#EAF2FB]"
-              }`}
+              className={`cred-btn cred-btn-secondary flex-1 gap-2 ${isDark ? "cred-btn-inverse" : ""}`}
             >
               <ScanLine size={16} /> Scan QR
             </button>
-            <button
+            <ActionButton
+              tone={isDark ? "inverse" : undefined}
               type="submit"
               className="flex-1 bg-[#08283F] text-[#F8F7F2] border-none rounded px-6 font-semibold text-[1rem] cursor-pointer hover:bg-[#12374F] whitespace-nowrap transition-colors"
             >
               {buttonLabel}
-            </button>
+            </ActionButton>
           </div>
         </div>
       </form>

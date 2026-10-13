@@ -5,7 +5,7 @@
  * A horizontal row of circular icon links — each fills with its brand colour
  * from the bottom and floats a label tooltip above on hover.
  * Source: socials.html (uiverse, MIT licence)
- * Adapted: white circle base, Credence ink text, brand fills kept as-is
+ * Adapted: white circle base, Intelligent Academic Credentialing ink text, brand fills kept as-is
  * since they're used in footer (dark navy bg).
  *
  * Props:
@@ -31,9 +31,9 @@ export default function SocialLinks({ links = [], direction = "row", className =
       role="list"
     >
       {links.map(({ label, href, icon, fillColor }) => (
-        <li key={label} className="cd-social-item">
+        <li key={label} className="cd-social-item" style={{ "--social-fill": fillColor }}>
           {/* Tooltip */}
-          <span className="cd-social-tip" role="tooltip" aria-hidden="true">
+          <span className="cd-social-tip" role="tooltip">
             {label}
           </span>
 

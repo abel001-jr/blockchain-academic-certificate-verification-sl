@@ -6,7 +6,7 @@ import { useAuth, ROLES } from "@/lib/useAuth";
 import StatusBadge from "@/components/dashboard/StatusBadge";
 import CertificatePreview from "@/components/dashboard/CertificatePreview";
 import { approveCertificateOnChain } from "@/lib/walletActions";
-import { notifyCertificateApproval } from "@/lib/notifications";
+import { notifyApprovalRecorded } from "@/lib/notifications";
 import Link from "next/link";
 
 export default function ApprovalsPage() {
@@ -76,11 +76,13 @@ export default function ApprovalsPage() {
 
       setSuccess(`${cert.certificate_id} approved on-chain. Tx: ${approval.hash}`);
       
-      // Send notification
-      notifyCertificateApproval(
-        cert.student_name || 'Unknown Student',
+      // Confirms the actor's own transaction was recorded. The next officer in
+      // the chain is notified by the backend, which is the only side that can
+      // reach them.
+      notifyApprovalRecorded(
         cert.certificate_id,
-        isVc ? 'VC' : 'Dean'
+        cert.student_name || 'Unknown Student',
+        isVc ? 'vc' : 'chancellor',
       );
       
       setSelected(null);
@@ -113,7 +115,7 @@ export default function ApprovalsPage() {
   }
 
   if (!isVc && !isChancellor) {
-    return <p className="text-[#C62828] text-sm">VC or Dean access only.</p>;
+    return <p className="text-[#C62828] text-sm">VC or Chancellor access only.</p>;
   }
 
   return (
@@ -124,7 +126,7 @@ export default function ApprovalsPage() {
             <CheckCircle2 size={24} className="text-[#2F6F4E]" />
             <h3 id="approval-confirmation-title" className="mt-3 text-lg font-bold text-[#142B41]">Confirm your approval</h3>
             <p className="mt-2 text-sm leading-6 text-[#4A5A68]">
-              You are approving {confirmingApproval.certificate_id} as {isVc ? "VC" : "Dean"}. MetaMask will open to record your approval on-chain and may require gas.
+              You are approving {confirmingApproval.certificate_id} as {isVc ? "VC" : "Chancellor"}. MetaMask will open to record your approval on-chain and may require gas.
             </p>
             <div className="mt-6 flex justify-end gap-3">
               <button onClick={() => setConfirmingApproval(null)} className="cd-btn-secondary">Cancel</button>
@@ -135,7 +137,7 @@ export default function ApprovalsPage() {
       )}
       <div>
         <h2 className="text-[#022448] font-bold text-2xl">
-          {isVc ? "VC Approvals" : "Dean Approvals"}
+          {isVc ? "VC Approvals" : "Chancellor Approvals"}
         </h2>
         <p className="text-[#43474e] text-sm mt-0.5">
           Review the certificate preview (same as issuance), then Approve with MetaMask.

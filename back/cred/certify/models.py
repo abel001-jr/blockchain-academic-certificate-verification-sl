@@ -15,7 +15,7 @@ from django.utils import timezone
 
 
 class FlowType(models.TextChoices):
-    SYSTEM_DESIGNED      = "system_designed",      "System Designed"       # full VC+Dean approval flow
+    SYSTEM_DESIGNED      = "system_designed",      "System Designed"       # full VC+Chancellor approval flow
     EXTERNAL_UPLOAD      = "external_upload",      "External Upload"       # registrar uploads pre-signed PDF
     TRANSCRIPT_THEN_CERT = "transcript_then_cert", "Transcript Then Cert"  # upload transcript, then design cert
     FULL_UPLOAD          = "full_upload",          "Full Upload"           # upload both transcript + cert together
@@ -24,7 +24,7 @@ class FlowType(models.TextChoices):
 class CertificateStatus(models.TextChoices):
     DRAFT                 = "draft",                 "Draft"
     PENDING_VC            = "pending_vc",            "Pending VC Approval"
-    PENDING_CHANCELLOR    = "pending_chancellor",    "Pending Dean Approval"
+    PENDING_CHANCELLOR    = "pending_chancellor",    "Pending Chancellor Approval"
     PENDING_FINALIZE      = "pending_finalize",      "Pending Final PDF / On-Chain Finalize"
     PENDING               = "pending",               "Pending (legacy)"
     ISSUED                = "issued",                "Issued"
@@ -34,7 +34,7 @@ class CertificateStatus(models.TextChoices):
 
 class Certificate(models.Model):
     """
-    Represents one academic certificate in CREDENCE.
+    Represents one academic certificate in INTELLIGENT ACADEMIC CREDENTIALING.
 
     Lifecycle (spec §8):
       Draft → Pending → Issued (on-chain) → [Revoked]
@@ -101,6 +101,10 @@ class Certificate(models.Model):
 
     # Snapshot of branding preset at submit-for-approval time
     branding_preset    = models.CharField(max_length=40, blank=True, default="classic_navy")
+    template_revision = models.ForeignKey(
+        "institutions.CertificateTemplateRevision", on_delete=models.PROTECT,
+        null=True, blank=True, related_name="credentials",
+    )
 
     # Registrar appears as a signer (submits for approval on-chain)
     registrar_signer_name  = models.CharField(max_length=200, blank=True)
@@ -130,6 +134,14 @@ class Certificate(models.Model):
     # ── Document storage ──────────────────────────────────────
     # Local file temporarily stored before IPFS pinning
     document_file      = models.FileField(upload_to="certificates/pdfs/", blank=True)
+    # The paired transcript, held locally for the same reason as `document_file`.
+    # Pinata is a metered, rate-limited service, so a draft must not consume
+    # pinning quota every time the Registrar picks a file; both documents are
+    # written here while the draft is being filled in and are moved to IPFS in
+    # one step when the credential is anchored. `transcript_hash` and
+    # `ipfs_cid_transcript` stay blank until that happens, so "has an anchored
+    # transcript" is never true for a draft nobody submitted.
+    transcript_file    = models.FileField(upload_to="certificates/transcripts/", blank=True)
 
     # ── Cryptographic hashes (computed by Django before chain tx) ─
     cert_hash          = models.CharField(max_length=66, blank=True)  # 0x + 64 hex = SHA-256 of JSON
@@ -160,6 +172,7 @@ class Certificate(models.Model):
 
     # ── Blockchain ────────────────────────────────────────────
     tx_hash            = models.CharField(max_length=66, blank=True)  # Ethereum tx hash
+    chain_config_snapshot = models.JSONField(default=dict, blank=True, editable=False)
     block_number       = models.PositiveBigIntegerField(null=True, blank=True)
     chain_issued_at    = models.DateTimeField(null=True, blank=True)   # from block timestamp
 
@@ -544,124 +557,129 @@ class ConsentRequest(models.Model):
         return False
 
 
-# ── Academic Transcripts ──────────────────────────────────────────────────────
+class DocumentReviewKind(models.TextChoices):
+    CERTIFICATE = "certificate", "Certificate"
+    TRANSCRIPT  = "transcript",  "Transcript"
 
-class Transcript(models.Model):
+
+class DocumentReviewState(models.TextChoices):
+    PENDING    = "pending",    "Awaiting Registrar review"
+    RESOLVED   = "resolved",   "Reviewed, all fields agree"
+    OVERRIDDEN = "overridden", "Reviewed, mismatches overridden"
+    REJECTED   = "rejected",   "Document rejected"
+
+
+class DocumentReview(models.Model):
+    """The result of comparing an uploaded document against the intake record.
+
+    Item 4 of `REMAINING_WORK.md`. The design doc is explicit that a document
+    must not be silently bound to the entered student:
+
+        "Compare extracted student name, award, institution, and other
+         configured fields with the intake data. Flag mismatches for Registrar
+         review; do not silently bind a document to the entered student."
+
+    One row per (certificate, document_kind), replaced when the document is
+    re-analysed. The extracted values and the per-field verdicts are both kept,
+    because "the extractor said X and the record said Y, and the Registrar
+    accepted that" is the audit trail this feature exists to produce — storing
+    only a final boolean would make an override indistinguishable from a match.
+
+    The comparison itself is advisory: OCR on a scanned transcript is
+    fallible, so a Registrar may override a mismatch with a stated reason. What
+    is *not* advisory is that a decision has to exist. A credential is not
+    submitted on-chain while its review is still `pending`, which is what stops
+    the document from being bound to the student without anyone deciding.
     """
-    Academic transcript for a student, optionally linked to a certificate.
-    
-    Supports three flows:
-      1. FULL_UPLOAD: Upload transcript + certificate together (linked immediately)
-      2. TRANSCRIPT_THEN_CERT: Upload transcript first, design cert later (linked after)
-      3. Standalone: Transcript exists without certificate (certificate = null)
-    
-    Lifecycle:
-        Registrar uploads transcript → IPFS pinning → VC approval → Dean approval
-        Similar attestation flow to certificates (all actions require MetaMask tx)
-    """
 
-    # ── Identity ──────────────────────────────────────────────────────────────
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    transcript_id = models.CharField(
-        max_length=50, 
-        unique=True,
-        help_text="e.g. TR-2026-CUSL-0042"
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    certificate = models.ForeignKey(
+        Certificate, on_delete=models.CASCADE, related_name="document_reviews",
+    )
+    document_kind = models.CharField(
+        max_length=16, choices=DocumentReviewKind.choices,
     )
 
-    # ── Link to certificate (optional) ────────────────────────────────────────
-    certificate = models.OneToOneField(
-        Certificate,
-        on_delete=models.CASCADE,
-        related_name="transcript",
-        null=True, blank=True,
-        help_text="Linked certificate. Null if transcript uploaded before cert creation."
+    state = models.CharField(
+        max_length=16, choices=DocumentReviewState.choices,
+        default=DocumentReviewState.PENDING, db_index=True,
     )
 
-    # ── Parties ───────────────────────────────────────────────────────────────
-    institution = models.ForeignKey(
-        "institutions.Institution",
-        on_delete=models.PROTECT,
-        related_name="transcripts",
+    #: field name -> the string the extractor read off the document
+    extracted = models.JSONField(default=dict, blank=True)
+    #: per-field verdicts from `field_extraction.compare_fields`
+    comparisons = models.JSONField(default=list, blank=True)
+    #: counts + requires_review, cached so list views do not re-derive it
+    summary = models.JSONField(default=dict, blank=True)
+
+    ocr_used   = models.BooleanField(default=False)
+    page_count = models.PositiveIntegerField(default=0)
+    #: SHA-256 of the exact bytes analysed, so a later re-upload cannot quietly
+    #: inherit a review that was performed against different content.
+    document_sha256 = models.CharField(max_length=64, blank=True)
+
+    #: Registrar's justification. Required for an override or a rejection,
+    #: since both are a human accepting responsibility for a known difference.
+    resolution_note = models.TextField(blank=True)
+    #: field names the Registrar explicitly cleared, kept alongside the note so
+    #: a later review can show *which* differences were waved through.
+    overridden_fields = models.JSONField(default=list, blank=True)
+
+    reviewed_by = models.ForeignKey(
+        "accounts.User", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="document_reviews",
     )
-    uploaded_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="uploaded_transcripts",
-        limit_choices_to={"role": "registrar"},
-    )
-    student = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="transcripts",
-        limit_choices_to={"role": "student"},
-    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
 
-    # ── Student details (snapshot at upload) ──────────────────────────────────
-    student_name = models.CharField(max_length=200)
-    student_email = models.EmailField()
-    student_id_number = models.CharField(max_length=50, blank=True)
-
-    # ── Document storage ──────────────────────────────────────────────────────
-    transcript_file = models.FileField(
-        upload_to="transcripts/pdfs/",
-        help_text="Local PDF file before IPFS pinning"
-    )
-    transcript_hash = models.CharField(
-        max_length=66, 
-        blank=True,
-        help_text="SHA-256 hash of transcript PDF (0x + 64 hex)"
-    )
-
-    # ── IPFS ──────────────────────────────────────────────────────────────────
-    ipfs_cid = models.CharField(max_length=100, blank=True)
-    ipfs_url = models.URLField(blank=True)
-
-    # ── Approval workflow (similar to Certificate) ────────────────────────────
-    # VC approval
-    vc_approved_at = models.DateTimeField(null=True, blank=True)
-    vc_approval_tx_hash = models.CharField(max_length=66, blank=True)
-    vc_approver_name = models.CharField(max_length=200, blank=True)
-
-    # Dean approval
-    dean_approved_at = models.DateTimeField(null=True, blank=True)
-    dean_approval_tx_hash = models.CharField(max_length=66, blank=True)
-    dean_approver_name = models.CharField(max_length=200, blank=True)
-
-    # ── Status ────────────────────────────────────────────────────────────────
-    status = models.CharField(
-        max_length=32,
-        choices=[
-            ("draft", "Draft"),
-            ("pending_vc", "Pending VC Approval"),
-            ("pending_dean", "Pending Dean Approval"),
-            ("approved", "Approved"),
-            ("rejected", "Rejected"),
-        ],
-        default="draft",
-        db_index=True,
-    )
-
-    # ── Timestamps ────────────────────────────────────────────────────────────
-    uploaded_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        db_table = "credence_transcripts"
-        ordering = ["-uploaded_at"]
-        verbose_name = "Transcript"
-        verbose_name_plural = "Transcripts"
+        db_table = "credence_document_reviews"
+        ordering = ["document_kind"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["certificate", "document_kind"],
+                name="uniq_document_review_per_kind",
+            ),
+        ]
+        verbose_name = "Document review"
+        verbose_name_plural = "Document reviews"
 
     def __str__(self):
-        return f"{self.transcript_id} — {self.student_name}"
+        return f"{self.certificate.certificate_id} — {self.get_document_kind_display()} ({self.state})"
 
     @property
-    def is_approved(self):
-        """Returns True if both VC and Dean have approved."""
-        return bool(self.vc_approved_at and self.dean_approved_at)
+    def is_resolved(self):
+        """True once a Registrar has made a decision that permits submission."""
+        return self.state in (
+            DocumentReviewState.RESOLVED,
+            DocumentReviewState.OVERRIDDEN,
+        )
 
     @property
-    def verification_url(self):
-        """Public URL for transcript verification."""
-        return f"/verify/transcript/{self.transcript_id}"
+    def is_rejected(self):
+        return self.state == DocumentReviewState.REJECTED
+
+    @property
+    def used_weak_evidence(self):
+        """Whether any field was confirmed by text search rather than by reading.
+
+        A resolved review of a label-less certificate has not had a single value
+        read from a labelled field, so a state label claiming "all fields agree"
+        would be true of the values and false of the method. The panel uses this
+        to say which it was.
+        """
+        from .field_extraction import weak_evidence
+
+        return bool(weak_evidence(self.comparisons or []))
+
+    @property
+    def blocks_submission(self):
+        """Whether this review stands between the credential and the chain.
+
+        A rejected document also blocks: the point of rejecting is that this
+        file must not be the one that gets hashed and anchored, so the
+        Registrar has to upload a replacement, which produces a new analysis.
+        """
+        return not self.is_resolved

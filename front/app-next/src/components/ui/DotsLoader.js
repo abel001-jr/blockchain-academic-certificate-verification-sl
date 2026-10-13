@@ -2,7 +2,7 @@
  * DotsLoader
  * Three pulsing dots — inline/button-level loading state.
  * Source: loader_nd.html (uiverse, MIT licence)
- * Adapted to Credence navy palette.
+ * Adapted to Intelligent Academic Credentialing navy palette.
  *
  * Props:
  *   size   — "sm" | "md" (default "md")

@@ -23,7 +23,7 @@ CHAIN_DIR="$(dirname "$SCRIPT_DIR")"
 
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
-echo "║         CREDENCE — Local Chain Redeploy              ║"
+echo "║         INTELLIGENT ACADEMIC CREDENTIALING — Local Chain Redeploy              ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
 
@@ -42,6 +42,27 @@ cd "$CHAIN_DIR"
 npm run deploy:local
 
 echo ""
+echo "► Seeding institution and officer roles ..."
+echo "  (A redeploy alone leaves the chain with zero institutions, so nothing"
+echo "   can be issued until an institution is registered. Override with"
+echo "   SEED_INSTITUTION_ID / SEED_INSTITUTION_NAME / SEED_VC_ADDRESS /"
+echo "   SEED_CHANCELLOR_ADDRESS if your Django rows differ.)"
+echo ""
+# Non-fatal on purpose: the deploy above already succeeded, and the usual
+# reason this fails is that SEED_INSTITUTION_ID does not match the Django
+# Institution row. Aborting here would throw away a working deploy over a
+# value the operator can correct in one place.
+if ! node "$CHAIN_DIR/scripts/seed-local-roles.mjs"; then
+  echo ""
+  echo "⚠  Role seeding did not complete. The contracts are deployed, but no"
+  echo "   credential can be submitted until the institution is registered."
+  echo "   Either re-run with corrected values:"
+  echo "     node chain/scripts/seed-local-roles.mjs"
+  echo "   or register it from the dashboard: Admin → Anchor."
+  echo ""
+fi
+
+echo ""
 echo "✔  Contracts deployed."
 echo ""
 echo "Expected addresses (same every time on a fresh Hardhat node):"
@@ -50,4 +71,8 @@ echo "  CertificateRegistry : 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
 echo ""
 echo "These match the values in front/app-next/.env.example"
 echo "Copy that file to front/app-next/.env.local if you haven't already."
+echo ""
+echo "Note: restarting 'npx hardhat node' wipes ALL on-chain state, including"
+echo "the institution and officer roles. Re-run this script afterwards, or the"
+echo "next submit will revert with 'caller is not an active registrar/issuer'."
 echo ""

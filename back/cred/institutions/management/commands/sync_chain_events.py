@@ -14,10 +14,9 @@ chain state. If they disagree, the UI should trust the chain.
 """
 
 from django.core.management.base import BaseCommand
-from django.conf import settings
 from django.utils import timezone
 
-from institutions.models import Institution
+from institutions.models import ChainConfig, Institution
 from accounts.models import User, Role
 from audit.utils import log_action
 
@@ -79,21 +78,60 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         try:
             from web3 import Web3
-        except ImportError:
-            self.stderr.write("web3 is not installed. Run: pip install web3")
+        except ImportError as exc:
+            # Deliberately not a bare "web3 is not installed". A version conflict
+            # between web3 and the pinned eth-account also surfaces as an ImportError
+            # from deep inside web3, and telling an operator to pip install a package
+            # that is already installed sends them down the wrong path.
+            self.stderr.write(f"web3 could not be imported: {exc}")
+            self.stderr.write(
+                "If it is not installed: pip install web3==7.0.0  "
+                "(see requirements.txt for the pin, which is constrained by "
+                "eth-account)"
+            )
             return
 
-        rpc_url      = settings.ETH_RPC_URL
-        registry_addr = settings.ISSUER_REGISTRY_ADDRESS
+        # Read the same ChainConfig row the dashboard writes, not the env vars.
+        # These used to come from settings.ETH_RPC_URL / ISSUER_REGISTRY_ADDRESS,
+        # which meant that re-pointing the deployment through Settings → Blockchain
+        # moved the signing UI and left this indexer polling the previous chain —
+        # and it would then have activated and deactivated institutions and
+        # registrars from a chain the app no longer considered authoritative.
+        config = ChainConfig.load()
+        rpc_url = config.rpc_url
+        registry_addr = config.issuer_registry_address
 
         if not registry_addr or registry_addr == "0x0000000000000000000000000000000000000000":
-            self.stdout.write("ISSUER_REGISTRY_ADDRESS not configured — skipping.")
+            self.stdout.write("Issuer registry address not configured — skipping.")
             return
 
         w3 = Web3(Web3.HTTPProvider(rpc_url))
         if not w3.is_connected():
             self.stderr.write(f"Cannot connect to {rpc_url}")
             return
+
+        # An RPC URL that is reachable is not the same as an RPC URL that is the
+        # configured network. Without this, a copy-pasted mainnet URL against a
+        # testnet deployment would index real mainnet events into this database.
+        if config.chain_id:
+            try:
+                actual_chain_id = w3.eth.chain_id
+            except Exception as exc:  # noqa: BLE001 - provider-specific failures
+                self.stderr.write(f"Could not read chain id from {rpc_url}: {exc}")
+                return
+            if actual_chain_id != config.chain_id:
+                self.stderr.write(
+                    f"Chain mismatch: {rpc_url} is chain {actual_chain_id}, but the "
+                    f"configured chain is {config.chain_id}. Refusing to sync — "
+                    f"this would write another chain's events into this database."
+                )
+                return
+            self.stdout.write(f"Connected to chain {actual_chain_id} at {rpc_url}")
+        else:
+            self.stdout.write(
+                f"Warning: no expected chain id configured. Syncing whatever "
+                f"{rpc_url} reports without verifying it."
+            )
 
         contract = w3.eth.contract(
             address=Web3.to_checksum_address(registry_addr),

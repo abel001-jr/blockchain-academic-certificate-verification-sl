@@ -1,14 +1,18 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import Image from "next/image";
+import AnimatedBrandMark from "../ui/AnimatedBrandMark";
+import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Building2, Users, UserCheck,
   ScrollText, BadgeCheck, Link2, History, BarChart3,
-  Settings, LogOut, X, ShieldAlert, Gavel, Anchor, Share2,
+  Settings, LogOut, X, Gavel, Anchor, Share2, PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
-import { api, jwtPayload } from "@/lib/api";
+import { clearSession, api } from "@/lib/api";
+import { useAuth } from "@/lib/useAuth";
+import styles from "./Sidebar.module.css";
+import ProfileAvatar from "./ProfileAvatar";
 
 const COMMON = [
   { label: "Dashboard",  href: "/dashboard",          icon: LayoutDashboard },
@@ -52,8 +56,7 @@ const INST_ADMIN_ITEMS = [
   // SETUP
   { section: "SETUP", badge: "CRUD" },
   { label: "Institution", href: "/dashboard/institution", icon: Building2 },
-  { label: "Registrars", href: "/dashboard/registrars", icon: Users },
-  { label: "Authorize Registrar", href: "/dashboard/registrars/authorize", icon: UserCheck },
+  { label: "Officers", href: "/dashboard/officers", icon: Users },
   
   // CERTIFICATES
   { section: "CERTIFICATES", badge: "READ ONLY" },
@@ -80,11 +83,6 @@ const REGISTRAR_ITEMS = [
   { label: "Issue Credential", href: "/dashboard/credentials/new", icon: ScrollText },
   { label: "Credentials", href: "/dashboard/credentials", icon: ScrollText, certificateTotal: true },
   
-  // SETUP
-  { section: "SETUP", badge: "CRUD" },
-  { label: "Institution", href: "/dashboard/institution", icon: Building2 },
-  { label: "Officers", href: "/dashboard/officers", icon: Users },
-  
   // TRUST AND VERIFICATION
   { section: "TRUST AND VERIFICATION", badge: "READ ONLY" },
   { label: "Verification", href: "/dashboard/verification", icon: BadgeCheck },
@@ -108,6 +106,8 @@ const VC_ITEMS = [
   // CERTIFICATES
   { section: "CERTIFICATES", badge: "READ ONLY" },
   { label: "Certificates", href: "/dashboard/certificates", icon: ScrollText },
+  { section: "ACTIVITY" },
+  { label: "Audit Logs", href: "/dashboard/audit", icon: History },
 ];
 
 const CHANCELLOR_ITEMS = [
@@ -122,6 +122,8 @@ const CHANCELLOR_ITEMS = [
   // CERTIFICATES
   { section: "CERTIFICATES", badge: "READ ONLY" },
   { label: "Certificates", href: "/dashboard/certificates", icon: ScrollText },
+  { section: "ACTIVITY" },
+  { label: "Audit Logs", href: "/dashboard/audit", icon: History },
 ];
 
 const STUDENT_ITEMS = [
@@ -131,21 +133,12 @@ const STUDENT_ITEMS = [
   { label: "Verifications", href: "/dashboard/verifications", icon: Share2 },
 ];
 
-const roleIcon = {
-  super_admin:         ShieldAlert,
-  institutional_admin: Building2,
-  registrar:           UserCheck,
-  vc:                  BadgeCheck,
-  chancellor:          Gavel,
-  student:             BadgeCheck,
-};
-
 const roleLabel = {
   super_admin:         "Super Admin",
   institutional_admin: "Inst. Admin",
   registrar:           "Registrar",
   vc:                  "Vice Chancellor",
-  chancellor:          "Dean",
+  chancellor:          "Chancellor",
   student:             "Student",
 };
 
@@ -161,17 +154,30 @@ function getNavItems(role) {
   }
 }
 
-export default function Sidebar({ open, onClose }) {
+function subscribeViewport(callback) {
+  const query = window.matchMedia("(min-width: 1024px)");
+  query.addEventListener("change", callback);
+  return () => query.removeEventListener("change", callback);
+}
+
+export default function Sidebar({ open, onClose, collapsed = false, onToggleCollapsed }) {
+  const desktop = useSyncExternalStore(subscribeViewport, () => window.matchMedia("(min-width: 1024px)").matches, () => true);
   const pathname = usePathname();
-  const [payload, setPayload] = useState(null);
+  const { user, role: currentRole } = useAuth();
   const [certificateTotal, setCertificateTotal] = useState(null);
+  const [tooltip, setTooltip] = useState(null);
+  function showTooltip(event) {
+    if (!collapsed || (!desktop && !open)) return;
+    const target = event.target.closest("[data-nav-label]");
+    if (!target) { setTooltip(null); return; }
+    const rect = target.getBoundingClientRect();
+    const theme = getComputedStyle(event.currentTarget);
+    setTooltip({ label: target.dataset.navLabel, left: rect.right + 12, top: Math.max(8, Math.min(rect.top + rect.height / 2 - 18, window.innerHeight - 48)), primary: theme.getPropertyValue("--cd-primary"), accent: theme.getPropertyValue("--cd-accent") });
+  }
 
-  useEffect(() => { setPayload(jwtPayload()); }, []);
 
-  const role     = payload?.role ?? "—";
-  const fullName = payload?.full_name ?? "User";
-  const initials = fullName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
-  const RoleIcon = roleIcon[role] ?? Building2;
+  const role     = currentRole ?? "—";
+  const fullName = user?.full_name || "User";
   const navItems = getNavItems(role);
 
   useEffect(() => {
@@ -194,8 +200,8 @@ export default function Sidebar({ open, onClose }) {
   }, [role, pathname]);
 
   return (
-    <aside className={`
-        fixed top-0 left-0 h-full w-72 z-40 flex flex-col
+    <aside id="dashboard-sidebar" inert={!desktop && !open} role={!desktop && open ? "dialog" : undefined} aria-modal={!desktop && open ? true : undefined} aria-label="Dashboard navigation panel" onMouseOver={showTooltip} onMouseLeave={() => setTooltip(null)} onFocus={showTooltip} onBlur={() => setTooltip(null)} onScrollCapture={() => setTooltip(null)} className={`${styles.sidebar} ${collapsed ? styles.collapsed : ""} cd-theme-sidebar
+        fixed top-0 left-0 h-dvh w-72 z-40 flex flex-col
         bg-white border-r border-[#E4E1D6]
         shadow-[2px_0_12px_rgba(8,40,63,0.06)]
         transition-transform duration-300
@@ -204,10 +210,11 @@ export default function Sidebar({ open, onClose }) {
       `}
     >
       {/* Logo */}
-      <div className="flex items-center justify-between px-5 h-16 border-b border-[#E4E1D6] shrink-0">
+      <div className={`${styles.brand} flex items-center justify-between border-b border-[#E4E1D6] shrink-0`}>
+        <button type="button" onClick={() => { setTooltip(null); onToggleCollapsed?.(); }} className={`${styles.collapseToggle} grid text-[#08283F]`} aria-label={collapsed ? "Expand sidebar" : "Minimize sidebar"} title={collapsed ? "Expand sidebar" : "Minimize sidebar"} aria-expanded={!collapsed}>{collapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}</button>
         <Link href="/dashboard" className="flex items-center gap-2.5">
-          <Image src="/logo.png" alt="Credence" width={28} height={28} className="rounded-lg" />
-          <span className="text-[#08283F] font-bold text-lg tracking-tight">Credence</span>
+          <AnimatedBrandMark src="/fav.png" size={32} />
+          <span className="text-[#08283F] font-bold text-lg tracking-tight">Intelligent Academic Credentialing</span>
         </Link>
         <button
           onClick={onClose}
@@ -218,39 +225,16 @@ export default function Sidebar({ open, onClose }) {
         </button>
       </div>
 
-      {/* User info */}
-      <div className="px-4 py-3.5 border-b border-[#E4E1D6] shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-[#08283F] flex items-center justify-center text-white text-sm font-bold shrink-0 leading-none">
-            {initials}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[#08283F] text-sm font-semibold truncate leading-tight">{fullName}</p>
-            <p className="text-[#4A5A68] text-xs truncate mt-0.5">{roleLabel[role] ?? role}</p>
-          </div>
-        </div>
-        {/* Role badge */}
-        <div className="mt-2.5 flex items-center gap-1.5 bg-[#B98A28]/10 text-[#B98A28] text-xs font-semibold px-2.5 py-1 rounded-full w-fit">
-          <RoleIcon size={11} />
-          {roleLabel[role] ?? role}
-        </div>
-      </div>
-
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-0.5">
+      <nav aria-label="Dashboard navigation" className={`${styles.nav} flex-1 min-h-0 overflow-y-auto flex flex-col`}>
         {navItems.map((item, index) => {
           // Render section header
           if (item.section) {
             return (
               <div key={`section-${index}`} className={`flex items-center justify-between px-3 ${index > 0 ? 'mt-4' : 'mt-0'} mb-2`}>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#9AA8B4]">
+                <span className="cd-sidebar-section text-[10px] font-bold uppercase tracking-wider text-[#9AA8B4]">
                   {item.section}
                 </span>
-                {item.badge && (
-                  <span className="text-[9px] font-bold uppercase tracking-wider text-[#C59A3A]">
-                    {item.badge}
-                  </span>
-                )}
               </div>
             );
           }
@@ -264,7 +248,10 @@ export default function Sidebar({ open, onClose }) {
             <Link
               key={href + label}
               href={href}
-              onClick={onClose}
+              data-nav-label={label}
+              aria-label={label}
+              aria-current={active ? "page" : undefined}
+              onClick={() => { setTooltip(null); onClose(); }}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 active
                   ? "bg-[#B98A28]/10 text-[#B98A28] font-semibold"
@@ -286,9 +273,12 @@ export default function Sidebar({ open, onClose }) {
       </nav>
 
       {/* Sign out — always visible at bottom */}
-      <div className="px-3 py-3 border-t border-[#E4E1D6] shrink-0 bg-white space-y-1">
+      <div className={`${styles.footer} cd-sidebar-footer border-t border-[#E4E1D6] shrink-0 bg-white space-y-1`}>
         <Link
           href="/dashboard/settings"
+          data-nav-label="Settings"
+          aria-label="Settings"
+          aria-current={pathname === "/dashboard/settings" ? "page" : undefined}
           onClick={onClose}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
             pathname === "/dashboard/settings"
@@ -297,16 +287,27 @@ export default function Sidebar({ open, onClose }) {
           }`}
         >
           <Settings size={17} strokeWidth={pathname === "/dashboard/settings" ? 2.2 : 1.7} className="shrink-0" />
-          Settings
+          <span>Settings</span>
         </Link>
         <button
-          onClick={() => { localStorage.clear(); window.location.href = "/login"; }}
+          data-nav-label="Sign out"
+          aria-label="Sign out"
+          onClick={() => { clearSession(); window.location.replace("/login"); }}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-[#A23B34] hover:bg-[#F5E5E3] transition-colors"
         >
           <LogOut size={17} strokeWidth={1.7} className="shrink-0" />
-          Sign out
+          <span>Sign out</span>
         </button>
       </div>
+      <Link href="/dashboard/settings" onClick={onClose} data-nav-label={fullName} aria-label="Profile settings" className={styles.user}>
+        <ProfileAvatar user={user} size={44} />
+        <div className={styles.profileText}>
+          <p>{fullName}</p>
+          <p>{user?.email || roleLabel[role] || role}</p>
+          <span>{roleLabel[role] ?? role}</span>
+        </div>
+      </Link>
+      {collapsed && tooltip && createPortal(<span role="tooltip" className={styles.iconTooltip} style={{ left: tooltip.left, top: tooltip.top, background: tooltip.primary || "#08283F", borderColor: tooltip.accent || "#B98A28" }}>{tooltip.label}</span>, document.body)}
     </aside>
   );
 }

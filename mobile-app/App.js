@@ -1,10 +1,9 @@
 /**
- * Credence Mobile — App entry point
+ * Intelligent Academic Credentialing Mobile — App entry point
  *
  * Screen routing:
  *   Unauthenticated public:
  *     Home → StudentWelcome (students / Google / token claim)
- *          → Login          (staff email+password only)
  *          → Verify         (anyone, no login)
  *
  *   Authenticated:
@@ -30,7 +29,6 @@ import { claimInviteToken, getMe } from "./src/services/auth";
 
 import HomeScreen              from "./src/screens/HomeScreen";
 import StudentWelcomeScreen    from "./src/screens/StudentWelcomeScreen";
-import LoginScreen             from "./src/screens/LoginScreen";
 import VerifyScreen            from "./src/screens/VerifyScreen";
 import DashboardScreen         from "./src/screens/DashboardScreen";
 import CertificateDetailScreen from "./src/screens/CertificateDetailScreen";
@@ -115,7 +113,7 @@ export default function App() {
           style={styles.splashLogo}
           resizeMode="contain"
         />
-        <Text style={styles.splashName}>Credence</Text>
+        <Text style={styles.splashName}>Intelligent Academic Credentialing</Text>
         <ActivityIndicator size="small" color="#B98A28" style={{ marginTop: 32 }} />
       </View>
     );
@@ -163,20 +161,19 @@ export default function App() {
               </Stack.Screen>
 
               {/* Student entry point — Google + token claim */}
-              <Stack.Screen name="StudentWelcome" options={{ headerShown: false }}>
+              <Stack.Screen 
+                name="StudentWelcome" 
+                options={{ 
+                  title: "Access Certificate",
+                  headerBackTitle: "Back"
+                }}
+              >
                 {(props) => (
                   <StudentWelcomeScreen
                     {...props}
                     onLoginSuccess={setUser}
                     initialError={deepLinkError}
                   />
-                )}
-              </Stack.Screen>
-
-              {/* Staff-only login */}
-              <Stack.Screen name="Login" options={{ headerShown: false }}>
-                {(props) => (
-                  <LoginScreen {...props} onLoginSuccess={setUser} />
                 )}
               </Stack.Screen>
 

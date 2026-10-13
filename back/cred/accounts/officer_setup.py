@@ -44,7 +44,7 @@ class OfficerSetupWalletChallengeView(APIView):
         taken = User.objects.filter(wallet_address__iexact=address).exclude(pk=request.user.pk)
         if taken.exists():
             return Response(
-                {"detail": "This wallet is already linked to another CREDENCE account."},
+                {"detail": "This wallet is already linked to another INTELLIGENT ACADEMIC CREDENTIALING account."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -58,7 +58,7 @@ class OfficerSetupWalletChallengeView(APIView):
         nonce = secrets.token_hex(32)
         timestamp = timezone.now().isoformat()
         message = (
-            f"CREDENCE officer wallet verification\n"
+            f"INTELLIGENT ACADEMIC CREDENTIALING officer wallet verification\n"
             f"address: {address}\n"
             f"email: {request.user.email}\n"
             f"nonce: {nonce}\n"
@@ -125,7 +125,7 @@ class OfficerSetupWalletVerifyView(APIView):
         taken = User.objects.filter(wallet_address__iexact=address).exclude(pk=request.user.pk)
         if taken.exists():
             return Response(
-                {"detail": "This wallet is already linked to another CREDENCE account."},
+                {"detail": "This wallet is already linked to another INTELLIGENT ACADEMIC CREDENTIALING account."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -189,7 +189,7 @@ class OfficerSetupPasswordView(APIView):
         return Response({
             "detail": (
                 "Setup complete. Your temporary password is retired. "
-                "Wait for your Registrar to authorize your wallet on-chain, "
+                "Wait for your institution administrator to authorize your wallet on-chain, "
                 "then sign in with MetaMask."
             ),
             "setup_complete": True,

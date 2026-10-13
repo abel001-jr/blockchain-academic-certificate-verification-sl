@@ -1,3 +1,4 @@
+import AnimatedButton from "../components/AnimatedButton";
 /**
  * DashboardScreen — student portal hub.
  *
@@ -11,9 +12,12 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  Linking,
   Platform,
   RefreshControl,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -21,8 +25,9 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getMyCertificates, verifyCertificate } from "../services/certificates";
-import { parseCertificateIdFromScan } from "../utils/parseCertificateScan";
+import * as Sharing from "expo-sharing";
+import { File, Paths } from "expo-file-system";
+import { getMyCertificates, downloadMyDocuments } from "../services/certificates";
 
 // ── design tokens ──────────────────────────────────────────────────────────
 const T = {
@@ -72,47 +77,72 @@ function roleLabel(role) {
 }
 
 // ── Certificate card ───────────────────────────────────────────────────────
-function CertCard({ cert, onPress }) {
+function CertCard({ cert, onPress, onShare, onDownload, onCopyLink, downloadBusy, downloadDisabled }) {
   const meta      = statusMeta(cert.status);
   const anchored  = Boolean(cert.chain_issued_at);
   const issuedDate = fmtDate(cert.chain_issued_at);
 
   return (
-    <TouchableOpacity
-      style={s.certCard}
-      onPress={onPress}
-      activeOpacity={0.75}
-    >
-      {/* Row 1: degree + status pill */}
-      <View style={s.certRow}>
-        <Text style={s.certDegree} numberOfLines={2}>{cert.degree_title ?? "Certificate"}</Text>
-        <View style={[s.statusPill, { backgroundColor: meta.bg }]}>
-          <Text style={[s.statusText, { color: meta.color }]}>{meta.label}</Text>
+    <View style={s.certCard}>
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.75}
+        style={{ flex: 1 }}
+      >
+        {/* Row 1: degree + status pill */}
+        <View style={s.certRow}>
+          <Text style={s.certDegree} numberOfLines={2}>{cert.degree_title ?? "Certificate"}</Text>
+          <View style={[s.statusPill, { backgroundColor: meta.bg }]}>
+            <Text style={[s.statusText, { color: meta.color }]}>{meta.label}</Text>
+          </View>
         </View>
-      </View>
-      {/* Institution */}
-      <Text style={s.certInstitution} numberOfLines={1}>{cert.institution_name ?? ""}</Text>
-      {/* Row 2: year · grade · chain badge */}
-      <View style={s.certMeta}>
-        {cert.graduation_year
-          ? <Text style={s.certMetaItem}>Class of {cert.graduation_year}</Text>
-          : null}
-        {cert.grade
-          ? <Text style={s.certMetaItem}> · {cert.grade}</Text>
-          : null}
-        <View style={{ flex: 1 }} />
-        <View style={[s.chainPill, !anchored && s.chainPillPending]}>
-          <Text style={[s.chainPillText, !anchored && { color: T.amber }]}>
-            {anchored ? "⛓ On-chain" : "⏳ Pending"}
-          </Text>
+        {/* Institution */}
+        <Text style={s.certInstitution} numberOfLines={1}>{cert.institution_name ?? ""}</Text>
+        {/* Row 2: year · grade · chain badge */}
+        <View style={s.certMeta}>
+          {cert.graduation_year
+            ? <Text style={s.certMetaItem}>Class of {cert.graduation_year}</Text>
+            : null}
+          {cert.grade
+            ? <Text style={s.certMetaItem}> · {cert.grade}</Text>
+            : null}
+          <View style={{ flex: 1 }} />
+          <View style={[s.chainPill, !anchored && s.chainPillPending]}>
+            <Text style={[s.chainPillText, !anchored && { color: T.amber }]}>
+              {anchored ? "⛓ On-chain" : "⏳ Pending"}
+            </Text>
+          </View>
         </View>
-      </View>
-      {/* Cert ID + date */}
-      <Text style={s.certId} numberOfLines={1}>{cert.certificate_id}</Text>
-      {issuedDate
-        ? <Text style={s.certDate}>Anchored {issuedDate}</Text>
-        : null}
-    </TouchableOpacity>
+        {/* Cert ID + date */}
+        <Text style={s.certId} numberOfLines={1}>{cert.certificate_id}</Text>
+        {issuedDate
+          ? <Text style={s.certDate}>Anchored {issuedDate}</Text>
+          : null}
+      </TouchableOpacity>
+
+      {/* Quick Actions */}
+      {anchored && (
+        <View style={s.certActions}>
+          <TouchableOpacity
+            style={s.certActionBtn}
+            onPress={() => onShare(cert)}
+            activeOpacity={0.7}
+          >
+            <Text style={s.certActionIcon}>📤</Text>
+            <Text style={s.certActionText}>Share</Text>
+          </TouchableOpacity>
+          <AnimatedButton variant="download" compact label="Download" onPress={() => onDownload(cert)} busy={downloadBusy} disabled={downloadDisabled} />
+          <TouchableOpacity
+            style={s.certActionBtn}
+            onPress={() => onCopyLink(cert)}
+            activeOpacity={0.7}
+          >
+            <Text style={s.certActionIcon}>🔗</Text>
+            <Text style={s.certActionText}>Link</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -182,13 +212,13 @@ function VerifyResultCard({ result }) {
 
 // ── Student dashboard ──────────────────────────────────────────────────────
 function StudentDashboard({ user, navigation }) {
-  const [tab, setTab]             = useState("certs");
-  const [certs, setCerts]         = useState([]);
+  const [tab, setTab] = useState("certs");
+  const [certs, setCerts] = useState([]);
   const [certsLoading, setClLoading] = useState(true);
-  const [refreshing, setRefreshing]  = useState(false);
-  const [query, setQuery]         = useState("");
-  const [verifying, setVerifying] = useState(false);
-  const [verifyResult, setVerifyResult] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [downloading, setDownloading] = useState(null);
 
   const loadCerts = useCallback(async () => {
     try {
@@ -204,26 +234,98 @@ function StudentDashboard({ user, navigation }) {
 
   useEffect(() => { loadCerts(); }, [loadCerts]);
 
-  async function runVerify() {
-    const id = parseCertificateIdFromScan(query.trim());
-    if (!id) return;
-    setVerifying(true);
-    setVerifyResult(null);
+  // Filter and search certificates
+  const filteredCerts = certs.filter(cert => {
+    // Search filter
+    const searchLower = searchQuery.toLowerCase();
+    const matchesSearch = !searchQuery || 
+      cert.degree_title?.toLowerCase().includes(searchLower) ||
+      cert.institution_name?.toLowerCase().includes(searchLower) ||
+      cert.certificate_id?.toLowerCase().includes(searchLower) ||
+      cert.student_name?.toLowerCase().includes(searchLower);
+
+    // Status filter
+    const matchesStatus = filterStatus === "all" || 
+      (filterStatus === "issued" && cert.status === "issued") ||
+      (filterStatus === "pending" && ["pending_vc", "pending_chancellor", "pending_finalize"].includes(cert.status)) ||
+      (filterStatus === "revoked" && cert.status === "revoked");
+
+    return matchesSearch && matchesStatus;
+  });
+
+  // Share certificate
+  async function handleShare(cert) {
+    const verifyUrl = `https://credence.edu.sl/verify/${cert.certificate_id}`;
+    const message = `Verify my ${cert.degree_title} certificate from ${cert.institution_name}:\n${verifyUrl}`;
+
     try {
-      const data = await verifyCertificate(id);
-      setVerifyResult(data);
+      if (Platform.OS === "web") {
+        await navigator.clipboard.writeText(verifyUrl);
+        Alert.alert("Link copied!", "Verification link copied to clipboard.");
+      } else {
+        await Share.share({
+          message,
+          title: "Share Certificate",
+          url: verifyUrl,
+        });
+      }
     } catch (err) {
-      const detail = err?.response?.data?.message ?? "Certificate not found.";
-      setVerifyResult({ found: false, verification_outcome: "not_found", error: detail });
-    } finally {
-      setVerifying(false);
+      console.error("Share error:", err);
     }
   }
 
-  const issued  = certs.filter(c => c.status === "issued").length;
+  // Download certificate and transcript
+  async function handleDownload(cert) {
+    if (!cert.certificate_id || downloading) return;
+    setDownloading(cert.id);
+    try {
+      const bytes = await downloadMyDocuments(cert.certificate_id);
+      const file = new File(Paths.cache, `${cert.certificate_id}-documents.zip`);
+      file.write(new Uint8Array(bytes));
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(file.uri, {
+          mimeType: "application/zip",
+          dialogTitle: "Your certificate and transcript",
+          UTI: "public.zip-archive",
+        });
+      } else {
+        Alert.alert("Downloaded", `Saved to ${file.uri}`);
+      }
+    } catch (err) {
+      const detail = err?.response?.data?.detail ?? "Download failed. Please try again.";
+      Alert.alert("Download Error", detail);
+    } finally {
+      setDownloading(null);
+    }
+  }
+
+  // Copy verification link
+  async function handleCopyLink(cert) {
+    const verifyUrl = `https://credence.edu.sl/verify/${cert.certificate_id}`;
+    
+    try {
+      if (Platform.OS === "web") {
+        await navigator.clipboard.writeText(verifyUrl);
+      } else {
+        // For React Native, use Clipboard from react-native
+        await Linking.openURL(`sms:?body=${encodeURIComponent(verifyUrl)}`);
+        return;
+      }
+      Alert.alert("Link Copied!", "Verification link copied to clipboard.");
+    } catch (err) {
+      // Fallback - show the link
+      Alert.alert("Verification Link", verifyUrl, [
+        { text: "OK" }
+      ]);
+    }
+  }
+
+  const issued = certs.filter(c => c.status === "issued").length;
   const pending = certs.filter(c =>
-    ["pending_vc","pending_chancellor","pending_finalize"].includes(c.status)
+    ["pending_vc", "pending_chancellor", "pending_finalize"].includes(c.status)
   ).length;
+  const revoked = certs.filter(c => c.status === "revoked").length;
 
   return (
     <ScrollView
@@ -255,12 +357,16 @@ function StudentDashboard({ user, navigation }) {
             <Text style={s.statNum}>{pending}</Text>
             <Text style={s.statLabel}>Pending</Text>
           </View>
+          <View style={[s.statBox, s.statBoxBorder]}>
+            <Text style={s.statNum}>{revoked}</Text>
+            <Text style={s.statLabel}>Revoked</Text>
+          </View>
         </View>
       </View>
 
       {/* ── Tab bar ── */}
       <View style={s.tabBar}>
-        {[["certs","My Certificates"],["verify","Verify"]].map(([key,label]) => (
+        {[["certs", "My Certificates"], ["profile", "Profile"]].map(([key, label]) => (
           <TouchableOpacity
             key={key}
             style={[s.tabBtn, tab === key && s.tabBtnActive]}
@@ -274,59 +380,119 @@ function StudentDashboard({ user, navigation }) {
       {/* ── My Certificates ── */}
       {tab === "certs" && (
         <View style={s.tabPanel}>
-          {certsLoading
-            ? <ActivityIndicator color={T.navy} style={{ marginTop: 40 }} />
-            : certs.length === 0
-              ? (
-                <View style={s.emptyState}>
-                  <Text style={s.emptyIcon}>🎓</Text>
-                  <Text style={s.emptyTitle}>No certificates yet</Text>
-                  <Text style={s.emptyMsg}>
-                    Your issued certificates appear here once anchored on-chain.
+          {/* Search and filter */}
+          <View style={s.searchSection}>
+            <TextInput
+              style={s.searchInput}
+              placeholder="Search certificates..."
+              placeholderTextColor={T.faint}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <View style={s.filterRow}>
+              {[
+                ["all", "All"],
+                ["issued", "Issued"],
+                ["pending", "Pending"],
+                ["revoked", "Revoked"]
+              ].map(([key, label]) => (
+                <TouchableOpacity
+                  key={key}
+                  style={[s.filterChip, filterStatus === key && s.filterChipActive]}
+                  onPress={() => setFilterStatus(key)}
+                >
+                  <Text style={[s.filterChipText, filterStatus === key && s.filterChipTextActive]}>
+                    {label}
                   </Text>
-                </View>
-              )
-              : certs.map(cert => (
-                <CertCard
-                  key={cert.id}
-                  cert={cert}
-                  onPress={() => navigation.navigate("CertificateDetail", { cert })}
-                />
-              ))
-          }
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {certsLoading ? (
+            <ActivityIndicator color={T.navy} style={{ marginTop: 40 }} />
+          ) : filteredCerts.length === 0 ? (
+            <View style={s.emptyState}>
+              <Text style={s.emptyIcon}>
+                {searchQuery || filterStatus !== "all" ? "🔍" : "🎓"}
+              </Text>
+              <Text style={s.emptyTitle}>
+                {searchQuery || filterStatus !== "all" 
+                  ? "No matching certificates" 
+                  : "No certificates yet"}
+              </Text>
+              <Text style={s.emptyMsg}>
+                {searchQuery || filterStatus !== "all"
+                  ? "Try adjusting your search or filter"
+                  : "Your issued certificates appear here once anchored on-chain."}
+              </Text>
+              {(searchQuery || filterStatus !== "all") && (
+                <TouchableOpacity
+                  style={s.clearBtn}
+                  onPress={() => { setSearchQuery(""); setFilterStatus("all"); }}
+                >
+                  <Text style={s.clearBtnText}>Clear filters</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            filteredCerts.map(cert => (
+              <CertCard
+                key={cert.id}
+                cert={cert}
+                onPress={() => navigation.navigate("CertificateDetail", { cert })}
+                onShare={handleShare}
+                onDownload={handleDownload}
+                downloadBusy={downloading === cert.id}
+                downloadDisabled={downloading !== null}
+                onCopyLink={handleCopyLink}
+              />
+            ))
+          )}
         </View>
       )}
 
-      {/* ── Verify ── */}
-      {tab === "verify" && (
+      {/* ── Profile ── */}
+      {tab === "profile" && (
         <View style={s.tabPanel}>
-          <Text style={s.verifyTitle}>Verify a Certificate</Text>
-          <Text style={s.verifySub}>
-            Enter any certificate ID to check its blockchain status.
-          </Text>
-          <TextInput
-            style={s.verifyInput}
-            placeholder="e.g. CR-2026-CUSL-A3F92C01"
-            placeholderTextColor={T.faint}
-            value={query}
-            onChangeText={setQuery}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-            onSubmitEditing={runVerify}
-          />
-          <TouchableOpacity
-            style={[s.verifyBtn, verifying && { opacity: 0.6 }]}
-            onPress={runVerify}
-            disabled={verifying}
-            activeOpacity={0.85}
-          >
-            {verifying
-              ? <ActivityIndicator color="#fff" size="small" />
-              : <Text style={s.verifyBtnText}>Verify</Text>
-            }
-          </TouchableOpacity>
-          {verifyResult && <VerifyResultCard result={verifyResult} />}
+          <View style={s.profileSection}>
+            <Text style={s.profileSectionTitle}>Account</Text>
+            <View style={s.profileCard}>
+              <View style={s.profileRow}>
+                <Text style={s.profileLabel}>Name</Text>
+                <Text style={s.profileValue}>
+                  {user?.first_name} {user?.last_name}
+                </Text>
+              </View>
+              <View style={s.profileRow}>
+                <Text style={s.profileLabel}>Email</Text>
+                <Text style={s.profileValue}>{user?.email || "—"}</Text>
+              </View>
+              <View style={s.profileRow}>
+                <Text style={s.profileLabel}>Role</Text>
+                <Text style={s.profileValue}>{roleLabel(user?.role)}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={s.profileSection}>
+            <Text style={s.profileSectionTitle}>Quick Actions</Text>
+            <AnimatedButton label="Verify a Certificate" onPress={() => navigation.navigate("Verify")} />
+          </View>
+
+          <View style={s.profileSection}>
+            <Text style={s.profileSectionTitle}>About</Text>
+            <View style={s.profileCard}>
+              <Text style={s.aboutText}>
+                Intelligent Academic Credentialing is a blockchain-based academic certificate verification system for Sierra Leone.
+              </Text>
+              <Text style={s.aboutText} style={{ marginTop: 12 }}>
+                Your certificates are anchored on Ethereum for permanent verification.
+              </Text>
+            </View>
+          </View>
         </View>
       )}
     </ScrollView>
@@ -340,7 +506,7 @@ function StaffPlaceholder({ role }) {
       <Text style={s.emptyIcon}>🏛️</Text>
       <Text style={s.emptyTitle}>Staff access</Text>
       <Text style={s.emptyMsg}>
-        The Credence mobile app is designed for students and certificate verifiers.
+        The Intelligent Academic Credentialing mobile app is designed for students and certificate verifiers.
         Staff members ({roleLabel(role).toLowerCase()}) should use the web dashboard at credence.edu.sl
       </Text>
     </View>
@@ -355,7 +521,7 @@ export default function DashboardScreen({ navigation, user, onLogout }) {
     <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
       {/* Header */}
       <View style={s.header}>
-        <Text style={s.headerBrand}>Credence</Text>
+        <Text style={s.headerBrand} numberOfLines={2}>Intelligent Academic Credentialing</Text>
         <View style={s.headerRight}>
           <Text style={s.headerRole}>{roleLabel(role)}</Text>
           <TouchableOpacity onPress={onLogout} style={s.signOutBtn}>
@@ -387,7 +553,7 @@ const s = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: T.navyMid,
   },
-  headerBrand:   { color: "#fff", fontSize: 17, fontWeight: "700", letterSpacing: 0.3 },
+  headerBrand:   { color: "#fff", fontSize: 13, fontWeight: "700", letterSpacing: 0.2, flexShrink: 1, lineHeight: 16 },
   headerRight:   { flexDirection: "row", alignItems: "center", gap: 10 },
   headerRole:    { color: "#B0C8DC", fontSize: 11, fontWeight: "600" },
   signOutBtn:    { paddingVertical: 5, paddingHorizontal: 10, borderRadius: 7, borderWidth: 1, borderColor: "rgba(255,255,255,0.25)" },
@@ -435,6 +601,35 @@ const s = StyleSheet.create({
   // Tab panel
   tabPanel: { padding: 16 },
 
+  // Search section
+  searchSection: { marginBottom: 16 },
+  searchInput: {
+    backgroundColor: T.surface,
+    borderWidth: 1,
+    borderColor: T.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: T.navy,
+    marginBottom: 10,
+  },
+  filterRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: T.border,
+    backgroundColor: T.surface,
+  },
+  filterChipActive: {
+    backgroundColor: T.navy,
+    borderColor: T.navy,
+  },
+  filterChipText: { fontSize: 12, fontWeight: "600", color: T.faint },
+  filterChipTextActive: { color: "#fff" },
+
   // Certificate card
   certCard: {
     backgroundColor: T.surface,
@@ -461,42 +656,78 @@ const s = StyleSheet.create({
   certId:         { fontSize: 10, color: T.faint, fontFamily: "monospace", marginTop: 2 },
   certDate:       { fontSize: 10, color: T.faint, marginTop: 1 },
 
-  // Verify tab
-  verifyTitle: { fontSize: 18, fontWeight: "700", color: T.navy, marginBottom: 4 },
-  verifySub:   { fontSize: 13, color: T.muted, lineHeight: 19, marginBottom: 16 },
-  verifyInput: {
-    backgroundColor: T.surface,
-    borderWidth: 1, borderColor: T.border,
-    borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 13,
-    fontSize: 14, color: T.navy, marginBottom: 10,
+  // Certificate quick actions
+  certActions: {
+    flexDirection: "row",
+    borderTopWidth: 1,
+    borderTopColor: T.border,
+    marginTop: 12,
+    paddingTop: 12,
+    gap: 4,
   },
-  verifyBtn: {
-    backgroundColor: T.navy,
-    borderRadius: 10,
-    paddingVertical: 14,
+  certActionBtn: {
+    flex: 1,
+    flexDirection: "column",
     alignItems: "center",
-    marginBottom: 18,
+    paddingVertical: 8,
+    gap: 4,
   },
-  verifyBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  certActionIcon: { fontSize: 16 },
+  certActionText: { fontSize: 10, color: T.muted, fontWeight: "600" },
 
-  // Result card
-  resultCard: {
-    borderRadius: 14, borderWidth: 1, padding: 18, alignItems: "center", gap: 6,
+  // Profile section
+  profileSection: { marginBottom: 24 },
+  profileSectionTitle: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: T.faint,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 10,
   },
-  resultIcon:  { fontSize: 28, marginBottom: 4 },
-  resultTitle: { fontSize: 16, fontWeight: "800", marginBottom: 4 },
-  resultMsg:   { fontSize: 13, textAlign: "center", lineHeight: 19 },
-  validBadge:  { backgroundColor: T.green, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 5, marginBottom: 10 },
-  validBadgeText: { color: "#fff", fontWeight: "800", fontSize: 12 },
-  resultRow:   { flexDirection: "row", justifyContent: "space-between", width: "100%", paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: "rgba(0,0,0,0.06)" },
-  resultLabel: { fontSize: 12, color: T.faint, fontWeight: "600" },
-  resultValue: { fontSize: 12, color: T.navy, flex: 1, textAlign: "right" },
-  checkItem:   { fontSize: 11, color: T.green, fontWeight: "700", alignSelf: "flex-start", marginTop: 2 },
+  profileCard: {
+    backgroundColor: T.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: T.border,
+    padding: 16,
+  },
+  profileRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: T.border,
+  },
+  profileLabel: { fontSize: 13, color: T.faint, fontWeight: "600" },
+  profileValue: { fontSize: 13, color: T.navy, fontWeight: "500" },
+  profileActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: T.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: T.border,
+    padding: 16,
+    gap: 12,
+  },
+  profileActionIcon: { fontSize: 20 },
+  profileActionText: { fontSize: 14, color: T.navy, fontWeight: "600", flex: 1 },
+  profileActionArrow: { fontSize: 18, color: T.faint },
+  aboutText: { fontSize: 13, color: T.muted, lineHeight: 20 },
 
   // Empty / placeholder
   emptyState: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 64, paddingHorizontal: 32 },
   emptyIcon:  { fontSize: 44, marginBottom: 12 },
   emptyTitle: { fontSize: 17, fontWeight: "700", color: T.navy, marginBottom: 6 },
   emptyMsg:   { color: T.muted, textAlign: "center", fontSize: 13, lineHeight: 20 },
+  clearBtn: {
+    marginTop: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: T.navy,
+  },
+  clearBtnText: { color: T.navy, fontSize: 13, fontWeight: "600" },
 });

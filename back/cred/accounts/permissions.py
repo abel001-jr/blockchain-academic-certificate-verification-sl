@@ -13,6 +13,16 @@ def _reject_setup_token(request):
     return is_setup_token(getattr(request, "auth", None))
 
 
+class IsInstitutionSetupAdmin(BasePermission):
+    """Institution setup belongs to administrators, not credential signers."""
+    def has_permission(self, request, view):
+        if _reject_setup_token(request):
+            return False
+        return request.user.is_authenticated and request.user.role in (
+            Role.INSTITUTIONAL_ADMIN, Role.SUPER_ADMIN
+        )
+
+
 class IsSuperAdmin(BasePermission):
     def has_permission(self, request, view):
         if _reject_setup_token(request):
@@ -33,7 +43,7 @@ class IsRegistrar(BasePermission):
     def has_permission(self, request, view):
         if _reject_setup_token(request):
             return False
-        return request.user.is_authenticated and request.user.role in INSTITUTION_HEAD
+        return request.user.is_authenticated and request.user.role == Role.REGISTRAR
 
 
 class IsVC(BasePermission):

@@ -1,0 +1,7 @@
+.readButton { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border: 1px solid var(--cd-line, #E4E1D6); border-radius: 10px; font-size: 13px; font-weight: 600; background: var(--cd-paper, #fff); color: var(--cd-primary, #08283F); cursor: pointer; transition: background .2s, box-shadow .2s, transform .2s; }
+.ready { background: #08283F; color: #F8F7F2; border-color: #08283F; box-shadow: 0 0 0 3px rgba(8,40,63,.12); animation: readyPulse 1s ease-out 2; }
+.readButton:hover:not(:disabled) { background: #780110; color: #F8F7F2; transform: translateY(-1px); }
+.readButton:focus-visible { outline: 2px solid #780110; outline-offset: 4px; }
+.readButton:disabled { opacity: .6; cursor: wait; animation: none; }
+@keyframes readyPulse { 50% { box-shadow: 0 0 0 6px rgba(8,40,63,.05); } }
+@media (prefers-reduced-motion: reduce) { .readButton { animation: none; transition: none; } }

@@ -1,7 +1,7 @@
 """certificates/serializers.py"""
 
 from rest_framework import serializers
-from .models import Certificate, CertificateStatus, Transcript
+from .models import Certificate, CertificateStatus
 from institutions.models import Department, Program, GradeClassification
 
 
@@ -9,19 +9,23 @@ class CertificateListSerializer(serializers.ModelSerializer):
     """Lightweight — for table views."""
     institution_name = serializers.CharField(source="institution.name", read_only=True)
     issued_by_name   = serializers.CharField(source="issued_by.full_name", read_only=True)
-    # Upload workflows store the transcript on the certificate itself.  These
-    # fields let the unified Credentials list represent that attachment.
+    # Both upload workflows store the transcript on the certificate itself, so
+    # presence is a question about this row and not about a separate record.
     has_transcript = serializers.SerializerMethodField()
-    transcript_id = serializers.SerializerMethodField()
+    # Where the owner downloads the pair. Public verification serves no document
+    # (item 1), so a client that wants the PDFs has to be told which
+    # owner-authenticated route to use rather than assuming a gateway URL.
+    documents_path = serializers.SerializerMethodField()
 
     def get_has_transcript(self, obj):
         return bool(obj.transcript_hash or obj.ipfs_cid_transcript or obj.ipfs_url_transcript)
 
-    def get_transcript_id(self, obj):
-        try:
-            return obj.transcript.transcript_id
-        except Transcript.DoesNotExist:
-            return ""
+    def get_documents_path(self, obj):
+        from django.urls import reverse
+        return reverse(
+            "my-certificate-documents",
+            kwargs={"certificate_id": obj.certificate_id},
+        )
 
     class Meta:
         model  = Certificate
@@ -29,13 +33,17 @@ class CertificateListSerializer(serializers.ModelSerializer):
             "id", "certificate_id", "student_name", "degree_title",
             "graduation_year", "status", "flow_type", "institution_name",
             "issued_by_name", "chain_issued_at", "created_at", "tx_hash",
-            "has_transcript", "transcript_id",
+            "has_transcript", "documents_path",
         ]
 
 
 class CertificateDetailSerializer(serializers.ModelSerializer):
     """Full detail — for certificate page / verification / live preview."""
     institution_name = serializers.CharField(source="institution.name", read_only=True)
+    required_signers = serializers.SerializerMethodField()
+
+    def get_required_signers(self, obj):
+        return ["registrar", "vc", "chancellor"]
     issued_by_name   = serializers.CharField(source="issued_by.full_name", read_only=True)
     verification_url = serializers.ReadOnlyField()
     is_on_chain      = serializers.ReadOnlyField()
@@ -44,17 +52,26 @@ class CertificateDetailSerializer(serializers.ModelSerializer):
     registrar_signature_url = serializers.SerializerMethodField()
     vc_signature_url = serializers.SerializerMethodField()
     chancellor_signature_url = serializers.SerializerMethodField()
+    document_reviews = serializers.SerializerMethodField()
+    # Whether a resumable draft has a document saved against it. Exposed
+    # explicitly rather than inferred from the file field's media URL, because
+    # the upload wizard uses this to decide what to restore when a Registrar
+    # reopens a draft, and "the row has a name" is not the same question as
+    # "this URL serves something".
+    has_draft_certificate = serializers.SerializerMethodField()
+    has_draft_transcript  = serializers.SerializerMethodField()
 
     class Meta:
         model  = Certificate
         fields = "__all__"
         read_only_fields = [
             "id", "certificate_id", "cert_hash", "doc_hash",
+            "chain_config_snapshot",
             "ipfs_cid_json", "ipfs_cid_pdf", "ipfs_url_json", "ipfs_url_pdf",
             "tx_hash", "block_number", "chain_issued_at",
             "revoked_by", "revoked_at", "revocation_tx_hash",
             "created_at", "updated_at",
-            "branding_preset", "registrar_signer_name", "registrar_signed_at",
+            "branding_preset", "registrar_signer_name", "registrar_signed_at", "template_revision",
             "qualification_type",
             "vc_approver_name", "chancellor_approver_name",
             "vc_signature_image", "chancellor_signature_image",
@@ -96,6 +113,37 @@ class CertificateDetailSerializer(serializers.ModelSerializer):
     def get_chancellor_signature_url(self, obj):
         return self._media_url(obj.chancellor_signature_image)
 
+    def get_has_draft_certificate(self, obj):
+        return bool(obj.document_file and obj.document_file.name)
+
+    def get_has_draft_transcript(self, obj):
+        return bool(obj.transcript_file and obj.transcript_file.name)
+
+    def get_document_reviews(self, obj):
+        """Registrar document-review state, for the flows that require it.
+
+        Read through a single query rather than per-review, and never raises if
+        the reviews are absent — the certificate detail page reads this on every
+        load, including for system-designed credentials that have no reviews.
+        """
+        from .document_review_views import (
+            _serialize_review,
+            required_review_kinds,
+        )
+
+        reviews = {r.document_kind: r for r in obj.document_reviews.all()}
+        required = required_review_kinds(obj)
+        return {
+            "required_kinds": required,
+            "all_resolved": all(
+                reviews[kind].is_resolved for kind in required if kind in reviews
+            ) and all(kind in reviews for kind in required),
+            "reviews": [
+                _serialize_review(reviews[kind])
+                for kind in sorted(reviews)
+            ],
+        }
+
 
 class CertificateUpdateStudentEmailSerializer(serializers.Serializer):
     """
@@ -117,7 +165,12 @@ class CertificateUpdateStudentEmailSerializer(serializers.Serializer):
     reassign_student = serializers.BooleanField(required=False, default=False)
 
     def validate_student_email(self, value):
-        return value.strip().lower()
+        from institutions.credential_validation import validate_graduate_email
+        institution = self.context.get("institution")
+        try:
+            return validate_graduate_email(value, institution) if institution else value.strip().lower()
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
 
 
 class CertificateCreateSerializer(serializers.ModelSerializer):
@@ -127,6 +180,19 @@ class CertificateCreateSerializer(serializers.ModelSerializer):
     snapshots labels into CharFields for on-chain hashing.
     """
     department_id = serializers.UUIDField(write_only=True)
+    def validate_student_name(self, value):
+        from institutions.credential_validation import validate_name
+        try:
+            return validate_name(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+    def validate_graduation_year(self, value):
+        from institutions.credential_validation import validate_year
+        try:
+            return validate_year(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
     program_id = serializers.UUIDField(write_only=True)
     grade_classification_id = serializers.UUIDField(
         write_only=True, required=False, allow_null=True,
@@ -153,6 +219,12 @@ class CertificateCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Your account must belong to an institution to issue certificates."
             )
+
+        from institutions.credential_validation import validate_graduate_email
+        try:
+            attrs["student_email"] = validate_graduate_email(attrs["student_email"], institution)
+        except ValueError as exc:
+            raise serializers.ValidationError({"student_email": str(exc)}) from exc
 
         dept_id = attrs.pop("department_id")
         prog_id = attrs.pop("program_id")
@@ -194,9 +266,24 @@ class CertificateCreateSerializer(serializers.ModelSerializer):
                 })
 
         attrs["department"] = department.name
-        attrs["degree_title"] = program.title
+        attrs["degree_title"] = program.full_title
         attrs["qualification_type"] = program.qualification_type
         attrs["grade"] = grade_label
+        from types import SimpleNamespace
+        from institutions.credential_validation import validate_certificate_data, template_preflight
+        from institutions.models import CertificateTemplate
+        candidate = SimpleNamespace(institution=institution, certificate_id="DRAFT", **{
+            key: attrs.get(key, "") for key in ("student_name", "degree_title", "graduation_year", "department", "grade")
+        })
+        try:
+            validate_certificate_data(candidate)
+            template = CertificateTemplate.objects.filter(institution=institution).first()
+            if template and template.active_revision_id and request.data.get("flow_type", "system_designed") != "system_designed":
+                raise serializers.ValidationError({"flow_type": "An approved institutional template is active. Use Generate certificate + upload transcript."})
+            if template and template.active_revision_id and request.data.get("flow_type", "system_designed") == "system_designed":
+                template_preflight(candidate, template.active_revision)
+        except ValueError as exc:
+            raise serializers.ValidationError({"detail": str(exc)}) from exc
         attrs["_department_obj"] = department
         attrs["_program_obj"] = program
         return attrs
@@ -273,164 +360,4 @@ class CertificateUploadAnchorSerializer(serializers.Serializer):
         max_mb = 20
         if value.size > max_mb * 1024 * 1024:
             raise serializers.ValidationError(f"Transcript file must be under {max_mb} MB.")
-        return value
-
-
-
-# ── Transcript Serializers ────────────────────────────────────────────────────
-
-class TranscriptListSerializer(serializers.ModelSerializer):
-    """Lightweight serializer for transcript list views."""
-    institution_name = serializers.CharField(source="institution.name", read_only=True)
-    uploaded_by_name = serializers.CharField(source="uploaded_by.full_name", read_only=True)
-    certificate_id = serializers.CharField(
-        source="certificate.certificate_id", 
-        read_only=True, 
-        allow_null=True
-    )
-    is_approved = serializers.ReadOnlyField()
-
-    class Meta:
-        model = Transcript
-        fields = [
-            "id", "transcript_id", "student_name", "student_email",
-            "student_id_number", "status", "institution_name",
-            "uploaded_by_name", "certificate_id", "is_approved",
-            "uploaded_at", "updated_at",
-        ]
-
-
-class TranscriptDetailSerializer(serializers.ModelSerializer):
-    """Full detail serializer for transcript view and verification."""
-    institution_name = serializers.CharField(source="institution.name", read_only=True)
-    uploaded_by_name = serializers.CharField(source="uploaded_by.full_name", read_only=True)
-    verification_url = serializers.ReadOnlyField()
-    is_approved = serializers.ReadOnlyField()
-    certificate_id = serializers.CharField(
-        source="certificate.certificate_id",
-        read_only=True,
-        allow_null=True
-    )
-    transcript_url = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Transcript
-        fields = "__all__"
-        read_only_fields = [
-            "id", "transcript_id", "transcript_hash",
-            "ipfs_cid", "ipfs_url",
-            "vc_approved_at", "vc_approval_tx_hash", "vc_approver_name",
-            "dean_approved_at", "dean_approval_tx_hash", "dean_approver_name",
-            "uploaded_at", "updated_at",
-        ]
-
-    def get_transcript_url(self, obj):
-        """Return absolute URL to transcript file."""
-        if not obj.transcript_file:
-            return ""
-        request = self.context.get("request")
-        url = obj.transcript_file.url
-        if request:
-            return request.build_absolute_uri(url)
-        return url
-
-
-class TranscriptUploadSerializer(serializers.ModelSerializer):
-    """
-    Serializer for uploading a new transcript.
-    Registrar uploads PDF and provides student details.
-    """
-    
-    class Meta:
-        model = Transcript
-        fields = [
-            "student_name", "student_email", "student_id_number",
-            "transcript_file", "student",
-        ]
-        extra_kwargs = {
-            "student": {"required": False},
-            "student_id_number": {"required": False},
-        }
-
-    def validate_transcript_file(self, value):
-        """Validate uploaded file is PDF and under size limit."""
-        if value.content_type not in ("application/pdf",):
-            if not value.name.lower().endswith(".pdf"):
-                raise serializers.ValidationError("Only PDF files are accepted.")
-        max_mb = 20
-        if value.size > max_mb * 1024 * 1024:
-            raise serializers.ValidationError(f"File must be under {max_mb} MB.")
-        return value
-
-    def validate(self, attrs):
-        """Ensure registrar belongs to an institution."""
-        request = self.context.get("request")
-        user = getattr(request, "user", None)
-        institution = getattr(user, "institution", None) if user else None
-        
-        if not institution:
-            raise serializers.ValidationError(
-                "Your account must belong to an institution to upload transcripts."
-            )
-        
-        attrs["institution"] = institution
-        attrs["uploaded_by"] = user
-        return attrs
-
-
-class TranscriptLinkCertificateSerializer(serializers.Serializer):
-    """
-    Link an existing transcript to a certificate.
-    Used in TRANSCRIPT_THEN_CERT flow.
-    """
-    certificate_id = serializers.UUIDField(
-        required=True,
-        help_text="UUID of the certificate to link"
-    )
-
-    def validate_certificate_id(self, value):
-        """Ensure certificate exists and belongs to same institution."""
-        request = self.context.get("request")
-        user = getattr(request, "user", None)
-        institution = getattr(user, "institution", None) if user else None
-        
-        try:
-            from .models import Certificate
-            cert = Certificate.objects.get(pk=value, institution=institution)
-        except Certificate.DoesNotExist:
-            raise serializers.ValidationError(
-                "Certificate not found or does not belong to your institution."
-            )
-        
-        # Check if certificate already has a transcript
-        if hasattr(cert, "transcript"):
-            raise serializers.ValidationError(
-                "This certificate is already linked to a transcript."
-            )
-        
-        return cert
-
-
-class TranscriptApprovalSerializer(serializers.Serializer):
-    """
-    Serializer for VC/Dean approval of transcript.
-    Requires MetaMask transaction hash.
-    """
-    tx_hash = serializers.CharField(
-        max_length=66,
-        required=True,
-        help_text="Ethereum transaction hash from MetaMask attestation"
-    )
-    approver_name = serializers.CharField(
-        max_length=200,
-        required=True,
-        help_text="Full name of the approving officer"
-    )
-
-    def validate_tx_hash(self, value):
-        """Validate transaction hash format."""
-        if not value.startswith("0x") or len(value) != 66:
-            raise serializers.ValidationError(
-                "Invalid transaction hash format. Must be 0x followed by 64 hex characters."
-            )
         return value

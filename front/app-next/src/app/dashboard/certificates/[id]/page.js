@@ -1,4 +1,7 @@
 "use client";
+import NavigationButton from "@/components/ui/NavigationButton";
+
+import { ActionButton } from "@/components/ui/AnimatedControls";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -14,9 +17,10 @@ import {
   submitForSealedReviewOnChain,
   submitUploadedCredentialForApprovalOnChain,
 } from "@/lib/walletActions";
-import { notifyCertificateIssued, notifyCertificateApproval } from "@/lib/notifications";
+import { notifyCertificateIssued } from "@/lib/notifications";
 import CertificateQrCard from "@/components/CertificateQrCard";
 import CertLoaderOverlay from "@/components/dashboard/CertLoaderOverlay";
+import DocumentReviewPanel from "@/components/DocumentReviewPanel";
 
 const UPLOAD_FLOW_TYPES = new Set(["external_upload", "full_upload", "transcript_then_cert"]);
 
@@ -138,6 +142,7 @@ export default function CertificateDetailPage() {
 
   const [transcriptFile, setTranscriptFile] = useState(null);
   const [transcriptUploading, setTranscriptUploading] = useState(false);
+  const [transcriptReview, setTranscriptReview] = useState(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -166,6 +171,9 @@ export default function CertificateDetailPage() {
   const canEditStudentEmail =
     isInstitutionHead(role) && !cert?.cert_hash;
 
+  // The transcript attach is gated on a resolved review, so the button waits for one.
+  const transcriptReviewed = Boolean(transcriptReview?.is_resolved && !transcriptReview?.is_rejected);
+
   // System-designed flow finalize (seals the issued document then MetaMask).
   // The document officers approved is the review copy rendered at prepare; this
   // anchors the issued rendering, which adds the signature block.
@@ -182,8 +190,8 @@ export default function CertificateDetailPage() {
       
       // Send notification
       notifyCertificateIssued(
+        cert.certificate_id || prepared.certificate_id,
         cert.student_name || prepared.student_name || 'Unknown Student',
-        cert.certificate_id || prepared.certificate_id
       );
       
       await load();
@@ -229,6 +237,7 @@ export default function CertificateDetailPage() {
       if (!response.ok) throw new Error(data.detail || "Transcript upload failed.");
       setCert(data);
       setTranscriptFile(null);
+      setTranscriptReview(null);
       setSuccess("Transcript uploaded and pinned to IPFS. It is now available for review.");
     } catch (e) {
       setError(e?.message || "Transcript upload failed.");
@@ -309,7 +318,7 @@ export default function CertificateDetailPage() {
       });
       setSuccess(
         `Submitted on-chain. Tx: ${hash}\n` +
-        `The certificate returned to VC review. VC and Dean must approve it on-chain before finalization.`
+        `The certificate returned to VC review. VC and Chancellor must approve it on-chain before finalization.`
       );
       await load();
     } catch (e) {
@@ -416,7 +425,7 @@ export default function CertificateDetailPage() {
               You are about to anchor {cert.certificate_id} and its uploaded transcript on-chain. This opens MetaMask and requires a registrar wallet signature and gas. The credential cannot be edited after the transaction is confirmed.
             </p>
             <p className="mt-3 rounded-lg bg-[#F8F7F2] px-3 py-2 text-xs text-[#4A5A68]">
-              VC and Dean approvals have already been recorded. Continue only after confirming the documents are correct.
+              VC and Chancellor approvals have already been recorded. Continue only after confirming the documents are correct.
             </p>
             <div className="mt-6 flex justify-end gap-3">
               <button onClick={() => setAnchorConfirmationOpen(false)} className="cd-btn-secondary">Cancel</button>
@@ -425,9 +434,9 @@ export default function CertificateDetailPage() {
           </div>
         </div>
       )}
-      <Link href={backHref} className="inline-flex items-center gap-2 text-[#4A5A68] text-sm hover:text-[#08283F] w-fit transition-colors">
+      <NavigationButton direction="back" href={backHref} className="inline-flex items-center gap-2 text-[#4A5A68] text-sm hover:text-[#08283F] w-fit transition-colors">
         <ArrowLeft size={15} /> Back
-      </Link>
+      </NavigationButton>
 
       {error   && <div className="bg-[#F5E5E3] text-[#A23B34] text-sm px-4 py-3 rounded-lg break-all">{error}</div>}
       {success && <div className="bg-[#E7F1EB] text-[#2F6F4E] text-sm px-4 py-3 rounded-lg break-all">{success}</div>}
@@ -462,13 +471,62 @@ export default function CertificateDetailPage() {
               <p className="text-sm font-semibold text-[#795A18]">Transcript missing</p>
               <p className="mt-1 text-xs text-[#4A5A68]">
                 Attach the student transcript before submitting this certificate on-chain, so the
-                VC and Dean review the complete credential and its hash is anchored with the rest.
+                VC and Chancellor review the complete credential and its hash is anchored with the rest.
+                The transcript is checked against this record first.
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <input type="file" accept="application/pdf,.pdf" onChange={e => setTranscriptFile(e.target.files?.[0] || null)} className="text-xs text-[#4A5A68]" />
-                <button onClick={handleTranscriptUpload} disabled={!transcriptFile || transcriptUploading} className="cd-btn-primary disabled:opacity-50">
+                <button onClick={handleTranscriptUpload} disabled={!transcriptFile || transcriptUploading || !transcriptReviewed} title={transcriptReviewed ? undefined : "Read the transcript and record your decision first"} className="cd-btn-primary disabled:opacity-50">
                   {transcriptUploading ? <><Loader2 size={15} className="animate-spin" /> Uploading…</> : <><FileText size={15} /> Upload transcript</>}
                 </button>
+              </div>
+              {transcriptFile && !transcriptReviewed && (
+                <p className="mt-2 text-xs font-semibold text-[#795A18]">
+                  Read the transcript below and record your decision before uploading.
+                </p>
+              )}
+              {transcriptFile && (
+                <div className="mt-4">
+                  <DocumentReviewPanel
+                    certId={id}
+                    kind="transcript"
+                    file={transcriptFile}
+                    review={transcriptReview}
+                    expectations={{
+                      student_name:    cert.student_name,
+                      degree_title:    cert.degree_title,
+                      institution:     cert.institution_name,
+                      graduation_year: cert.graduation_year,
+                    }}
+                    onChange={setTranscriptReview}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Document review record — shown for credentials that already carry one. */}
+          {isInstitutionHead(role) && cert.document_reviews?.length > 0 && (
+            <div className="rounded-xl border border-[#E4E1D6] bg-white p-4">
+              <h3 className="text-sm font-semibold text-[#08283F]">Document review record</h3>
+              <p className="mt-0.5 text-xs text-[#4A5A68]">
+                What was read off each document, and the decision recorded against this credential.
+              </p>
+              <div className="mt-3 flex flex-col gap-3">
+                {cert.document_reviews.map((review) => (
+                  <DocumentReviewPanel
+                    key={review.id}
+                    certId={id}
+                    kind={review.document_kind}
+                    review={review}
+                    expectations={{
+                      student_name:    cert.student_name,
+                      degree_title:    cert.degree_title,
+                      institution:     cert.institution_name,
+                      graduation_year: cert.graduation_year,
+                    }}
+                  />
+                ))}
               </div>
             </div>
           )}
@@ -602,7 +660,7 @@ export default function CertificateDetailPage() {
                 )}
                 {(cert.chancellor_approver_name || cert.chancellor_approval_tx_hash) && (
                   <div className="flex items-start gap-4 px-5 py-3">
-                    <p className="text-[#8A929C] text-sm w-36 shrink-0 pt-0.5">Dean</p>
+                    <p className="text-[#8A929C] text-sm w-36 shrink-0 pt-0.5">Chancellor</p>
                     <div>
                       <p className="text-[#08283F] text-sm font-medium">{cert.chancellor_approver_name || "—"}</p>
                       {cert.chancellor_approval_tx_hash && (
@@ -641,12 +699,34 @@ export default function CertificateDetailPage() {
                   Review this certificate design, then submit it for approval when ready.
                 </p>
               </div>
-              <Link
+              <NavigationButton
                 href={`/dashboard/certificates/new?flow=system_designed&draft=${encodeURIComponent(cert.id)}`}
                 className="cd-btn-primary self-start"
               >
                 <Sparkles size={15} /> Continue designing
-              </Link>
+              </NavigationButton>
+            </div>
+          )}
+
+          {/* The upload flows save their documents to the draft as they are
+              chosen, so an upload draft is resumable and the detail page has to
+              offer the way back into it. */}
+          {isInstitutionHead(role) && cert.status === "draft"
+            && (cert.flow_type === "full_upload" || cert.flow_type === "transcript_then_cert") && (
+            <div className="flex flex-col gap-2 border border-[#CFE1F2] rounded-xl px-4 py-4 bg-[#EAF2FB]">
+              <div>
+                <p className="text-[#08283F] text-sm font-semibold">Resume this upload</p>
+                <p className="text-[#4A5A68] text-xs mt-0.5">
+                  Any documents already saved to this draft will be here waiting, along
+                  with the checks you already made on them.
+                </p>
+              </div>
+              <NavigationButton
+                href={`/dashboard/certificates/new?flow=${encodeURIComponent(cert.flow_type)}&draft=${encodeURIComponent(cert.id)}`}
+                className="cd-btn-primary self-start"
+              >
+                <Pencil size={15} /> Continue upload
+              </NavigationButton>
             </div>
           )}
 
@@ -665,10 +745,10 @@ export default function CertificateDetailPage() {
               <p className="text-[#4A5A68] text-sm">
                 Both officers have signed. Generate the final PDF, pin to IPFS, then finalize on-chain.
               </p>
-              <button onClick={handleFinalize} disabled={busy}
+              <ActionButton onClick={handleFinalize} disabled={busy}
                 className="cd-btn-primary self-start disabled:opacity-50">
                 {busy ? <><Loader2 size={15} className="animate-spin" /> Finalizing…</> : <><Wallet size={15} /> Generate PDF & Finalize (gas)</>}
-              </button>
+              </ActionButton>
             </div>
           )}
 
@@ -755,7 +835,7 @@ export default function CertificateDetailPage() {
                   <p className="text-[#08283F] text-sm font-semibold">Link student account</p>
                   <p className="text-[#4A5A68] text-xs mt-0.5 leading-relaxed">
                     This certificate isn&apos;t linked to a student portal account yet.
-                    Enter the student&apos;s email — if they already have a Credence account
+                    Enter the student&apos;s email — if they already have an Intelligent Academic Credentialing account
                     it will be linked; if not, an account is created automatically so
                     they can log in via Google or claim their WhatsApp invite.
                   </p>

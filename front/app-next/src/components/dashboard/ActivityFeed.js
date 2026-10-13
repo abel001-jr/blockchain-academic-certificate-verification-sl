@@ -17,7 +17,7 @@ const ACTION_META = {
   "certificate.revoked":      { dot: "bg-[#A23B34]",  label: "Revoked"          },
   "certificate.verified":     { dot: "bg-[#B98A28]",  label: "Verified"         },
   "certificate.vc_approved":  { dot: "bg-[#2F6F4E]",  label: "VC Approved"      },
-  "certificate.chancellor_approved": { dot: "bg-[#2F6F4E]", label: "Dean Approved" },
+  "certificate.chancellor_approved": { dot: "bg-[#2F6F4E]", label: "Chancellor Approved" },
   "certificate.prepared":     { dot: "bg-[#4A5A68]",  label: "Prepared"         },
   "certificate.submitted_on_chain": { dot: "bg-[#08283F]", label: "Submitted On-Chain" },
 };
@@ -45,14 +45,14 @@ export default function ActivityFeed({
   empty   = "No activity recorded yet.",
 }) {
   return (
-    <div className="bg-white rounded-xl border border-[#E4E1D6]/50 overflow-hidden shadow-card">
+    <div className="cd-scroll-card bg-white rounded-xl border border-[#E4E1D6]/50 overflow-hidden shadow-card">
       <div className="px-5 py-4 border-b border-[#E4E1D6]/40">
         <p className="text-[0.8rem] font-semibold text-[#08283F] uppercase tracking-wider">
           {title}
         </p>
       </div>
 
-      <div className="divide-y divide-[#E4E1D6]/40">
+      <div className="cd-scroll-card-body divide-y divide-[#E4E1D6]/40" tabIndex={0} role="region" aria-label={`${title} entries`}>
         {loading && (
           <div className="px-5 py-8 text-center text-[#4A5A68] text-sm">Loading…</div>
         )}

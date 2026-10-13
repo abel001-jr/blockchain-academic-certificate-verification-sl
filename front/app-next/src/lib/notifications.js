@@ -35,7 +35,7 @@ export async function requestNotificationPermission() {
  */
 export function canShowNotifications() {
   if (typeof window === 'undefined') return false;
-  return 'Notification' in window && Notification.permission === 'granted';
+  return 'Notification' in window && Notification.permission === 'granted' && getNotificationPreference();
 }
 
 /**
@@ -113,6 +113,20 @@ export function showNotification(title, options = {}) {
 }
 
 /**
+ * Human label for a raw role key. The backend stores "chancellor" for the Chancellor;
+ * every user-facing surface shows "Chancellor", so notifications must too.
+ */
+export function roleLabel(role) {
+  switch (role) {
+    case 'vc': return 'VC';
+    case 'chancellor': return 'Chancellor';
+    case 'registrar': return 'Registrar';
+    case 'student': return 'Student';
+    default: return role;
+  }
+}
+
+/**
  * Notification types with predefined settings
  */
 export const NotificationTypes = {
@@ -180,14 +194,22 @@ export function notifyError(title, body, onClick) {
 }
 
 /**
- * Notification for certificate approval needed
+ * Confirmation that the current officer's own approval was recorded.
+ *
+ * This is deliberately *not* "a certificate is awaiting your approval". The
+ * browser Notification API renders in the tab of whoever just clicked Approve, so
+ * it cannot reach the officer whose turn is next — they are a different person in
+ * a different browser. That officer is told by email from the backend, at the
+ * moment the state changes. This one confirms to the actor that the transaction
+ * they just signed was accepted and recorded, which is the thing they are
+ * actually waiting to find out.
  */
-export function notifyCertificateApproval(certificateId, studentName) {
-  return showNotification('Certificate Approval Needed', {
-    body: `${studentName} - ${certificateId} is awaiting your approval`,
-    ...NotificationTypes.INFO,
+export function notifyApprovalRecorded(certificateId, studentName, role) {
+  const who = role ? ` as ${roleLabel(role)}` : '';
+  return showNotification('Approval Recorded', {
+    body: `Your${who} approval of ${certificateId} for ${studentName} is recorded on-chain. The next officer has been notified.`,
+    ...NotificationTypes.SUCCESS,
     tag: `approval-${certificateId}`,
-    requireInteraction: true,
     onClick: () => {
       window.location.href = `/dashboard/approvals`;
     },
@@ -210,10 +232,13 @@ export function notifyCertificateIssued(certificateId, studentName) {
 
 /**
  * Notification for officer authorized
+ * @param {string} officerName - Full name of the officer
+ * @param {string} [role] - Raw role key, e.g. "vc" or "chancellor"
  */
-export function notifyOfficerAuthorized(officerName) {
+export function notifyOfficerAuthorized(officerName, role) {
+  const label = role ? ` as ${roleLabel(role)}` : '';
   return showNotification('Officer Authorized', {
-    body: `${officerName} has been authorized on-chain`,
+    body: `${officerName} has been authorized on-chain${label}`,
     ...NotificationTypes.SUCCESS,
   });
 }

@@ -14,12 +14,13 @@ from .serializers import (
     UserSerializer,
     UserCreateSerializer,
     UserUpdateSerializer,
+    SelfProfileSerializer,
     UserStatusSerializer,
     ChangePasswordSerializer,
     CredenceTokenObtainSerializer,
     OfficerAdminUpdateSerializer,
 )
-from .permissions import IsAdminOrAbove
+from .permissions import IsInstitutionSetupAdmin, IsFullSession, IsRegistrar
 from .tokens import is_setup_token
 from audit.utils import log_action
 
@@ -52,7 +53,7 @@ class MeView(APIView):
                 {"detail": "Profile edits are not available during officer setup."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        serializer = UserUpdateSerializer(
+        serializer = SelfProfileSerializer(
             request.user, data=request.data, partial=True
         )
         serializer.is_valid(raise_exception=True)
@@ -83,7 +84,13 @@ class UserListCreateView(generics.ListCreateAPIView):
     GET  /api/users/  — Super Admin: list all users
     POST /api/users/  — Super Admin / Registrar: create a user
     """
-    permission_classes = [IsAdminOrAbove]
+    permission_classes = [IsInstitutionSetupAdmin]
+
+    def get_permissions(self):
+        # Registrars need signer readiness for issuance, but cannot manage users.
+        if self.request.method == "GET" and getattr(self.request.user, "role", None) == Role.REGISTRAR and self.request.query_params.get("role") in (Role.VC, Role.CHANCELLOR):
+            return [IsFullSession(), IsRegistrar()]
+        return [IsFullSession(), IsInstitutionSetupAdmin()]
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -124,7 +131,7 @@ class UserListCreateView(generics.ListCreateAPIView):
                 ).count()
                 if existing_officers_count >= 2:
                     return Response(
-                        {"detail": "Maximum of 2 active officers (VC and Dean) allowed per institution. Deactivate an existing officer to add a new one."},
+                        {"detail": "Maximum of 2 active officers (VC and Chancellor) allowed per institution. Deactivate an existing officer to add a new one."},
                         status=status.HTTP_400_BAD_REQUEST
                     )
         
@@ -158,7 +165,7 @@ class UserListCreateView(generics.ListCreateAPIView):
 
 class UserDetailView(generics.RetrieveUpdateAPIView):
     """GET / PATCH a specific user. Records are deactivated, never deleted."""
-    permission_classes = [IsAdminOrAbove]
+    permission_classes = [IsInstitutionSetupAdmin]
 
     def get_serializer_class(self):
         if self.request.method in ("PATCH", "PUT"):
@@ -237,13 +244,13 @@ class ResendOfficerInviteView(APIView):
     POST /api/users/<uuid>/resend-invite/
     Regenerate temp password and email (or return it) while setup incomplete.
     """
-    permission_classes = [IsAdminOrAbove]
+    permission_classes = [IsInstitutionSetupAdmin]
 
     def post(self, request, pk):
         import secrets
         from .email_utils import send_officer_temp_password, should_return_temp_password
 
-        qs = User.objects.filter(role__in=(Role.VC, Role.CHANCELLOR))
+        qs = User.objects.filter(role__in=(Role.REGISTRAR, Role.VC, Role.CHANCELLOR))
         if request.user.role != Role.SUPER_ADMIN:
             qs = qs.filter(institution=request.user.institution)
         officer = get_object_or_404(qs, pk=pk)
@@ -307,7 +314,7 @@ class AuthorizeOfficerOnChainView(APIView):
     Registrar records MetaMask authorizeVC / authorizeChancellor result.
     Officer may then obtain a full JWT via wallet sign-in.
     """
-    permission_classes = [IsAdminOrAbove]
+    permission_classes = [IsInstitutionSetupAdmin]
 
     def post(self, request, pk):
         tx_hash = (request.data.get("tx_hash") or "").strip()
@@ -317,7 +324,7 @@ class AuthorizeOfficerOnChainView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        qs = User.objects.filter(role__in=(Role.VC, Role.CHANCELLOR))
+        qs = User.objects.filter(role__in=(Role.REGISTRAR, Role.VC, Role.CHANCELLOR))
         if request.user.role != Role.SUPER_ADMIN:
             qs = qs.filter(institution=request.user.institution)
         officer = get_object_or_404(qs, pk=pk)
@@ -370,7 +377,7 @@ class RevokeOfficerOnChainView(APIView):
 
     After MetaMask revokeVC / revokeChancellor.
     """
-    permission_classes = [IsAdminOrAbove]
+    permission_classes = [IsInstitutionSetupAdmin]
 
     def post(self, request, pk):
         tx_hash = (request.data.get("tx_hash") or "").strip()
@@ -380,7 +387,7 @@ class RevokeOfficerOnChainView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        qs = User.objects.filter(role__in=(Role.VC, Role.CHANCELLOR))
+        qs = User.objects.filter(role__in=(Role.REGISTRAR, Role.VC, Role.CHANCELLOR))
         if request.user.role != Role.SUPER_ADMIN:
             qs = qs.filter(institution=request.user.institution)
         officer = get_object_or_404(qs, pk=pk)

@@ -1,5 +1,7 @@
 "use client";
+import styles from "./WorkflowFlowSelector.module.css";
 import { useState } from "react";
+import CredentialSignerIndicator from "./CredentialSignerIndicator";
 import { Upload, Sparkles, FileText, CheckCircle } from "lucide-react";
 
 /**
@@ -7,69 +9,64 @@ import { Upload, Sparkles, FileText, CheckCircle } from "lucide-react";
  * 
  * Displays the three certificate workflow flows and allows users to select one:
  * 1. Full Upload (Upload both certificate and transcript together)
- * 2. Design with Credence (Upload transcript, then design certificate - RECOMMENDED)
- * 3. Upload certificate to transcript (Upload transcript first, certificate later)
+ * 2. Design with Intelligent Academic Credentialing (Upload transcript, then design certificate - RECOMMENDED)
+ * 3. Unsigned documents with assisted signature placement (planned)
  */
 
 const FLOWS = {
   FULL_UPLOAD: {
     id: "full_upload",
-    title: "Upload both",
-    description: "Certificate and transcript uploaded together as one record.",
+    title: "Upload completed documents",
+    description: "Upload the signed certificate and transcript, review their details, and issue one paired credential.",
     icon: Upload,
     iconColor: "text-[#08283F]",
     bgColor: "bg-[#08283F]/5",
     borderColor: "border-[#08283F]/20",
     steps: [
-      "Upload certificate and transcript (PDF)",
-      "Registrar submits (first approval)",
-      "Registrar, VC, and Dean approval (quorum)",
-      "Pin both files to IPFS",
-      "Finalize on blockchain"
+      "Upload both PDFs and check extracted student and award details",
+      "Resolve differences and attest; VC and Chancellor approve in order",
+      "Registrar finalizes the paired document hashes on-chain"
     ]
   },
   DESIGN_WITH_CREDENCE: {
     id: "system_designed",
-    title: "Design with Credence",
-    description: "Upload transcript, then design and generate the certificate in Credence.",
+    title: "Generate certificate + upload transcript",
+    description: "Generate a certificate from your institutional template and upload the existing transcript for review.",
     icon: Sparkles,
     iconColor: "text-[#B98A28]",
     bgColor: "bg-[#B98A28]/5",
     borderColor: "border-[#B98A28]/30",
     recommended: true,
     steps: [
-      "Upload student transcript (PDF)",
-      "Registrar submits (first approval)",
-      "Design certificate with Credence",
-      "Registrar, VC, and Dean approval (quorum)",
-      "System generates certificate PDF",
-      "Pin transcript to IPFS, finalize on blockchain"
+      "Enter student details, preview the certificate, and upload the transcript",
+      "Review the transcript and submit the review copy for VC and Chancellor approval",
+      "Generate the sealed certificate and finalize the credential on-chain"
     ]
   },
-  TRANSCRIPT_FIRST: {
-    id: "transcript_then_cert",
-    title: "Upload certificate to transcript",
-    description: "Transcript uploaded now; certificate uploaded later and linked as one record.",
+  ASSISTED_PLACEMENT: {
+    id: "assisted_placement",
+    title: "Sign unsigned documents",
+    description: "Upload unsigned documents, review suggested field positions, and apply configured officer signatures. Model integration is planned.",
     icon: FileText,
     iconColor: "text-[#2F6F4E]",
     bgColor: "bg-[#2F6F4E]/5",
     borderColor: "border-[#2F6F4E]/20",
+    planned: true,
     steps: [
-      "Upload transcript now (PDF)",
-      "Registrar submits (first approval)",
-      "Upload certificate when ready, linked to this transcript",
-      "Registrar, VC, and Dean approval (quorum)",
-      "Pin both files to IPFS",
-      "Finalize on blockchain"
+      "Upload certificate and transcript; review extracted identity and award data",
+      "Review layout recommendations and adjust officer signature placements",
+      "Apply signatures, fix final hashes, then complete the shared approvals"
     ]
   }
 };
 
-export default function WorkflowFlowSelector({ onSelect, selectedFlow, variant = "card" }) {
+export default function WorkflowFlowSelector({ onSelect, selectedFlow, variant = "card", templateActive = false }) {
   const [localSelected, setLocalSelected] = useState(selectedFlow || null);
   const currentSelected = selectedFlow || localSelected;
+  const selectedDefinition = Object.values(FLOWS).find(item => item.id === currentSelected);
 
   const handleSelect = (flowId) => {
+    if (templateActive && flowId !== "system_designed") return;
     setLocalSelected(flowId);
     if (onSelect) {
       onSelect(flowId);
@@ -89,6 +86,7 @@ export default function WorkflowFlowSelector({ onSelect, selectedFlow, variant =
               <button
                 key={flow.id}
                 type="button"
+                disabled={templateActive && flow.id !== "system_designed"}
                 onClick={() => handleSelect(flow.id)}
                 className={`
                   relative p-4 rounded-xl border-2 text-left transition-all
@@ -111,7 +109,7 @@ export default function WorkflowFlowSelector({ onSelect, selectedFlow, variant =
                     <Icon size={20} className={flow.iconColor} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-[#08283F] font-semibold text-sm mb-1">{flow.title}</h4>
+                    <h4 className="text-[#08283F] font-semibold text-sm mb-1">{flow.title}{flow.planned && <span className="ml-2 text-xs font-medium text-[#A9721F]">Planned</span>}</h4>
                     <p className="text-[#4A5A68] text-xs leading-relaxed">{flow.description}</p>
                   </div>
                   {isSelected && (
@@ -128,14 +126,16 @@ export default function WorkflowFlowSelector({ onSelect, selectedFlow, variant =
 
   // Full card variant (default)
   return (
-    <div className="flex flex-col gap-6">
-      <div className="text-center">
-        <h3 className="text-[#08283F] font-bold text-xl mb-2">Choose Your Workflow</h3>
+    <div className={`${styles.chooser} flex flex-col gap-6`}>
+      <CredentialSignerIndicator />
+      <div className={styles.intro}>
+        <h3 className="text-[#08283F] font-bold text-xl mb-2">Choose how to prepare the credential</h3>
         <p className="text-[#4A5A68] text-sm max-w-2xl mx-auto">
-          Select how you want to process this certificate. Each workflow follows a different approval path.
+          Choose a preparation method. Every available flow follows the same institutional approval and finalization process.
         </p>
       </div>
 
+      {templateActive && <p className={styles.notice}>Your institution has an active certificate template. Use the recommended flow to generate the certificate and upload its transcript.</p>}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {Object.values(FLOWS).map((flow) => {
           const Icon = flow.icon;
@@ -145,7 +145,7 @@ export default function WorkflowFlowSelector({ onSelect, selectedFlow, variant =
             <div
               key={flow.id}
               className={`
-                relative rounded-2xl border-2 overflow-hidden transition-all
+                ${styles.flowCard} ${isSelected ? styles.selected : ""} ${flow.recommended ? styles.recommended : ""} ${templateActive && flow.id !== "system_designed" ? styles.unavailable : ""} relative rounded-2xl border overflow-hidden transition-all
                 ${isSelected 
                   ? `${flow.borderColor} ${flow.bgColor} shadow-lg` 
                   : 'border-[#E4E1D6] bg-white hover:border-[#08283F]/20 hover:shadow-md'
@@ -153,21 +153,21 @@ export default function WorkflowFlowSelector({ onSelect, selectedFlow, variant =
               `}
             >
               {flow.recommended && (
-                <div className="absolute top-4 right-4 z-10">
+                <div className={styles.badge}>
                   <span className="bg-[#B98A28] text-white text-xs font-bold px-3 py-1 rounded-full">
                     Recommended
                   </span>
                 </div>
               )}
 
-              <div className="p-6 flex flex-col h-full">
+              <div className="p-5 flex flex-col h-full">
                 {/* Icon */}
-                <div className={`w-14 h-14 rounded-xl ${flow.bgColor} flex items-center justify-center mb-4`}>
-                  <Icon size={28} className={flow.iconColor} />
+                <div className={`w-11 h-11 rounded-xl ${flow.bgColor} flex items-center justify-center mb-4`}>
+                  <Icon size={23} className={flow.iconColor} />
                 </div>
 
                 {/* Title & Description */}
-                <h4 className="text-[#08283F] font-bold text-lg mb-2">{flow.title}</h4>
+                <h4 className="text-[#08283F] font-bold text-lg mb-2">{flow.title}{flow.planned && <span className="ml-2 text-xs font-medium text-[#A9721F]">Planned</span>}</h4>
                 <p className="text-[#4A5A68] text-sm mb-4 leading-relaxed">{flow.description}</p>
 
                 {/* Workflow Steps */}
@@ -190,12 +190,13 @@ export default function WorkflowFlowSelector({ onSelect, selectedFlow, variant =
                 {/* Select Button */}
                 <button
                   type="button"
+                  disabled={templateActive && flow.id !== "system_designed"}
                   onClick={() => handleSelect(flow.id)}
                   className={`
-                    w-full py-3 rounded-xl font-semibold text-sm transition-all
+                    ${styles.selectButton} cred-btn w-full font-semibold text-sm transition-all
                     ${isSelected
-                      ? 'bg-[#08283F] text-white'
-                      : 'bg-[#08283F]/10 text-[#08283F] hover:bg-[#08283F]/20'
+                      ? 'cred-btn-primary'
+                      : flow.recommended && !(templateActive && flow.id !== 'system_designed') ? 'cred-btn-primary' : 'cred-btn-secondary'
                     }
                   `}
                 >
@@ -205,7 +206,7 @@ export default function WorkflowFlowSelector({ onSelect, selectedFlow, variant =
                       Selected
                     </span>
                   ) : (
-                    'Select this flow'
+                    templateActive && flow.id !== "system_designed" ? "Unavailable with active template" : flow.planned ? 'View planned workflow' : 'Start this workflow'
                   )}
                 </button>
               </div>
@@ -218,8 +219,8 @@ export default function WorkflowFlowSelector({ onSelect, selectedFlow, variant =
         <div className="bg-[#E7F1EB] border border-[#2F6F4E]/20 rounded-xl p-4 text-center">
           <p className="text-[#2F6F4E] text-sm font-semibold flex items-center justify-center gap-2">
             <CheckCircle size={16} />
-            {FLOWS[currentSelected.toUpperCase()] 
-              ? `${FLOWS[currentSelected.toUpperCase()].title} workflow selected`
+            {selectedDefinition
+              ? `${selectedDefinition.title} workflow selected`
               : 'Workflow selected'
             }
           </p>
@@ -233,5 +234,6 @@ export default function WorkflowFlowSelector({ onSelect, selectedFlow, variant =
 export const FLOW_IDS = {
   FULL_UPLOAD: "full_upload",
   DESIGN_WITH_CREDENCE: "system_designed",
-  TRANSCRIPT_FIRST: "transcript_then_cert"
+  TRANSCRIPT_FIRST: "transcript_then_cert", // Existing certificate-only drafts
+  ASSISTED_PLACEMENT: "assisted_placement"
 };

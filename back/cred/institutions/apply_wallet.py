@@ -20,6 +20,15 @@ from .wallet_auth import _recover_address
 NONCE_TTL_MINUTES = 10
 
 
+def wallet_taken(address):
+    from accounts.models import User
+    return (
+        Institution.objects.filter(wallet_address__iexact=address).exists()
+        or User.objects.filter(wallet_address__iexact=address).exists()
+        or InstitutionApplication.objects.filter(wallet_address__iexact=address).exclude(status="rejected").exists()
+    )
+
+
 class ApplyWalletChallengeView(APIView):
     """
     POST /api/institutions/apply/wallet/challenge/
@@ -42,9 +51,9 @@ class ApplyWalletChallengeView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if Institution.objects.filter(wallet_address__iexact=address).exists():
+        if wallet_taken(address):
             return Response(
-                {"detail": "This wallet is already registered to an institution."},
+                {"detail": "This MetaMask account is already in use. Switch to a different account.", "code": "wallet_taken"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -120,6 +129,9 @@ class ApplyWalletVerifyView(APIView):
                 {"detail": "Signature verification failed."},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
+
+        if wallet_taken(address):
+            return Response({"detail": "This MetaMask account is already in use. Switch to a different account.", "code": "wallet_taken"}, status=status.HTTP_400_BAD_REQUEST)
 
         nonce_record.verified = True
         nonce_record.save(update_fields=["verified"])

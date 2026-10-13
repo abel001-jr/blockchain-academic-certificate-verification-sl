@@ -188,7 +188,7 @@ export default function QrScanner({ open, onClose, onScan }) {
 
         <div className="px-5 py-4 flex flex-col gap-3">
           <p className="text-[#4A5A68] text-sm">
-            Point the camera at the QR on a Credence certificate — works for system-designed and uploaded certificates.
+            Point the camera at the QR on an Intelligent Academic Credentialing certificate — works for system-designed and uploaded certificates.
           </p>
           {error && <p className="text-[#A23B34] text-sm">{error}</p>}
           <label className="cd-btn-secondary cursor-pointer justify-center">

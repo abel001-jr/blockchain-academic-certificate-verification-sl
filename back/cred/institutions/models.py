@@ -1,6 +1,7 @@
 """institutions/models.py"""
 
 import uuid
+from django.conf import settings
 from django.db import models
 
 
@@ -22,6 +23,7 @@ class Institution(models.Model):
     address         = models.TextField(blank=True)
     website         = models.URLField(blank=True)
     email           = models.EmailField(blank=True)
+    email_domain    = models.CharField(max_length=253, blank=True, help_text="Graduate email domain, e.g. central.edu.sl")
     phone           = models.CharField(max_length=30, blank=True)
     logo_url        = models.URLField(blank=True)
 
@@ -74,11 +76,113 @@ class CertificateTemplate(models.Model):
     )
     updated_at = models.DateTimeField(auto_now=True)
 
+    active_revision = models.ForeignKey(
+        "CertificateTemplateRevision", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="active_for",
+    )
+
     class Meta:
         db_table = "credence_certificate_templates"
 
     def __str__(self):
         return f"{self.institution.name} — {self.preset}"
+
+
+class CertificateTemplateRevision(models.Model):
+    """An uploaded master and layout; reopen approved versions before editing."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    institution = models.ForeignKey(Institution, on_delete=models.CASCADE, related_name="template_revisions")
+    name = models.CharField(max_length=120, default="Institutional certificate")
+    master = models.FileField(upload_to="institutions/templates/")
+    logo = models.ImageField(upload_to="institutions/template-assets/", blank=True, null=True)
+    seal = models.ImageField(upload_to="institutions/template-assets/", blank=True, null=True)
+    fields = models.JSONField(default=list)
+    analysis = models.JSONField(default=dict)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class ChainConfig(models.Model):
+    """
+    Deployment-wide blockchain coordinates (Settings → Blockchain).
+
+    A singleton row. These are public values, so storing them in the database rather
+    than only in ``.env`` is safe, and it is what makes the app reconfigurable at
+    runtime: ``NEXT_PUBLIC_*`` is baked into the JS bundle at build time, so moving
+    to another network or redeploying the registries currently means rebuilding the
+    frontend. Editing this row does not.
+
+    Deliberately holds no key material. The browser signs through MetaMask; a
+    private key entered here would be a private key transmitted through a web
+    page, which is a strictly worse arrangement than a demo key in a comment.
+    """
+
+    SINGLETON_PK = 1
+
+    # A fixed primary key is what enforces "one row": a second create() collides on
+    # the pk instead of quietly adding another deployment's coordinates.
+    id = models.PositiveSmallIntegerField(primary_key=True, default=SINGLETON_PK, editable=False)
+
+    rpc_url = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="JSON-RPC endpoint. Displayed to admins; the browser signs via MetaMask, not this URL.",
+    )
+    chain_id = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Expected chain id. The dashboard warns when the connected wallet is on a different network.",
+    )
+    issuer_registry_address = models.CharField(max_length=42, blank=True)
+    certificate_registry_address = models.CharField(max_length=42, blank=True)
+    expected_owner_address = models.CharField(
+        max_length=42,
+        blank=True,
+        help_text=(
+            "Optional. The wallet expected to own IssuerRegistry. Checked against the "
+            "contract's own owner() so a mismatch is reported before a transaction is sent."
+        ),
+    )
+
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="chain_config_updates",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "credence_chain_config"
+        verbose_name_plural = "chain config"
+
+    def __str__(self):
+        return f"Chain config (chain {self.chain_id or 'unset'})"
+
+    @classmethod
+    def load(cls):
+        """Return the singleton, creating it from settings on first use."""
+        obj, created = cls.objects.get_or_create(pk=cls.SINGLETON_PK)
+        if created:
+            from django.conf import settings
+
+            obj.rpc_url = getattr(settings, "ETH_RPC_URL", "") or ""
+            # Seeded rather than left null: the anchor page's "wrong network" warning is
+            # driven by this, and a null chain id would leave that check inert on every
+            # fresh install until an admin happened to open the settings form.
+            obj.chain_id = getattr(settings, "ETH_CHAIN_ID", None)
+            obj.issuer_registry_address = getattr(settings, "ISSUER_REGISTRY_ADDRESS", "") or ""
+            obj.certificate_registry_address = getattr(settings, "CERTIFICATE_REGISTRY_ADDRESS", "") or ""
+            obj.save(
+                update_fields=[
+                    "rpc_url",
+                    "chain_id",
+                    "issuer_registry_address",
+                    "certificate_registry_address",
+                ]
+            )
+        return obj
 
 
 class InstitutionApplication(models.Model):
@@ -219,6 +323,13 @@ class Program(models.Model):
         choices=QualificationType.choices,
         default=QualificationType.BACHELORS,
     )
+    degree_award = models.CharField(max_length=20, blank=True, choices=[("bsc", "Bachelor of Science (BSc)"), ("bsc_eng", "Bachelor of Science in Engineering (BSc Eng / BSE)"), ("ba", "Bachelor of Arts (BA)")])
+
+    @property
+    def full_title(self):
+        from .degree_awards import formal_program_title
+        return formal_program_title(self.title, self.degree_award)
+
     active      = models.BooleanField(default=True)
     created_at  = models.DateTimeField(auto_now_add=True)
     updated_at  = models.DateTimeField(auto_now=True)

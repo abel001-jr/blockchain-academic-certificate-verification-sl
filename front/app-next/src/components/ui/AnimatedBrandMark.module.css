@@ -1,0 +1,13 @@
+.mark { position: relative; width: var(--brand-size); height: var(--brand-size); flex-shrink: 0; display: grid; place-items: center; overflow: hidden; border: 1px solid color-mix(in srgb, var(--cd-accent, #780110) 45%, transparent); border-radius: 8px; background: var(--cd-primary, #08283f); box-shadow: 2px 2px 0 var(--cd-accent, #780110); isolation: isolate; transition: transform .3s, box-shadow .3s; }
+.mark::before { content: ""; position: absolute; inset: 0; background: var(--cd-accent, #780110); transform: translateY(110%); transition: transform .4s; z-index: -1; }
+.mark::after { content: ""; position: absolute; inset: -50%; background: linear-gradient(45deg, transparent 35%, #ffffff45 50%, transparent 65%); transform: translateX(-120%); pointer-events: none; }
+.mark img { width: 85%; height: 85%; object-fit: contain; transition: width .3s, height .3s, margin-bottom .3s; }
+.caption { position: absolute; bottom: 3px; font-size: 7px; line-height: 1; font-weight: 700; letter-spacing: .6px; color: white; opacity: 0; transform: translateY(8px); transition: opacity .3s, transform .3s; }
+:global(a):is(:hover,:focus-visible) .mark { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 var(--cd-accent, #780110); }
+:global(a):is(:hover,:focus-visible) .mark::before { transform: translateY(0); }
+:global(a):is(:hover,:focus-visible) .mark::after { animation: glassPass .8s ease .3s both; }
+:global(a):is(:hover,:focus-visible) .mark img { width: 62%; height: 62%; margin-bottom: 8px; animation: logoSpin 2s ease-in-out infinite; }
+:global(a):is(:hover,:focus-visible) .caption { opacity: 1; transform: none; }
+@keyframes logoSpin { 50% { transform: rotate(180deg) scale(1.08); } 100% { transform: rotate(360deg); } }
+@keyframes glassPass { to { transform: translateX(120%); } }
+@media(prefers-reduced-motion:reduce) { .mark,.mark img,.mark::before,.caption { transition: none; } :global(a):is(:hover,:focus-visible) .mark { transform: none; } :global(a):is(:hover,:focus-visible) .mark img,:global(a):is(:hover,:focus-visible) .mark::after { animation: none; } }

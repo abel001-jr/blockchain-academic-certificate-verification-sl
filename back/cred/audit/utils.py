@@ -21,7 +21,7 @@ def log_action(
     :param detail:      Human-readable description
     :param ip_address:  Requester IP
     """
-    AuditLog.objects.create(
+    entry = AuditLog.objects.create(
         actor=actor,
         actor_email=actor.email if actor else "",
         action=action,
@@ -30,3 +30,13 @@ def log_action(
         detail=detail,
         ip_address=ip_address or None,
     )
+    # Record notifications only after a successful credential transaction.
+    from django.db import transaction
+    def publish():
+        import logging
+        from notifications.services import notify_audit_event
+        try:
+            notify_audit_event(entry)
+        except Exception:
+            logging.getLogger(__name__).exception("Could not record notification for audit %s", entry.pk)
+    transaction.on_commit(publish)

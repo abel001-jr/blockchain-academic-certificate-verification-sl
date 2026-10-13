@@ -1,4 +1,8 @@
+import { ActionButton } from "./ui/AnimatedControls";
+
 import Link from "next/link";
+import { publicNavigation, publicNavigationHref } from "@/lib/publicNavigation";
+import SocialLinks from "./ui/SocialLinks";
 
 /* ── SVG icons ───────────────────────────────────────────────── */
 function LinkedInIcon() {
@@ -34,33 +38,6 @@ function YouTubeIcon() {
 }
 
 /* ── Social card ─────────────────────────────────────────────── */
-function SocialCard() {
-  const boxes = [
-    { cls: "ft-sc-box1", label: "LinkedIn",  Icon: LinkedInIcon  },
-    { cls: "ft-sc-box2", label: "GitHub",    Icon: GitHubIcon    },
-    { cls: "ft-sc-box3", label: "Instagram", Icon: InstagramIcon },
-    { cls: "ft-sc-box4", label: "YouTube",   Icon: YouTubeIcon   },
-  ];
-
-  return (
-    <div className="ft-sc-card">
-      <div className="ft-sc-bg" aria-hidden="true" />
-      <div className="ft-sc-logo" aria-hidden="true">CREDENCE</div>
-      <p className="ft-sc-caption">Connect with the platform and stay informed.</p>
-
-      {boxes.map(({ cls, label, Icon }) => (
-        <a key={label} href="#" className={`ft-sc-box ${cls}`} aria-label={label}>
-          <span className="ft-sc-icon">
-            <Icon />
-          </span>
-          <span className="ft-sc-tooltip" role="tooltip">{label}</span>
-        </a>
-      ))}
-    </div>
-  );
-}
-
-/* ── Footer ──────────────────────────────────────────────────── */
 export default function Footer() {
   return (
     <footer className="ft-root">
@@ -75,7 +52,7 @@ export default function Footer() {
           <section className="ft-brand">
             <div className="ft-brand-row">
               <span className="ft-shield" aria-hidden="true" />
-              <span className="ft-brand-name">Credence</span>
+              <span className="ft-brand-name">Intelligent Academic Credentialing</span>
             </div>
             <p className="ft-brand-copy">
               Secure academic credentials with institutional issuance,
@@ -94,30 +71,34 @@ export default function Footer() {
           {/* Platform links */}
           <section>
             <div className="ft-heading">Platform</div>
-            <nav className="ft-links">
-              <Link href="/#lifecycle">How it works</Link>
-              <Link href="/verify">Verify a certificate</Link>
-              <Link href="/#why">Why blockchain</Link>
-              <Link href="/apply">Apply as a university</Link>
+            <nav className="ft-links" aria-label="Platform navigation">
+              {publicNavigation.map((item) => (
+                <Link key={item.destination || item.anchor} href={publicNavigationHref(item)}>{item.label}</Link>
+              ))}
             </nav>
           </section>
 
           {/* Support links */}
           <section>
-            <div className="ft-heading">For institutions</div>
+            <div className="ft-heading">Account access</div>
             <nav className="ft-links">
-              <Link href="/login">Institution sign in</Link>
-              <Link href="/#stakeholders">Supported roles</Link>
+              <Link href="/login">Sign in to your account</Link>
+              <ActionButton href="/wallet-signin" tone="inverse">Institution wallet sign in</ActionButton>
+              <ActionButton href="/apply" tone="inverse">Apply as an institution</ActionButton>
               <a href="https://github.com" target="_blank" rel="noopener noreferrer">GitHub repository</a>
-              <Link href="/#why">Case study</Link>
             </nav>
           </section>
 
           {/* Social card column */}
           <section>
             <div className="ft-heading">Connect</div>
-            <p className="ft-connect-sub">Follow Credence</p>
-            <SocialCard />
+            <p className="ft-connect-sub">Follow Intelligent Academic Credentialing</p>
+            <SocialLinks direction="row" className="ft-social-links" links={[
+              { label: "LinkedIn", href: "https://linkedin.com/", icon: <LinkedInIcon />, fillColor: "#0274b3" },
+              { label: "GitHub", href: "https://github.com/", icon: <GitHubIcon />, fillColor: "#24262a" },
+              { label: "Instagram", href: "https://instagram.com/", icon: <InstagramIcon />, fillColor: "linear-gradient(45deg,#405de6,#b33ab4,#e1306c,#fd1f1f)" },
+              { label: "YouTube", href: "https://youtube.com/", icon: <YouTubeIcon />, fillColor: "#ff0000" },
+            ]} />
           </section>
 
         </div>
@@ -125,16 +106,12 @@ export default function Footer() {
         {/* Bottom bar */}
         <div className="ft-bottom">
           <span suppressHydrationWarning>
-            © 2026 Credence · final-year project, Central University Sierra Leone
+            © 2026 Intelligent Academic Credentialing · final-year project, Central University Sierra Leone
           </span>
-          <div className="ft-legal">
-            <a href="#">Privacy</a>
-            <a href="#">Terms</a>
-            <a href="#">Security</a>
-          </div>
           <span className="ft-note">Trusted credentials. Independent verification.</span>
         </div>
       </div>
     </footer>
   );
 }
+

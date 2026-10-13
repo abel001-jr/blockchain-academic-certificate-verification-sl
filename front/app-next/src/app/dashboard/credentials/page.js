@@ -1,4 +1,9 @@
 "use client";
+import DeleteButton from "@/components/ui/DeleteButton";
+import NavigationButton from "@/components/ui/NavigationButton";
+
+import { DownloadButton, ActionButton } from "@/components/ui/AnimatedControls";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { 
@@ -13,19 +18,20 @@ import {
   Loader2,
   Eye,
   Pencil,
-  Download,
-  ShieldCheck
+  ShieldCheck,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth, ROLES } from "@/lib/useAuth";
 import { verificationPath } from "@/lib/parseCertificateScan";
+import FloatingDetailDialog from "@/components/dashboard/FloatingDetailDialog";
+import styles from "@/components/dashboard/DashboardRecords.module.css";
 
 function StatusBadge({ status }) {
   const styles = {
     draft:              { bg: "bg-[#4A5A68]/10", text: "text-[#1B2734]", label: "Draft" },
     pending_vc:         { bg: "bg-[#F5EBDB]", text: "text-[#A9721F]", label: "Pending VC" },
-    pending_dean:       { bg: "bg-[#E9DAB8]", text: "text-[#B98A28]", label: "Pending Dean" },
-    pending_chancellor: { bg: "bg-[#E9DAB8]", text: "text-[#B98A28]", label: "Pending Dean" },
+    pending_dean:       { bg: "bg-[#E9DAB8]", text: "text-[#B98A28]", label: "Pending Chancellor" },
+    pending_chancellor: { bg: "bg-[#E9DAB8]", text: "text-[#B98A28]", label: "Pending Chancellor" },
     pending_finalize:   { bg: "bg-[#EAF2FB]", text: "text-[#08283F]", label: "Pending Finalize" },
     issued:             { bg: "bg-[#08283F]/8", text: "text-[#08283F]", label: "Issued" },
     approved:           { bg: "bg-[#E7F1EB]", text: "text-[#2F6F4E]", label: "Approved" },
@@ -62,19 +68,19 @@ function FlowBadge({ flowType }) {
   );
 }
 
-function CredentialRow({ credential }) {
-  const hasTranscript = credential.has_transcript || credential.transcript_id;
-  const canResume = credential.status === "draft" && [
+function CredentialRow({ credential, canIssue, onRemove }) {
+  const hasTranscript = credential.has_transcript;
+  const canResume = canIssue && credential.status === "draft" && [
     "system_designed",
     "full_upload",
     "transcript_then_cert",
   ].includes(credential.flow_type);
   const actionHref = canResume
     ? `/dashboard/certificates/new?flow=${encodeURIComponent(credential.flow_type)}&draft=${encodeURIComponent(credential.id)}`
-    : `/dashboard/credentials/${credential.id}`;
+    : `/dashboard/certificates/${credential.id}`;
 
   return (
-    <div className="group flex items-center justify-between gap-4 border-b border-[#E4E0D5] px-6 py-4 transition hover:bg-[#FCFBF8]">
+    <div className={`${styles.credentialRow} group flex items-start justify-between gap-4 border-b border-[#E4E0D5] px-6 py-4 transition hover:bg-[#FCFBF8]`}>
       {/* Student Info */}
       <div className="flex min-w-0 flex-1 items-start gap-4">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#08283F]/5">
@@ -85,12 +91,6 @@ function CredentialRow({ credential }) {
             <h3 className="truncate font-semibold text-[#142B41]">
               {credential.student_name}
             </h3>
-            {hasTranscript && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-[#2F6F4E]/10 px-2 py-0.5 text-xs font-semibold text-[#2F6F4E]">
-                <FileText size={11} />
-                With Transcript
-              </span>
-            )}
           </div>
           <p className="mt-1 truncate text-sm text-[#687B8E]">
             {credential.degree_title}
@@ -106,45 +106,46 @@ function CredentialRow({ credential }) {
               </>
             )}
           </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <FlowBadge flowType={credential.flow_type} />
+            <StatusBadge status={credential.status} />
+            {hasTranscript && <span className="inline-flex items-center gap-1 rounded-full bg-[#2F6F4E]/10 px-2 py-0.5 text-xs font-medium text-[#2F6F4E]"><FileText size={11} />With Transcript</span>}
+          </div>
         </div>
       </div>
 
-      {/* Flow & Status */}
-      <div className="flex shrink-0 items-center gap-3">
-        <FlowBadge flowType={credential.flow_type} />
-        <StatusBadge status={credential.status} />
-      </div>
-
       {/* Actions */}
-      <div className="flex shrink-0 items-center gap-2">
-        <Link
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        {canIssue && credential.status === "draft" && !credential.tx_hash && !credential.cert_hash && <DeleteButton iconOnly type="button" onClick={() => onRemove(credential)} aria-label={`Remove draft ${credential.certificate_id}`} title="Remove draft" >Remove draft</DeleteButton>}
+        <NavigationButton
+          iconOnly
+          aria-label={canResume ? "Continue issuing" : "View credential"}
           href={actionHref}
           title={canResume ? "Continue issuing" : "View credential"}
           className={`flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[#E4E0D5] text-[#4A5A68] transition hover:border-[#C59A3A] hover:bg-[#C59A3A]/5 hover:text-[#C59A3A] ${
-            canResume ? "px-3 text-xs font-semibold" : "w-9"
+            "px-3 text-xs font-semibold"
           }`}
         >
-          {canResume ? <><Pencil size={15} /> Continue</> : <Eye size={16} />}
-        </Link>
+          {canResume ? "Continue issuing" : "View credential"}
+        </NavigationButton>
         {credential.status === "issued" && credential.ipfs_url_pdf && (
-          <a
+          <DownloadButton iconOnly aria-label="Download credential document" as="a"
             href={credential.ipfs_url_pdf}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#E4E0D5] text-[#4A5A68] transition hover:border-[#C59A3A] hover:bg-[#C59A3A]/5 hover:text-[#C59A3A]"
-          >
-            <Download size={16} />
-          </a>
+            title="Download credential document"
+          >Download</DownloadButton>
         )}
         {credential.certificate_id && (
           <Link
             href={verificationPath(credential.certificate_id)}
             target="_blank"
             rel="noopener noreferrer"
-            title="Open the public verification page for this credential"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#E4E0D5] text-[#4A5A68] transition hover:border-[#C59A3A] hover:bg-[#C59A3A]/5 hover:text-[#C59A3A]"
+            title="Verify credential"
+            aria-label="Verify credential"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-[#E4E0D5] text-xs font-semibold text-[#4A5A68] transition hover:border-[#780110] hover:text-[#780110]"
           >
-            <ShieldCheck size={16} />
+            <ShieldCheck size={16} aria-hidden="true" />
           </Link>
         )}
       </div>
@@ -160,10 +161,22 @@ export default function CredentialsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [institution, setInstitution] = useState("");
   const [institutions, setInstitutions] = useState([]);
+  const [removing, setRemoving] = useState(null);
+  const [removalBusy, setRemovalBusy] = useState(false);
+  const [removalError, setRemovalError] = useState("");
+  async function removeDraft() {
+    setRemovalBusy(true); setRemovalError("");
+    try {
+      await api.post(`/certificates/${removing.id}/abandon/`, {});
+      setCredentials(previous => previous.filter(item => item.id !== removing.id));
+      setRemoving(null);
+    } catch (error) { setRemovalError(error?.detail || "Unable to remove this draft."); }
+    finally { setRemovalBusy(false); }
+  }
 
   // Issuing is registrar-only; the API returns 403 for everyone else, so the
   // CTA is hidden rather than left to fail.
-  const canIssue = [ROLES.REGISTRAR, ROLES.INSTITUTIONAL_ADMIN].includes(role);
+  const canIssue = role === ROLES.REGISTRAR;
   const isSuperAdmin = role === ROLES.SUPER_ADMIN;
 
   useEffect(() => {
@@ -204,7 +217,7 @@ export default function CredentialsPage() {
     total: credentials.length,
     issued: credentials.filter(c => c.status === "issued").length,
     pending: credentials.filter(c => c.status?.includes("pending")).length,
-    withTranscript: credentials.filter(c => c.has_transcript || c.transcript_id).length,
+    withTranscript: credentials.filter(c => c.has_transcript).length,
   };
 
   if (loading) {
@@ -216,7 +229,8 @@ export default function CredentialsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1400px] pb-8">
+    <div className={`${styles.page} w-full pb-4`}>
+      {removing && <FloatingDetailDialog title="Remove credential draft?" onClose={() => { if (!removalBusy) setRemoving(null); }}><p className="mb-4">Remove {removing.certificate_id} for {removing.student_name} and its saved documents? This cannot be undone.</p>{removalError && <p role="alert" className="mb-4 text-red-700">{removalError}</p>}<div className="flex gap-3"><button type="button" className="cd-btn-secondary" disabled={removalBusy} onClick={() => setRemoving(null)}>Cancel</button><DeleteButton type="button" disabled={removalBusy}  onClick={removeDraft}>{removalBusy ? "Removing..." : "Remove draft"}</DeleteButton></div></FloatingDetailDialog>}
       {/* Header */}
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -228,13 +242,13 @@ export default function CredentialsPage() {
           </p>
         </div>
         {canIssue && (
-          <Link
+          <ActionButton
             href="/dashboard/credentials/new"
             className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#C59A3A] px-5 text-sm font-bold text-white transition hover:brightness-110"
           >
             <Plus size={18} />
             Issue Credential
-          </Link>
+          </ActionButton>
         )}
         {!canIssue && !loading && (
           <p className="text-sm text-[#687B8E] self-center">
@@ -295,7 +309,7 @@ export default function CredentialsPage() {
             className="h-11 w-full rounded-lg border border-[#E4E0D5] bg-white pl-10 pr-4 text-sm text-[#142B41] placeholder-[#9AA8B4] focus:border-[#C59A3A] focus:outline-none focus:ring-2 focus:ring-[#C59A3A]/20"
           />
         </div>
-        <select
+        <select data-dropdown="compact"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
           className="h-11 rounded-lg border border-[#E4E0D5] bg-white px-4 text-sm text-[#142B41] focus:border-[#C59A3A] focus:outline-none focus:ring-2 focus:ring-[#C59A3A]/20"
@@ -303,13 +317,13 @@ export default function CredentialsPage() {
           <option value="all">All Status</option>
           <option value="draft">Draft</option>
           <option value="pending_vc">Pending VC</option>
-          <option value="pending_chancellor">Pending Dean</option>
+          <option value="pending_chancellor">Pending Chancellor</option>
           <option value="pending_finalize">Pending Finalize</option>
           <option value="issued">Issued</option>
           <option value="revoked">Revoked</option>
         </select>
         {isSuperAdmin && (
-          <select
+          <select data-dropdown="compact"
             value={institution}
             onChange={(e) => setInstitution(e.target.value)}
             className="h-11 rounded-lg border border-[#E4E0D5] bg-white px-4 text-sm text-[#142B41] focus:border-[#C59A3A] focus:outline-none focus:ring-2 focus:ring-[#C59A3A]/20"
@@ -326,7 +340,7 @@ export default function CredentialsPage() {
       <div className="overflow-hidden rounded-xl border border-[#E4E0D5] bg-white">
         {filteredCredentials.length > 0 ? (
           filteredCredentials.map((credential) => (
-            <CredentialRow key={credential.id} credential={credential} />
+            <CredentialRow key={credential.id} credential={credential} canIssue={canIssue} onRemove={item => { setRemoving(item); setRemovalError(""); }} />
           ))
         ) : (
           <div className="flex min-h-[300px] flex-col items-center justify-center p-8 text-center">
@@ -338,13 +352,13 @@ export default function CredentialsPage() {
                 : "Start by issuing your first credential"}
             </p>
             {!searchQuery && statusFilter === "all" && canIssue && (
-              <Link
+              <ActionButton
                 href="/dashboard/credentials/new"
                 className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#C59A3A] px-4 py-2 text-sm font-semibold text-white hover:brightness-110"
               >
                 <Plus size={16} />
                 Issue Credential
-              </Link>
+              </ActionButton>
             )}
           </div>
         )}

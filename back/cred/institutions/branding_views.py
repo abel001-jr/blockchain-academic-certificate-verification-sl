@@ -9,11 +9,31 @@ from audit.utils import log_action
 
 from .branding_serializers import CertificateTemplateSerializer
 from .models import CertificateTemplate
+from .serializers import InstitutionEmailSettingsSerializer
+from accounts.permissions import IsAdminOrAbove
 
 
 def _get_or_create_template(institution):
     template, _ = CertificateTemplate.objects.get_or_create(institution=institution)
     return template
+
+
+class InstitutionEmailSettingsView(APIView):
+    permission_classes = [IsFullSession, IsRegistrar]
+
+    def get(self, request):
+        if not request.user.institution_id:
+            return Response({"detail": "No institution linked."}, status=400)
+        return Response(InstitutionEmailSettingsSerializer(request.user.institution).data)
+
+    def patch(self, request):
+        if not request.user.institution_id:
+            return Response({"detail": "No institution linked."}, status=400)
+        serializer = InstitutionEmailSettingsSerializer(request.user.institution, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        log_action(actor=request.user, action="institution.email_settings.updated", target_type="Institution", target_id=str(request.user.institution_id), detail="Updated contact email / graduate email domain")
+        return Response(serializer.data)
 
 
 class CertificateBrandingView(APIView):
@@ -32,9 +52,12 @@ class CertificateBrandingView(APIView):
         if not request.user.institution_id:
             return Response({"detail": "No institution linked."}, status=400)
         template = _get_or_create_template(request.user.institution)
-        return Response(
-            CertificateTemplateSerializer(template, context={"request": request}).data
-        )
+        data = CertificateTemplateSerializer(template, context={"request": request}).data
+        data["active_revision_id"] = str(template.active_revision_id) if template.active_revision_id else None
+        data["email_domain"] = request.user.institution.email_domain
+        data["required_signers"] = ["registrar", "vc", "chancellor"]
+        return Response(data)
+
 
     def patch(self, request):
         if not request.user.institution_id:

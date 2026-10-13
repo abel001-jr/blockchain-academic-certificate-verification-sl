@@ -1,14 +1,21 @@
 "use client";
+import { ActionButton } from "@/components/ui/AnimatedControls";
+import DeleteButton from "@/components/ui/DeleteButton";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Check, Upload, Trash2 } from "lucide-react";
+import { Loader2, Check, Upload } from "lucide-react";
 import { api } from "@/lib/api";
 import { PRESET_LIST, SAMPLE_CERT } from "@/lib/certPresets";
 import CertificatePreview from "@/components/dashboard/CertificatePreview";
+import UploadedTemplatePanel from "./UploadedTemplatePanel";
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api";
 
 export default function CertificateBrandingPanel() {
+  return <section aria-label="Certificate branding settings" className="flex flex-col gap-8"><UploadedTemplatePanel /><details className="border-t pt-4"><summary className="text-sm cursor-pointer text-[#687B8E]">Preset fallback for credentials without an uploaded template</summary><div className="mt-4"><LegacyCertificateBrandingPanel /></div></details></section>;
+}
+
+function LegacyCertificateBrandingPanel() {
   const [preset, setPreset] = useState("classic_navy");
   const [logoUrl, setLogoUrl] = useState("");
   const [logoFile, setLogoFile] = useState(null);
@@ -35,7 +42,7 @@ export default function CertificateBrandingPanel() {
   }, []);
 
   useEffect(() => {
-    load();
+    Promise.resolve().then(load);
   }, [load]);
 
   async function handleSave(e) {
@@ -82,7 +89,7 @@ export default function CertificateBrandingPanel() {
   }
 
   return (
-    <form onSubmit={handleSave} className="flex flex-col gap-6">
+    <form onSubmit={handleSave} className="cd-certificate-settings flex flex-col gap-8">
       <div>
         <h3 className="text-[#08283F] font-semibold text-xl">Certificate Branding</h3>
         <p className="text-[#4A5A68] text-base mt-1.5">
@@ -133,9 +140,9 @@ export default function CertificateBrandingPanel() {
           Logo / Crest (optional)
         </p>
         <div className="flex flex-wrap items-center gap-3">
-          <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-[10px] border border-[#c4c6cf]/40 text-sm text-[#022448] font-medium cursor-pointer hover:bg-[#eef4ff]">
+          <label className="inline-flex max-w-full items-center gap-2 px-4 py-2.5 rounded-[10px] border border-[#c4c6cf]/40 text-sm text-[#022448] font-medium cursor-pointer hover:bg-[#eef4ff]">
             <Upload size={14} />
-            {logoFile ? logoFile.name : "Upload image"}
+            <span className="min-w-0 break-all">{logoFile ? logoFile.name : "Upload image"}</span>
             <input
               type="file"
               accept="image/*"
@@ -147,16 +154,16 @@ export default function CertificateBrandingPanel() {
             />
           </label>
           {(logoUrl || logoFile) && !clearLogo && (
-            <button
+            <DeleteButton
               type="button"
               onClick={() => {
                 setLogoFile(null);
                 setClearLogo(true);
               }}
-              className="inline-flex items-center gap-1.5 text-xs text-[#C62828] font-medium hover:underline"
+              
             >
-              <Trash2 size={12} /> Remove logo
-            </button>
+               Remove logo
+            </DeleteButton>
           )}
         </div>
       </div>
@@ -173,14 +180,14 @@ export default function CertificateBrandingPanel() {
         />
       </div>
 
-      <button
+      <ActionButton
         type="submit"
         disabled={saving}
-        className="flex items-center gap-2 bg-[#022448] text-white px-6 py-3 rounded-[12px] text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-60 self-start"
+        className="cred-btn cred-btn-primary gap-2 self-start"
       >
         {saving && <Loader2 size={14} className="animate-spin" />}
         {saving ? "Saving…" : "Save branding"}
-      </button>
+      </ActionButton>
     </form>
   );
 }

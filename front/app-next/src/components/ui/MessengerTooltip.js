@@ -5,7 +5,7 @@
  * An icon button that morphs into a circle on hover while floating its
  * label upward. Generic enough for any action — not limited to Messenger.
  * Source: messenger_tooltip.html (uiverse, MIT licence)
- * Adapted: Credence navy base, gold accent, label uses ink colour.
+ * Adapted: Intelligent Academic Credentialing navy base, gold accent, label uses ink colour.
  *
  * Props:
  *   label     — tooltip text shown above on hover (required)

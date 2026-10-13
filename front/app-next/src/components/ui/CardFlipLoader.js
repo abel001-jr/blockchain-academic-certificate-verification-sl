@@ -2,7 +2,7 @@
  * CardFlipLoader
  * Five stacked panels flip in sequence — compact inline loading state.
  * Source: card_flip.html (uiverse, MIT licence)
- * Adapted to Credence navy.
+ * Adapted to Intelligent Academic Credentialing navy.
  *
  * Props:
  *   size  — px size of the square (default 33)
