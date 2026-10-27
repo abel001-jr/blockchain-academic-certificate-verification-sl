@@ -1625,6 +1625,12 @@ body {
   right: 0;
 }
 
+.cred-nav-drawer-link.active {
+  color: #780110;
+  background: #7801100a;
+  box-shadow: inset 3px 0 #780110;
+}
+
 /* Nav action buttons */
 .cred-nav-actions {
   display: flex;
@@ -3356,3 +3362,14 @@ main:has(> [data-dashboard-issuance]) > [data-dashboard-page] {
 .wallet-cancellation-toast button { color: #754B0B; }
 .wallet-cancellation-toast__icon { flex-shrink: 0; margin-top: 2px; color: #A66C0D; }
 .wallet-cancellation-toast button:focus-visible { outline: 2px solid #A66C0D; outline-offset: 2px; border-radius: 4px; }
+
+/* Pending application attention indicator. */
+@keyframes cd-approval-attention {
+  0%, 100% { opacity: 1; transform: rotate(0); }
+  40% { opacity: .45; transform: rotate(-12deg); }
+  60% { opacity: 1; transform: rotate(12deg); }
+}
+.cd-approval-attention { color: #A23B34; animation: cd-approval-attention 2s ease-in-out infinite; transform-origin: top center; }
+@media (prefers-reduced-motion: reduce) {
+  .cd-approval-attention { animation: none; }
+}

@@ -2,7 +2,7 @@
 import json
 from types import SimpleNamespace
 
-import fitz
+import pymupdf as fitz
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
@@ -27,11 +27,15 @@ from .credential_validation import template_preflight, validate_certificate_data
 from .models import Program
 from .template_suggestions import suggest_fields
 from .ai_suggestions import suggest_with_groq, AssistanceError
+from .certificate_profiles import selected_profile, annotate_profile
 from rest_framework.throttling import UserRateThrottle
 
 
 class AIAssistanceThrottle(UserRateThrottle):
-    rate = "5/min"
+    scope = "template_ai"
+
+    def get_rate(self):
+        return settings.TEMPLATE_AI_RATE
 
 
 class TemplateEditView(APIView):
@@ -85,6 +89,30 @@ class TemplateDisableView(APIView):
         return Response({"active_id": None, "detail": "Certificate branding disabled for new issuance. Saved templates and existing credentials are preserved."})
 
 
+def extract_template_analysis(revision):
+    """Read the current master for either suggestion method without changing fields."""
+    with revision.master.open("rb") as source:
+        raw = source.read()
+    analysis = analyze_pdf(raw)
+    with fitz.open(stream=raw, filetype="pdf") as doc:
+        for page, info in zip(doc, analysis["pages"]):
+            info.update(width=page.rect.width, height=page.rect.height)
+            rules = []
+            for drawing in page.get_drawings():
+                for segment in drawing["items"]:
+                    if segment[0] == "l":
+                        first, last = segment[1], segment[2]
+                        if page.rotation:
+                            first, last = first * page.rotation_matrix, last * page.rotation_matrix
+                        if abs(first.y - last.y) < 2 and abs(first.x - last.x) > 25:
+                            rules.append([min(first.x, last.x), first.y, max(first.x, last.x), last.y])
+            info["horizontal_rules"] = rules
+            if info.get("method") == "text_layer" and page.rotation:
+                for item in info.get("items", []) + info.get("lines", []):
+                    item["bbox"] = list(fitz.Rect(item["bbox"]) * page.rotation_matrix)
+    return analysis
+
+
 class TemplateAISuggestionsView(APIView):
     permission_classes = [IsFullSession, IsRegistrar]
     throttle_classes = [AIAssistanceThrottle]
@@ -94,9 +122,44 @@ class TemplateAISuggestionsView(APIView):
         if revision.approved_at:
             return Response({"detail": "Approved templates are fixed."}, status=400)
         try:
-            result = suggest_with_groq(revision.analysis)
+            analysis = extract_template_analysis(revision)
+            profile = selected_profile(request.data.get("certificate_type", revision.analysis.get("certificate_type", "bsc")))
+            analysis["certificate_profile"] = profile
+            local = suggest_fields(analysis)
+            try:
+                if str(request.data.get("visual", "")).lower() == "true":
+                    from .template_vision import suggest_visual_layout
+                    uploads = {key: asset(request.FILES[key]) for key in ("logo", "seal") if key in request.FILES}
+                    fields = json.loads(request.data.get("fields", "[]"))
+                    if str(request.data.get("full_design", "")).lower() == "true":
+                        result = suggest_visual_layout(revision, analysis, uploads, fields, int(request.data.get("page", 1)), full_design=True)
+                    else:
+                        result = suggest_visual_layout(revision, analysis, uploads, fields, int(request.data.get("page", 1)))
+                else:
+                    result = suggest_with_groq(analysis)
+            except AssistanceError:
+                if not local["items"]:
+                    raise
+                result = {"items": [], "warnings": ["AI assistance is unavailable. Showing PDF/OCR and estimated layout suggestions instead."]}
+            # Keep local blank-area detection; AI only classifies explicit text markers.
+            items = list(result["items"])
+            seen = {(item["field"]["page"], item["field"]["key"]) for item in items}
+            for item in local["items"]:
+                identity = (item["field"]["page"], item["field"]["key"])
+                if identity not in seen:
+                    items.append(item)
+                    seen.add(identity)
+            result = {**local, "items": items[:60],
+                "warnings": list(dict.fromkeys(result.get("warnings", []) + local["warnings"]))}
+            found = {item["field"]["key"] for item in result["items"]}
+            result["missing_fields"] = [key for key in local["checked_fields"] if key not in found]
+            annotate_profile(result, profile, analysis)
+        except DocumentAnalysisError as exc:
+            return Response({"detail": str(exc)}, status=400)
         except AssistanceError as exc:
             return Response({"detail": str(exc)}, status=503)
+        except (ValueError, TypeError) as exc:
+            return Response({"detail": str(exc)}, status=400)
         return Response(result)
 
 
@@ -131,23 +194,67 @@ def asset(value):
     return validated
 
 
+class TemplateAssetSuggestionsView(APIView):
+    permission_classes = [IsFullSession, IsRegistrar]
+    throttle_classes = [AIAssistanceThrottle]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, pk):
+        revision = get_object_or_404(CertificateTemplateRevision, pk=pk, institution=request.user.institution)
+        if revision.approved_at or CertificateTemplate.objects.filter(institution=request.user.institution, active_revision__isnull=False).exists():
+            return Response({"detail": "Disable branding and open the draft before suggesting image sizes."}, status=409)
+        try:
+            from .template_asset_suggestions import suggest_asset_size
+            key = request.data.get("key")
+            if key not in {"logo", "seal"}:
+                raise ValueError("Choose a logo or seal.")
+            fields = json.loads(request.data.get("fields", "[]"))
+            analysis = extract_template_analysis(revision)
+            validate_layout(fields, analysis)
+            image = request.FILES.get("image")
+            if image:
+                image = asset(image)
+                result = suggest_asset_size(image, key, analysis, fields, int(request.data.get("page", 1)))
+            else:
+                saved = getattr(revision, key)
+                if not saved:
+                    raise ValueError("Upload the logo or seal first.")
+                with saved.open("rb") as image:
+                    result = suggest_asset_size(image, key, analysis, fields, int(request.data.get("page", 1)))
+            return Response(result)
+        except AssistanceError as exc:
+            return Response({"detail": str(exc)}, status=503)
+        except (ValueError, TypeError, DocumentAnalysisError) as exc:
+            return Response({"detail": str(exc)}, status=400)
+
+
 class TemplateSuggestionsView(APIView):
     permission_classes = [IsFullSession, IsRegistrar]
 
     def post(self, request, pk):
         revision = get_object_or_404(CertificateTemplateRevision, pk=pk, institution=request.user.institution)
+        if revision.approved_at:
+            return Response({"detail": "Approved templates are fixed."}, status=400)
         try:
-            with revision.master.open("rb") as source:
-                raw = source.read()
-            analysis = analyze_pdf(raw)
-            with fitz.open(stream=raw, filetype="pdf") as doc:
-                for page, info in zip(doc, analysis["pages"]):
-                    info.update(width=page.rect.width, height=page.rect.height)
-                    if info.get("method") == "text_layer" and page.rotation:
-                        for item in info["items"] + info.get("lines", []):
-                            item["bbox"] = list(fitz.Rect(item["bbox"]) * page.rotation_matrix)
-            return Response(suggest_fields(analysis))
+            expected = {"institution_name": [revision.institution.name],
+                "degree_title": list(Program.objects.filter(department__institution=revision.institution, active=True).values_list("title", flat=True)),
+                "department": list(revision.institution.departments.filter(active=True).values_list("name", flat=True)),
+                "grade": list(revision.institution.grade_classifications.filter(active=True).values_list("label", flat=True))}
+            analysis = extract_template_analysis(revision)
+            profile = selected_profile(request.data.get("certificate_type", revision.analysis.get("certificate_type", "bsc")))
+            expected["degree_title"] = [title for title in expected["degree_title"] if profile["title"].casefold() in title.casefold()]
+            result = suggest_fields(analysis, expected_values=expected)
+            fields = json.loads(request.data.get("fields", "[]"))
+            validate_layout(fields, analysis)
+            page_number = int(request.data.get("page", 1))
+            if not 1 <= page_number <= len(analysis.get("pages", [])):
+                raise ValueError("Choose an existing page.")
+            from .template_local_assets import add_local_artwork
+            add_local_artwork(result, revision, analysis, fields, request.FILES, page_number)
+            return Response(annotate_profile(result, profile, analysis))
         except DocumentAnalysisError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        except (ValueError, TypeError) as exc:
             return Response({"detail": str(exc)}, status=400)
 
 
@@ -203,6 +310,10 @@ class TemplateSetupView(APIView):
             revision.fields = []
             revision.logo = None
             revision.seal = None
+            from .template_mode import detect_design_mode
+            detection = detect_design_mode(analysis)
+            analysis["design_detection"] = detection
+            analysis["design_mode"] = detection["recommended"]
             revision.analysis = analysis
             revision.master.save("master.pdf", ContentFile(output), save=False)
             revision.save()
@@ -225,6 +336,14 @@ class TemplateRevisionView(APIView):
         if revision.approved_at:
             return Response({"detail": "Disable branding and open this template for editing before saving changes."}, status=409)
         try:
+            if "certificate_type" in request.data:
+                profile = selected_profile(request.data["certificate_type"])
+                revision.analysis = {**revision.analysis, "certificate_type": profile["id"]}
+            if "design_mode" in request.data:
+                mode = request.data["design_mode"]
+                if mode not in {"blank", "existing"}:
+                    raise ValueError("Choose blank design or existing text.")
+                revision.analysis = {**revision.analysis, "design_mode": mode}
             fields = request.data.get("fields", revision.fields)
             if isinstance(fields, str):
                 fields = json.loads(fields)
@@ -357,6 +476,8 @@ class CredentialTemplatePreviewView(APIView):
         try:
             if certificate.sealed_doc_hash:
                 output = fetch_verified_document(certificate.ipfs_cid_sealed_pdf, certificate.certificate_id, "certificate", certificate.sealed_doc_hash)
+            elif certificate.tx_hash and certificate.status in ("pending_vc", "pending_chancellor", "pending_finalize"):
+                output = render_uploaded_template(certificate, certificate.template_revision, include_attestations=True, allow_partial_signatures=True, verification_base_url=settings.FRONTEND_URL)
             elif certificate.doc_hash:
                 output = fetch_verified_document(certificate.ipfs_cid_pdf, certificate.certificate_id, "certificate-review", certificate.doc_hash)
             else:

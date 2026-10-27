@@ -2,7 +2,7 @@ from io import BytesIO
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-import fitz
+import pymupdf as fitz
 from PIL import Image
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile

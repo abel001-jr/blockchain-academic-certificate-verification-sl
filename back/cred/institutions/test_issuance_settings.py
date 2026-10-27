@@ -25,7 +25,7 @@ class IssuanceSettingsTests(TestCase):
         for value in ("https://central.edu.sl", "name@central.edu.sl", "central..edu.sl", "-central.edu.sl"):
             self.assertEqual(self.client.patch("/api/institution-email-settings/", {"email_domain": value}, format="json").status_code, 400)
 
-    def test_student_email_requires_configured_institution_domain(self):
+    def test_student_email_accepts_personal_and_school_domains(self):
         self.inst.email_domain = "policy.edu"
         self.inst.save(update_fields=["email_domain"])
         department = Department.objects.create(institution=self.inst, name="Computing")
@@ -33,14 +33,13 @@ class IssuanceSettingsTests(TestCase):
         data = {"student_name": "Amina Kamara", "graduation_year": 2026, "department_id": str(department.pk), "program_id": str(program.pk), "flow_type": "system_designed"}
         for email in ["amina@gmail.com", "amina@other.edu", "amina@sub.policy.edu"]:
             serializer = CertificateCreateSerializer(data={**data, "student_email": email}, context={"request": SimpleNamespace(user=self.user)})
-            self.assertFalse(serializer.is_valid())
-            self.assertIn("student_email", serializer.errors)
+            self.assertTrue(serializer.is_valid(), serializer.errors)
         serializer = CertificateCreateSerializer(data={**data, "student_email": "AMINA@POLICY.EDU"}, context={"request": SimpleNamespace(user=self.user)})
         self.assertTrue(serializer.is_valid(), serializer.errors)
         self.assertEqual(serializer.validated_data["student_email"], "amina@policy.edu")
         from certify.serializers import CertificateUpdateStudentEmailSerializer
         correction = CertificateUpdateStudentEmailSerializer(data={"student_email": "amina@gmail.com"}, context={"institution": self.inst})
-        self.assertFalse(correction.is_valid())
+        self.assertTrue(correction.is_valid(), correction.errors)
 
     def test_settings_responsibilities_are_separate(self):
         admin = User.objects.create_user(email="settings-admin@policy.edu", role=Role.INSTITUTIONAL_ADMIN, institution=self.inst)

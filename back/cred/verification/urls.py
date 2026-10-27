@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import VerifyCertificateView
+from .views import VerifyCertificateView, ValidateEmployerAccessView, EmployerDocumentVerificationView
 from .document_views import SharedCredentialDocumentsView
 from .stats_views import PublicStatsView
 from .consent_views import (
@@ -10,6 +10,8 @@ from .consent_views import (
 )
 
 urlpatterns = [
+    path("verify/<str:certificate_id>/access/", ValidateEmployerAccessView.as_view()),
+    path("verify/<str:certificate_id>/verify-documents/", EmployerDocumentVerificationView.as_view()),
     # ── Public landing-page stats ─────────────────────────────────────────────
     path("public/stats/", PublicStatsView.as_view(), name="public-stats"),
 

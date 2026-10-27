@@ -40,6 +40,9 @@ class OfficerSetupWalletChallengeView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if request.user.is_super_admin and request.user.wallet_verified and request.user.wallet_address:
+            return Response({"detail": "Your wallet is already linked. Sign in again."}, status=400)
+
         # Wallet must not already belong to another account
         taken = User.objects.filter(wallet_address__iexact=address).exclude(pk=request.user.pk)
         if taken.exists():
@@ -71,6 +74,7 @@ class OfficerSetupWalletChallengeView(APIView):
             nonce=nonce,
             message=message,
             purpose=WalletNonce.PURPOSE_SETUP,
+            institution_hint=str(request.user.pk),
         )
 
         return Response({"message": message, "nonce": nonce})
@@ -87,6 +91,9 @@ class OfficerSetupWalletVerifyView(APIView):
         address = request.data.get("address", "").strip().lower()
         signature = request.data.get("signature", "").strip()
 
+        if request.user.is_super_admin and request.user.wallet_verified and request.user.wallet_address:
+            return Response({"detail": "Your wallet is already linked. Sign in again."}, status=400)
+
         if not address or not signature:
             return Response(
                 {"detail": "address and signature are required."},
@@ -99,6 +106,7 @@ class OfficerSetupWalletVerifyView(APIView):
             .filter(
                 address=address,
                 purpose=WalletNonce.PURPOSE_SETUP,
+                institution_hint=str(request.user.pk),
                 used=False,
                 created_at__gte=cutoff,
             )
@@ -143,8 +151,10 @@ class OfficerSetupWalletVerifyView(APIView):
         )
 
         from .serializers import UserSerializer
+        from .tokens import issue_full_tokens
         return Response({
             "detail": "Wallet verified.",
+            **(issue_full_tokens(user, wallet=address) if user.is_super_admin or not user.must_change_password else {}),
             "user": UserSerializer(user).data,
         })
 
@@ -186,13 +196,21 @@ class OfficerSetupPasswordView(APIView):
         )
 
         from .serializers import UserSerializer
+        from .tokens import issue_full_tokens
         return Response({
-            "detail": (
-                "Setup complete. Your temporary password is retired. "
-                "Wait for your institution administrator to authorize your wallet on-chain, "
-                "then sign in with MetaMask."
-            ),
+            **issue_full_tokens(user, wallet=user.wallet_address),
+            "detail": "Setup complete. Dashboard access is available.",
             "setup_complete": True,
-            "pending_authorization": not user.on_chain_authorized,
             "user": UserSerializer(user).data,
         })
+
+
+class OfficerSetupCompleteView(APIView):
+    permission_classes = [IsAuthenticated, IsOfficerSetupSession]
+
+    def post(self, request):
+        user = request.user
+        if not user.is_active or not user.institution_id or user.needs_officer_setup or not user.wallet_address:
+            return Response({"detail": "Complete wallet verification and password setup first."}, status=403)
+        from .tokens import issue_full_tokens
+        return Response({**issue_full_tokens(user, wallet=user.wallet_address), "setup_complete": True})

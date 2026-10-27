@@ -11,6 +11,9 @@
  *   empty   – string message when no entries
  */
 
+import Link from "next/link";
+import styles from "./ActivityFeed.module.css";
+
 const ACTION_META = {
   "certificate.issued":       { dot: "bg-[#2F6F4E]",  label: "Issued"           },
   "certificate.created":      { dot: "bg-[#08283F]",  label: "Created"          },
@@ -43,13 +46,15 @@ export default function ActivityFeed({
   entries = [],
   loading = false,
   empty   = "No activity recorded yet.",
+  viewAllHref,
 }) {
   return (
-    <div className="cd-scroll-card bg-white rounded-xl border border-[#E4E1D6]/50 overflow-hidden shadow-card">
-      <div className="px-5 py-4 border-b border-[#E4E1D6]/40">
+    <div className={`${styles.card} cd-scroll-card bg-white rounded-xl border border-[#E4E1D6]/50 overflow-hidden shadow-card`}>
+      <div className="px-5 py-4 border-b border-[#E4E1D6]/40 flex flex-wrap items-center justify-between gap-3">
         <p className="text-[0.8rem] font-semibold text-[#08283F] uppercase tracking-wider">
           {title}
         </p>
+        {viewAllHref && <Link href={viewAllHref} className={styles.viewAll}>View all <span aria-hidden="true">&rarr;</span></Link>}
       </div>
 
       <div className="cd-scroll-card-body divide-y divide-[#E4E1D6]/40" tabIndex={0} role="region" aria-label={`${title} entries`}>
@@ -62,7 +67,7 @@ export default function ActivityFeed({
         )}
 
         {!loading && entries.map((entry) => (
-          <div key={entry.id} className="flex items-start gap-3 px-5 py-3.5">
+          <div key={entry.id} tabIndex={0} className={`${styles.row} flex items-start gap-3 px-5 py-3.5`}>
             {/* Status dot */}
             <span className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${dot(entry.action)}`} />
 

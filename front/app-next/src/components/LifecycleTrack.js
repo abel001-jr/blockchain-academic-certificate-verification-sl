@@ -29,7 +29,9 @@ export default function LifecycleTrack() {
       const top = first.top + first.height / 2;
       const bottom = last.top + last.height / 2;
       const progress = Math.max(0, Math.min(1, (window.innerHeight * .6 - top) / Math.max(1, bottom - top)));
-      timeline.style.setProperty("--timeline-progress", progress);
+      const complete = last.top <= window.innerHeight * .9;
+      timeline.style.setProperty("--timeline-progress", complete ? 1 : progress);
+      timeline.dataset.complete = String(complete);
       timeline.style.setProperty("--timeline-start", `${top - timeline.getBoundingClientRect().top}px`);
       timeline.style.setProperty("--timeline-length", `${bottom - top}px`);
     }

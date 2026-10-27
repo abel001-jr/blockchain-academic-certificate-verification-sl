@@ -32,6 +32,7 @@ from rest_framework.views import APIView
 from accounts.permissions import IsFullSession
 from certify.encrypted_documents import DocumentEncryptionError, fetch_verified_document
 from certify.models import Certificate, CertificateStatus
+from .local_documents import owner_document
 
 
 class MyCertificateDocumentsView(APIView):
@@ -71,24 +72,54 @@ class MyCertificateDocumentsView(APIView):
         # sealed copy rather than the review copy the officers approved.
         issued_cid = certificate.issued_pdf_cid
         issued_hash = certificate.authoritative_doc_hash
-        if not issued_cid or not issued_hash:
+        if not issued_hash:
             return Response(
                 {"detail": "This credential's certificate document is not available."},
                 status=status.HTTP_409_CONFLICT,
             )
-        if not transcript_cid or not transcript_hash:
+        document = request.query_params.get("document")
+        if document is not None:
+            if document not in {"certificate", "transcript"}:
+                return Response({"detail": "Choose certificate or transcript."}, status=400)
+            cid, expected = (issued_cid, issued_hash) if document == "certificate" else (transcript_cid, transcript_hash)
+            if not expected:
+                return Response({"detail": f"The {document} is not available."}, status=409)
+            try:
+                pdf, source = owner_document(certificate, document, cid, expected, fetch_verified_document, return_source=True)
+                if request.query_params.get("preview") == "true":
+                    import pymupdf as fitz
+                    try:
+                        page_number = int(request.query_params.get("page", "1"))
+                        with fitz.open(stream=pdf, filetype="pdf") as doc:
+                            if not 1 <= page_number <= doc.page_count:
+                                raise ValueError
+                            page = doc[page_number-1]
+                            image = page.get_pixmap(matrix=fitz.Matrix(1200/max(page.rect.width, page.rect.height), 1200/max(page.rect.width, page.rect.height)), alpha=False)
+                            response = HttpResponse(image.tobytes("png"), content_type="image/png")
+                            response["X-Document-Pages"] = str(doc.page_count)
+                    except Exception:
+                        return Response({"detail": "This document preview could not be rendered."}, status=400)
+                else:
+                    response = HttpResponse(pdf, content_type="application/pdf")
+                    response["Content-Disposition"] = f'attachment; filename="{certificate_id}-{document}.pdf"'
+                response["X-Document-Source"] = source
+                response["Cache-Control"] = "private, no-store"
+                response["X-Content-Type-Options"] = "nosniff"
+                return response
+            except DocumentEncryptionError as exc:
+                return Response({"detail": str(exc)}, status=409)
+            except RuntimeError:
+                return Response({"detail": "Document storage is temporarily unavailable. Please retry."}, status=502)
+
+        if not transcript_hash:
             return Response(
                 {"detail": "This credential's transcript is not available."},
                 status=status.HTTP_409_CONFLICT,
             )
 
         try:
-            certificate_pdf = fetch_verified_document(
-                issued_cid, certificate.certificate_id, "certificate", issued_hash,
-            )
-            transcript_pdf = fetch_verified_document(
-                transcript_cid, certificate.certificate_id, "transcript", transcript_hash,
-            )
+            certificate_pdf = owner_document(certificate, "certificate", issued_cid, issued_hash, fetch_verified_document)
+            transcript_pdf = owner_document(certificate, "transcript", transcript_cid, transcript_hash, fetch_verified_document)
         except DocumentEncryptionError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
         except RuntimeError:

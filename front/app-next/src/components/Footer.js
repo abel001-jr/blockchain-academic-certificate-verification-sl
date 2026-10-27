@@ -83,7 +83,7 @@ export default function Footer() {
             <div className="ft-heading">Account access</div>
             <nav className="ft-links">
               <Link href="/login">Sign in to your account</Link>
-              <ActionButton href="/wallet-signin" tone="inverse">Institution wallet sign in</ActionButton>
+              <ActionButton href="/login" tone="inverse">Institution wallet sign in</ActionButton>
               <ActionButton href="/apply" tone="inverse">Apply as an institution</ActionButton>
               <a href="https://github.com" target="_blank" rel="noopener noreferrer">GitHub repository</a>
             </nav>

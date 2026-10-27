@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CREDENCE · Contour Reveal II</title>
+<style>
+:root{--blue:#10283d;--cream:#faf4e8;--gold:#FAF4E8;--maroon:#751c2a;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--blue);color:var(--cream);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100svh;display:grid;place-items:center;padding:24px}
+main{width:min(100%,390px)}.phone{height:740px;max-height:85svh;min-height:480px;border:1px solid #FAF4E866;border-radius:30px;overflow:hidden;position:relative;background:var(--blue)}
+.scene{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center}
+.contours{position:absolute;top:36%;left:50%;width:310px;height:310px;transform:translate(-50%,-50%);pointer-events:none}
+.contour{position:absolute;inset:0;border:1px solid var(--gold);border-radius:43% 57% 60% 40% / 48% 38% 62% 52%;opacity:0;transform:scale(.15) rotate(-20deg)}
+.contour:nth-child(2){inset:24px;animation-delay:.12s!important}.contour:nth-child(3){inset:48px;animation-delay:.24s!important}.contour:nth-child(4){inset:72px;animation-delay:.36s!important}
+.identity{position:relative;margin-top:-35px;opacity:0}.logo{width:225px;height:225px;margin:auto;background:var(--cream);mask:url("credence-logo.png") center/contain no-repeat;-webkit-mask:url("credence-logo.png") center/contain no-repeat}
+.accent{width:36px;height:2px;background:var(--gold);margin:5px auto 24px}h1{font:400 27px/1.35 Georgia,serif;letter-spacing:-.3px;margin:0}p{font-size:13px;line-height:1.7;color:var(--cream);margin:14px 0 0}
+.foot{position:absolute;bottom:42px;left:20px;right:20px;text-align:center;font-size:10px;letter-spacing:3px;color:var(--gold)}
+.onboard{position:absolute;inset:0;background:var(--cream);color:var(--maroon);padding:40px 32px;display:flex;flex-direction:column;justify-content:center;visibility:hidden;opacity:0}
+.onboard p{color:var(--maroon);font-size:15px}.eyebrow{font-size:10px;letter-spacing:2px;font-weight:700}.onboard h2{font:400 36px/1.2 Georgia,serif;margin:18px 0 0}.docs{display:flex;gap:12px;margin-bottom:40px}.doc{width:108px;height:140px;border:1px solid var(--maroon);border-radius:8px;transform:rotate(-8deg);padding:16px 12px}.doc+ .doc{transform:rotate(8deg) translateY(8px)}.doc b{font-size:8px;letter-spacing:1px}.doc i{display:block;height:2px;background:var(--maroon);opacity:.35;margin-top:13px}.doc i:last-child{width:65%}
+.continue{margin-top:28px;min-height:48px;background:var(--maroon);color:var(--cream);border:0;border-radius:10px;padding:12px 18px;font:600 14px system-ui;cursor:pointer}.note{font-size:11px!important}.controls{display:flex;justify-content:center;gap:10px;margin-top:16px}.controls button{background:transparent;border:1px solid var(--gold);color:var(--cream);min-height:44px;border-radius:8px;padding:10px 18px;cursor:pointer}button:focus-visible{outline:3px solid var(--gold);outline-offset:4px}.caption{text-align:center;font-size:11px;color:var(--cream)}
+.play .contour{animation:contour 3.8s cubic-bezier(.22,1,.36,1) both}.play .identity{animation:reveal 6s both}.play .onboard{animation:handoff .65s 5.4s both}.paused *{animation-play-state:paused!important}
+@keyframes contour{0%{opacity:0;transform:scale(.15) rotate(-30deg)}25%{opacity:.75}65%{opacity:.45;transform:scale(1) rotate(15deg)}100%{opacity:0;transform:scale(1.13) rotate(28deg)}}
+@keyframes reveal{0%,15%{opacity:0;transform:translateY(12px) scale(.96)}36%,85%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-10px)}}
+@keyframes handoff{from{visibility:visible;opacity:0;transform:translateY(18px)}to{visibility:visible;opacity:1;transform:none}}
+@media(max-width:440px){body{padding:0 0 16px}.phone{border:0;border-radius:0;height:85svh;max-height:none}.caption{padding:0 16px}}
+@media(prefers-reduced-motion:reduce){.play *{animation:none!important}.contours{display:none}.identity{opacity:1}.onboard{display:none}.show-welcome .onboard{display:flex;visibility:visible;opacity:1}}
+
+/* Soft contour reveal: diffused cream light instead of hard outlines. */
+.contour{border:0;background:radial-gradient(ellipse at 40% 35%,rgba(250,244,232,.18) 0%,rgba(250,244,232,.07) 45%,rgba(250,244,232,0) 73%);box-shadow:0 0 30px 12px rgba(250,244,232,.035);filter:blur(10px)}
+.contour:nth-child(2){filter:blur(14px)}.contour:nth-child(3){filter:blur(18px)}.contour:nth-child(4){filter:blur(22px)}
+.axis{height:2px;filter:blur(3px);background:rgba(250,244,232,.25)}
+.node{border:0;filter:blur(2px);background:rgba(250,244,232,.35)}
+</style>
+</head>
+<body><main>
+<div class="phone play" id="splash">
+  <div class="scene"><div class="contours" aria-hidden="true"><i class="contour"></i><i class="contour"></i><i class="contour"></i><i class="contour"></i></div>
+    <div class="identity"><div class="logo" role="img" aria-label="CREDENCE"></div><div class="accent"></div><h1>Academic credentials,<br>connected.</h1><p>Your achievements. Your future.</p></div><div class="foot">CREDENCE</div>
+  </div>
+  <section class="onboard" aria-label="Onboarding design preview"><div class="docs" aria-hidden="true"><div class="doc"><b>CERTIFICATE</b><i></i><i></i><i></i></div><div class="doc"><b>TRANSCRIPT</b><i></i><i></i><i></i><i></i></div></div><span class="eyebrow">WELCOME TO CREDENCE</span><h2>Your achievements,<br>together.</h2><p>Keep your issued certificates and transcripts in one place. Share a record or verify a credential.</p><button class="continue" id="continue">Replay splash</button><p class="note">Design preview · App navigation follows the saved session.</p></section>
+</div>
+<div class="controls"><button id="replay" type="button">Replay sequence</button><button id="pause" type="button" aria-pressed="false">Pause</button><button id="welcome" type="button">View welcome</button></div><p class="caption">Contour expansion → cream logo reveal → maroon on cream.<br>Six-second design preview; app startup does not wait for this timeline.</p>
+</main><script>
+const splash=document.querySelector('#splash'),pause=document.querySelector('#pause');
+function replay(){splash.classList.remove('paused','show-welcome');pause.setAttribute('aria-pressed','false');pause.textContent='Pause';splash.getAnimations({subtree:true}).forEach(a=>{a.cancel();a.play()});document.querySelector('.onboard').removeAttribute('style')}
+document.querySelector('#replay').onclick=replay;document.querySelector('#continue').onclick=replay;
+pause.onclick=()=>{const paused=splash.classList.toggle('paused');pause.setAttribute('aria-pressed',String(paused));pause.textContent=paused?'Resume':'Pause'};
+document.querySelector('#welcome').onclick=()=>{splash.classList.add('show-welcome');document.querySelector('.onboard').style.cssText='animation:none;display:flex;visibility:visible;opacity:1;transform:none'};
+</script></body></html>

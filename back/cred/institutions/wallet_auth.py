@@ -21,7 +21,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework import status
 
-from .models import WalletNonce
+from .models import WalletNonce, InstitutionApplication, ApplicationStatus
 from accounts.models import User, Role
 from audit.utils import log_action
 
@@ -138,6 +138,16 @@ class WalletVerifyView(APIView):
         nonce_record.used = True
         nonce_record.save()
 
+        if InstitutionApplication.objects.filter(
+            wallet_address__iexact=address,
+            wallet_verified=True,
+            status=ApplicationStatus.PENDING,
+        ).exists():
+            return Response({
+                "code": "application_pending",
+                "detail": "Your institution application is awaiting approval. Please allow 2 working days for review. Your dashboard will be available once your application is approved and your institution is activated.",
+            }, status=status.HTTP_403_FORBIDDEN)
+
         # ── 4. Look up Django user by wallet address ──────────────────────────
         try:
             user = User.objects.get(wallet_address__iexact=address)
@@ -165,7 +175,7 @@ class WalletVerifyView(APIView):
             )
 
         # Registrar / legacy admin may sign in only after on-chain anchor
-        if user.role in (Role.INSTITUTIONAL_ADMIN, Role.REGISTRAR):
+        if user.role == Role.INSTITUTIONAL_ADMIN:
             inst = user.institution
             if not inst or not inst.is_chain_active:
                 return Response(
@@ -178,35 +188,9 @@ class WalletVerifyView(APIView):
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
-        if user.role in (Role.VC, Role.CHANCELLOR):
-            inst = user.institution
-            if not inst or not inst.is_chain_active:
-                return Response(
-                    {"detail": "Institution is not active on-chain yet."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-            if not user.wallet_verified or not user.wallet_address:
-                return Response(
-                    {
-                        "detail": (
-                            "Complete officer setup first (temp password login → "
-                            "verify wallet → set permanent password)."
-                        )
-                    },
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-            if not user.on_chain_authorized:
-                return Response(
-                    {
-                        "detail": (
-                            "Wallet verified — pending on-chain authorization by "
-                            "your Registrar. You cannot access the dashboard yet."
-                        )
-                    },
-                    status=status.HTTP_403_FORBIDDEN,
-                )
+        if user.is_officer and (not user.institution_id or user.needs_officer_setup):
+            return Response({"detail": "Complete wallet verification and permanent password setup first."}, status=status.HTTP_403_FORBIDDEN)
 
-        # ── 5. Issue full JWT ─────────────────────────────────────────────────
         from accounts.tokens import issue_full_tokens
 
         tokens = issue_full_tokens(user, wallet=address)

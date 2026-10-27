@@ -4,10 +4,17 @@
  */
 import { useState, useEffect } from "react";
 import { getMe, logout as doLogout, getAccessToken } from "../services/auth";
+import { onSessionExpired } from "../services/session";
+import { useToast } from "../components/ToastProvider";
 
 export function useAuth() {
+  const { showToast } = useToast();
   const [user, setUser]       = useState(null);
   const [loading, setLoading] = useState(true);
+  useEffect(() => onSessionExpired(() => {
+    setUser(null);
+    showToast("Your session has ended. Sign in again to view your credentials.", { title: "Sign-in required", tone: "warning" });
+  }), [showToast]);
 
   // On app launch — check if we have a stored token and fetch profile
   useEffect(() => {

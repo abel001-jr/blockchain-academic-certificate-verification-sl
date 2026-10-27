@@ -17,9 +17,9 @@ Security layers (defence-in-depth):
                       code is validated against VerificationShareCode before
                       the lookup proceeds.  Single-use codes are consumed here.
 
-Spec §9: verification must work even if Django backend is offline (the
-frontend queries the blockchain directly). This endpoint provides the
-database-side metadata to complement the on-chain result.
+Verification reads live commitments from the configured chain and verifies
+structured metadata. Student-authorized requests additionally check documents.
+This endpoint requires the backend, the configured RPC and content storage.
 """
 
 import logging
@@ -96,15 +96,15 @@ def _build_payload(cert, outcome: str, *, shared: bool = False) -> dict:
             "certificate_id":   cert.certificate_id,
             "student_name":     cert.student_name,
             "institution_name": cert.institution.name,
-            "is_certified":     cert.status == CertificateStatus.ISSUED,
+            "degree_title":     cert.degree_title,
+            "department":       cert.department,
+            "graduation_year":  cert.graduation_year,
+            "is_certified":     outcome == "valid",
         },
     }
-    if shared and cert.status == CertificateStatus.ISSUED:
+    if shared and outcome in ("valid", "tampered", "unavailable"):
         payload["verification_scope"] = "full"
         payload["certificate"].update({
-            "degree_title": cert.degree_title,
-            "department": cert.department,
-            "graduation_year": cert.graduation_year,
             "grade": cert.grade,
             "cert_hash": cert.cert_hash,
             "certificate_document_hash": cert.authoritative_doc_hash,
@@ -119,6 +119,28 @@ def _build_payload(cert, outcome: str, *, shared: bool = False) -> dict:
             "revoked_at":         cert.revoked_at,
             "revocation_tx_hash": cert.revocation_tx_hash,
         })
+    return payload
+
+
+def _apply_report(payload, report, *, shared):
+    payload.update(report)
+    from .report_feedback import enrich_report
+    enrich_report(payload)
+    payload["verification_scope"] = "full" if shared else "public"
+    chain = report.get("blockchain", {})
+    payload["status"] = chain.get("status", "unknown")
+    if shared and chain.get("exists"):
+        payload["certificate"].update({
+            "cert_hash": chain["data_hash"],
+            "certificate_document_hash": chain["certificate_hash"],
+            "transcript_document_hash": chain["transcript_hash"],
+            "chain_issued_at": chain.get("issued_at"),
+        })
+    if chain.get("status") == "revoked":
+        payload["certificate"]["revocation_reason"] = chain.get("revocation_reason", "")
+    if not shared and chain:
+        payload["blockchain"] = {key: value for key, value in chain.items()
+                                 if key not in ("data_hash", "certificate_hash", "transcript_hash")}
     return payload
 
 
@@ -157,6 +179,7 @@ class VerifyCertificateView(APIView):
         if raw_code:
             sc, sc_error = _validate_share_code(raw_code, ip=ip, consume=False)
             if sc_error:
+                return Response({"detail": sc_error}, status=403)
                 # Invalid code — fall through to normal CAPTCHA/throttle path
                 # so we don't leak whether a code exists
                 logger.info("Invalid share code attempt for %s from %s: %s",
@@ -195,22 +218,47 @@ class VerifyCertificateView(APIView):
                 "institution", "issued_by"
             ).get(certificate_id=certificate_id)
         except Certificate.DoesNotExist:
-            return Response(
-                {
-                    "found":                False,
-                    "verification_outcome": "not_found",
-                    "message":              "No certificate found with this ID.",
-                },
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            from .integrity import read_chain_record, VerificationUnavailable
+            try:
+                chain = read_chain_record(certificate_id)
+            except VerificationUnavailable as exc:
+                return Response({"found": False, "verification_outcome": "unavailable", "message": str(exc)})
+            if not chain["exists"]:
+                return Response({"found": False, "verification_outcome": "not_found",
+                                 "message": "No credential found in the registry or on the configured blockchain."}, status=404)
+            chain = {key: value for key, value in chain.items()
+                     if key not in ("data_hash", "certificate_hash", "transcript_hash")}
+            response = Response({
+                "found": True, "verification_scope": "public", "status": chain["status"],
+                "verification_outcome": "revoked" if chain["status"] == "revoked" else "unavailable",
+                "message": "An on-chain record exists, but its metadata and document references are missing from the application registry. Full verification could not complete.",
+                "certificate": {"certificate_id": certificate_id, "is_certified": False}, "blockchain": chain,
+                "checks": {"blockchain": {"status": "matched"}, "data": {"status": "unavailable"},
+                           "certificate": {"status": "not_checked"}, "transcript": {"status": "not_checked"}},
+            })
+            response["Cache-Control"] = "private, no-store"
+            return response
 
         # ── Outcome mapping ──────────────────────────────────────────────────
-        if cert.status == CertificateStatus.REVOKED:
-            outcome = "revoked"
-        elif cert.status == CertificateStatus.ISSUED:
-            outcome = "valid"
-        else:
-            outcome = "not_verified"
+        from .integrity import verify_record
+        supplied = {}
+        for kind in ("certificate", "transcript"):
+            file = request.FILES.get(kind)
+            if file:
+                if file.size > 20 * 1024 * 1024:
+                    return Response({"detail": "Each verification PDF must be 20 MB or smaller."}, status=400)
+                supplied[kind] = file.read()
+        report = verify_record(cert, include_documents=bool(share_code or supplied), supplied_documents=supplied,
+                               supplied_only=bool(supplied))
+        # Complete checks first. Unavailable services should not spend access.
+        consumed = False
+        if share_code and report["verification_outcome"] != "unavailable":
+            share_code, access_error = _validate_share_code(raw_code, ip=ip, consume=True)
+            if access_error:
+                return Response({"detail": access_error}, status=403)
+            consumed = bool(share_code.single_use)
+        report["access_consumed"] = consumed
+        outcome = report["verification_outcome"]
 
         # ── Audit log ────────────────────────────────────────────────────────
         log_action(
@@ -228,4 +276,59 @@ class VerifyCertificateView(APIView):
             ip_address=ip,
         )
 
-        return Response(_build_payload(cert, outcome, shared=bool(share_code)))
+        payload = _build_payload(cert, outcome, shared=bool(share_code))
+        _apply_report(payload, report, shared=bool(share_code))
+        response = Response(payload)
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+    def post(self, request, certificate_id):
+        """Compare supplied original PDFs under the same CAPTCHA/share-code rules."""
+        return self.get(request, certificate_id)
+
+
+class ValidateEmployerAccessView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_classes = [PublicVerifyAnonThrottle, PublicVerifyUserThrottle]
+
+    def post(self, request, certificate_id):
+        raw = request.data.get("code", "")
+        if not isinstance(raw, str) or not raw.strip():
+            return Response({"detail": "Paste the student's share link or code."}, status=400)
+        share, error = _validate_share_code(raw, ip=get_client_ip(request), consume=False)
+        if error or not share or share.certificate.certificate_id != certificate_id:
+            return Response({"detail": "This access link is invalid, expired, used, or belongs to another credential."}, status=403)
+        response = Response({"access_valid": True, "certificate_id": certificate_id,
+                             "expires_at": share.expires_at, "single_use": share.single_use, "access_consumed": False})
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+
+class EmployerDocumentVerificationView(VerifyCertificateView):
+    def get(self, request, certificate_id):
+        return Response({"detail": "Upload your certificate using Verify documents."}, status=405)
+
+    def post(self, request, certificate_id):
+        raw = request.query_params.get("code", "").strip()
+        share, error = _validate_share_code(raw, ip=get_client_ip(request), consume=False)
+        if error or not share or share.certificate.certificate_id != certificate_id:
+            return Response({"detail": "A valid student share link for this credential is required."}, status=403)
+        if "certificate" not in request.FILES:
+            return Response({"detail": "Upload the original certificate PDF. Transcript is optional."}, status=400)
+        import pymupdf as fitz
+        for kind in ("certificate", "transcript"):
+            upload = request.FILES.get(kind)
+            if upload is None:
+                continue
+            if not 0 < upload.size <= 20 * 1024 * 1024:
+                return Response({"detail": "Each PDF must be nonempty and at most 20 MB."}, status=400)
+            try:
+                with fitz.open(stream=upload.read(), filetype="pdf") as pdf:
+                    if not pdf.is_pdf or pdf.needs_pass or pdf.page_count < 1:
+                        raise ValueError
+            except Exception:
+                return Response({"detail": f"Upload a readable, unencrypted {kind} PDF."}, status=400)
+            finally:
+                upload.seek(0)
+        return super().get(request, certificate_id)

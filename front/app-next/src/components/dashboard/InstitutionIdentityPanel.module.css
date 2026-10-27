@@ -1,0 +1,33 @@
+.panel { animation: appear 350ms ease-out both; }
+.card {
+  background: var(--cd-surface, #fff);
+  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+  animation: appear 450ms ease-out both;
+  animation-delay: var(--identity-delay, 0ms);
+}
+.card:focus-within { border-color: var(--cd-primary, #08283f); box-shadow: 0 0 0 3px #08283f12; }
+.selected { border-color: #b98a28; box-shadow: 0 0 0 1px #b98a2826; }
+.preview { overflow: hidden; border-radius: 10px; }
+.image { transition: transform 300ms ease; }
+.upload { border-radius: 8px; outline-offset: 4px; }
+.upload::file-selector-button {
+  margin-right: 12px; padding: 9px 12px; border: 1px solid #e4e1d6;
+  border-radius: 8px; background: #f8f7f2; color: #08283f; cursor: pointer;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+.upload:disabled::file-selector-button { cursor: wait; opacity: .6; }
+.feedback { animation: appear 250ms ease-out both; }
+.button { transition: box-shadow 200ms ease; }
+.button:disabled { cursor: not-allowed; }
+@media (hover: hover) {
+  .card:hover { transform: translateY(-3px); border-color: #b98a28; box-shadow: 0 10px 24px #08283f0d; }
+  .card:hover .image { transform: scale(1.035); }
+  .upload:not(:disabled)::file-selector-button:hover { background: #08283f; border-color: #08283f; color: #fff; }
+  .button:not(:disabled):hover { box-shadow: 0 6px 18px #08283f26; }
+}
+@keyframes appear { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .panel, .card, .feedback { animation: none; }
+  .card, .image, .upload::file-selector-button, .button { transition: none; }
+  .card:hover, .card:hover .image { transform: none; }
+}

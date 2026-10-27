@@ -10,3 +10,7 @@ export const publicNavigation = [
 export function publicNavigationHref(item, isHome = false) {
   return item.destination || `${isHome ? "" : "/"}#${item.anchor}`;
 }
+
+export const publicNavigationGroups = [
+  {label: "Explore Credence", items: publicNavigation.filter(item => ["why", "lifecycle", "stakeholders"].includes(item.anchor))},
+];

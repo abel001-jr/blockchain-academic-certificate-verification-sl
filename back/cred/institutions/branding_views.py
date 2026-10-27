@@ -10,7 +10,7 @@ from audit.utils import log_action
 from .branding_serializers import CertificateTemplateSerializer
 from .models import CertificateTemplate
 from .serializers import InstitutionEmailSettingsSerializer
-from accounts.permissions import IsAdminOrAbove
+from accounts.permissions import IsAdminOrAbove, IsInstitutionSetupAdmin
 
 
 def _get_or_create_template(institution):
@@ -19,7 +19,7 @@ def _get_or_create_template(institution):
 
 
 class InstitutionEmailSettingsView(APIView):
-    permission_classes = [IsFullSession, IsRegistrar]
+    permission_classes = [IsFullSession, IsInstitutionSetupAdmin]
 
     def get(self, request):
         if not request.user.institution_id:

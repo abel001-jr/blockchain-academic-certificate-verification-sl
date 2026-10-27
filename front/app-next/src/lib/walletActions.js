@@ -1,3 +1,4 @@
+import { connectSingleWallet, readWalletAccounts, singleWalletAccount } from "./walletConnection.mjs";
 /**
  * INTELLIGENT ACADEMIC CREDENTIALING wallet / chain actions
  *
@@ -52,6 +53,20 @@
  */
 
 const ISSUER_ABI = [
+  {
+    inputs: [{ name: "registrarAddr", type: "address" }],
+    name: "authorizeRegistrar",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [{ name: "registrarAddr", type: "address" }],
+    name: "revokeRegistrar",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
   {
     inputs: [{ name: "registrarAddr", type: "address" }],
     name: "isAuthorizedRegistrar",
@@ -231,6 +246,7 @@ const CERT_ABI = [
   },
 ];
 
+import { ensureWalletChain } from "./walletNetwork";
 import { api } from "./api";
 
 const walletProviders = new WeakMap();
@@ -269,17 +285,9 @@ export function requireEthereum() {
   return walletProviders.get(metaMask);
 }
 
-/** 
- * Connect MetaMask and return the CURRENTLY SELECTED account address.
- * Uses eth_requestAccounts which always returns the active account first.
- * If the wrong account is shown, the user should switch in MetaMask first
- * then retry — or call wallet_requestPermissions to force the account picker.
- */
+/** Reuse one permitted account; request connection only when disconnected. */
 export async function connectWallet() {
-  const eth = requireEthereum();
-  const accounts = await eth.request({ method: "eth_requestAccounts" });
-  if (!accounts?.[0]) throw new Error("No MetaMask account selected.");
-  return accounts[0].toLowerCase();
+  return connectSingleWallet(requireEthereum());
 }
 
 /**
@@ -288,7 +296,9 @@ export async function connectWallet() {
  */
 export async function signMessage(message, address) {
   const eth = requireEthereum();
-  const addr = (address || (await connectWallet())).toLowerCase();
+  const connected = address ? singleWalletAccount(await readWalletAccounts(eth)) : await connectWallet();
+  const addr = (address || connected).toLowerCase();
+  if (connected !== addr) throw new Error("Select the wallet you want to sign with in MetaMask, then try again.");
   const signature = await eth.request({
     method: "personal_sign",
     params: [message, addr],
@@ -305,27 +315,33 @@ async function getSignerContract(registryAddress, abi, registrarOnly = false, ce
 
   // Request the account directly from MetaMask so issuance and approvals always
   // use the wallet's current authenticated account, even with other extensions installed.
-  let accounts = await ethereum.request({ method: "eth_requestAccounts" });
-  if (!accounts?.[0]) throw new Error("No MetaMask account selected.");
+  const accounts = [await connectSingleWallet(ethereum)];
+  let registrarInstitution = null;
   if (registrarOnly) {
     const user = await api.get("/auth/me/");
+    if (user.institution) registrarInstitution = await api.get(`/institutions/${user.institution}/`);
     const expected = user.wallet_address;
     if (!expected) throw new Error("Your Registrar account has no bound wallet. Contact the system admin to configure it.");
     if (accounts[0].toLowerCase() !== expected.toLowerCase()) {
-      await ethereum.request({ method: "wallet_requestPermissions", params: [{ eth_accounts: {} }] });
-      accounts = await ethereum.request({ method: "eth_accounts" });
-      if (accounts?.[0]?.toLowerCase() !== expected.toLowerCase()) {
-        throw new Error(`Select your Registrar wallet ${expected} in MetaMask. The connected wallet ${accounts?.[0] || "(none)"} does not match your profile.`);
-      }
+      throw new Error(`The connected wallet does not match your Registrar profile. Select ${expected} in MetaMask, then try again.`);
     }
   }
 
+  await ensureWalletChain(ethereum, config);
+  const currentAccount = singleWalletAccount(await readWalletAccounts(ethereum));
+  if (currentAccount !== accounts[0].toLowerCase()) {
+    throw new Error("The selected wallet changed during network setup. Submit again and select your registered account.");
+  }
+  // Create the provider after the switch so it does not retain the old chain.
   const provider = new ethers.BrowserProvider(ethereum);
   const network = await provider.getNetwork();
-  if (config.chain_id && network.chainId !== BigInt(config.chain_id)) throw new Error(`Switch your wallet to chain ${config.chain_id} before signing.`);
+  if (network.chainId !== BigInt(config.chain_id)) throw new Error("The signing network changed. Submit again to verify MetaMask before signing.");
   const signer = await provider.getSigner(accounts[0]);
   if (registrarOnly) {
     const registry = new ethers.Contract(config.issuer_registry_address, ISSUER_ABI, provider);
+    if (registrarInstitution?.wallet_address && !(await registry.isActiveIssuer(registrarInstitution.wallet_address))) {
+      throw new Error(`Your institution wallet is not registered on chain ${config.chain_id}. The system administrator must register it in Anchor Institutions first. Then your institution admin can authorize your Registrar wallet in Officers.`);
+    }
     const address = await signer.getAddress();
     const [authorized, admin] = await Promise.all([registry.isAuthorizedRegistrar(address), registry.isActiveIssuer(address)]);
     if (admin) throw new Error(`Wallet ${address} is registered as an institution admin. Contact the system admin to bind a separate Registrar wallet.`);
@@ -377,6 +393,10 @@ function certAddress() {
 export async function authorizeOfficerOnChain(officer, expectedSignerAddress) {
   const { signer, contract } = await getSignerContract(issuerAddress(), ISSUER_ABI);
   if (!officer?.wallet_address) throw new Error("Officer has no verified wallet.");
+  const signingAddress = await signer.getAddress();
+  if (!(await contract.isActiveIssuer(signingAddress))) {
+    throw new Error(`Institution wallet ${signingAddress} is not active in the current IssuerRegistry. Ask the system administrator to register or reactivate the institution on this chain before authorizing officers. If the local chain was reset, its earlier registration must be restored.`);
+  }
 
   // Verify the connected account is the institution admin wallet
   if (expectedSignerAddress) {

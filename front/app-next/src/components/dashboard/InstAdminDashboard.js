@@ -1,4 +1,6 @@
 "use client";
+import { subscribeDashboardRefresh } from "@/lib/dashboardRefresh.mjs";
+import { loadDashboardRecords } from "@/lib/dashboardRecords";
 import WelcomeCard from "./WelcomeCard";
 import HeroTile from "./HeroTile";
 import CredentialCharts from "./CredentialCharts";
@@ -39,7 +41,7 @@ export default function InstAdminDashboard() {
         setBusy(false);
       }
     }
-    load();
+    return subscribeDashboardRefresh(load, { intervalMs: 0 });
   }, []);
 
 

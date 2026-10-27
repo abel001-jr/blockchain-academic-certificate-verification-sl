@@ -26,6 +26,9 @@ class Institution(models.Model):
     email_domain    = models.CharField(max_length=253, blank=True, help_text="Graduate email domain, e.g. central.edu.sl")
     phone           = models.CharField(max_length=30, blank=True)
     logo_url        = models.URLField(blank=True)
+    reference_logo = models.ImageField(upload_to="institutions/identity/", blank=True, null=True)
+    reference_transcript_seal = models.ImageField(upload_to="institutions/identity/", blank=True, null=True, help_text="Blind/embossed seal used on transcripts")
+    reference_seal = models.ImageField(upload_to="institutions/identity/", blank=True, null=True)
 
     # Blockchain — the Institutional Admin's wallet that was anchored on-chain
     wallet_address  = models.CharField(max_length=42, blank=True)

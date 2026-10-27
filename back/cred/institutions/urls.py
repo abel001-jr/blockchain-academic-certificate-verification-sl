@@ -1,4 +1,5 @@
 from django.urls import path
+from .identity_settings import InstitutionIdentitySettingsView
 from .analytics_views import InstitutionAnalyticsView
 from .views import (
     InstitutionListCreateView,
@@ -26,9 +27,11 @@ from .catalog_views import (
 from .branding_views import CertificateBrandingView, InstitutionEmailSettingsView
 from .template_views import TemplateSetupView, TemplateRevisionView, TemplatePageView, TemplateSampleView, CredentialTemplatePreviewView, CredentialPreflightView, TemplateRestartView, TemplateSuggestionsView
 from .chain_config_views import ChainConfigView, CertificateChainConfigView
-from .template_views import TemplateAISuggestionsView, TemplateDisableView, TemplateEnableView, TemplateEditView
+from .template_views import TemplateAISuggestionsView, TemplateDisableView, TemplateEnableView, TemplateEditView, TemplateAssetSuggestionsView
 
 urlpatterns = [
+    path("institution-identity-settings/", InstitutionIdentitySettingsView.as_view(), name="institution-identity-settings"),
+    path("certificate-templates/<uuid:pk>/asset-suggestions/", TemplateAssetSuggestionsView.as_view(), name="certificate-template-asset-suggestions"),
     path("institution-analytics/", InstitutionAnalyticsView.as_view(), name="institution-analytics"),
     path("certificate-templates/<uuid:pk>/edit/", TemplateEditView.as_view(), name="certificate-template-edit"),
     path("certificate-templates/enable/", TemplateEnableView.as_view(), name="certificate-template-enable"),

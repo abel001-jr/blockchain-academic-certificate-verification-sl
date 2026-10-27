@@ -22,6 +22,10 @@ WEB_PUSH_ALLOWED_HOSTS = os.getenv("WEB_PUSH_ALLOWED_HOSTS", "fcm.googleapis.com
 # Optional absolute executable path; otherwise pytesseract uses PATH.
 TESSERACT_CMD = os.getenv("TESSERACT_CMD", "").strip()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest").strip()
+TEMPLATE_AI_RATE = os.getenv("TEMPLATE_AI_RATE", "5/min").strip()
+GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b").strip()
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b").strip()
 
 # ── Security ───────────────────────────────────────────────────────────────
@@ -170,6 +174,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon": "60/minute",
         "user": "200/minute",
+        "officer_document_preview": "300/minute",
         # Tighter scope used exclusively by VerifyCertificateView
         "public_verify_anon": "20/minute",
         "public_verify_user": "60/minute",
@@ -206,6 +211,7 @@ CORS_ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 CORS_ALLOW_CREDENTIALS = True
+CORS_EXPOSE_HEADERS = ["Content-Disposition", "X-Document-Pages", "X-Document-Source"]
 
 # ── Pinata / IPFS ──────────────────────────────────────────────────────────
 # ── Pinata / IPFS ──────────────────────────────────────────────────────────────
@@ -271,8 +277,10 @@ HCAPTCHA_SECRET_KEY = os.getenv("HCAPTCHA_SECRET_KEY", "")
 
 # ── Google OAuth ───────────────────────────────────────────────────────────
 # Used by POST /api/auth/google/ to verify ID tokens from the mobile app.
-# Web client ID from Google Cloud Console / Intelligent Academic Credentialing-Web.json (research/Google-Auth)
-GOOGLE_CLIENT_ID = os.getenv(
-    "GOOGLE_CLIENT_ID",
-    "335667631038-vouui7i0uqde3v04jcs2lb1l9sk9h0pr.apps.googleusercontent.com",
-)
+# Set from the current project's Google OAuth Web client, never its client secret.
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+GOOGLE_CLIENT_IDS = [value.strip() for value in os.getenv("GOOGLE_CLIENT_IDS", "").split(",") if value.strip()]
+
+# Gateway downloads may use a dedicated proxy policy, independent of API uploads.
+IPFS_TRUST_ENV = os.getenv("IPFS_TRUST_ENV", "true").lower() == "true"
+IPFS_FALLBACK_GATEWAYS = [value.strip().rstrip("/") for value in os.getenv("IPFS_FALLBACK_GATEWAYS", "https://ipfs.io,https://dweb.link").split(",") if value.strip()]

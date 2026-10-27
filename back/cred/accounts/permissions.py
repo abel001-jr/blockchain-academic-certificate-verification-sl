@@ -10,7 +10,11 @@ INSTITUTION_HEAD = (Role.REGISTRAR, Role.INSTITUTIONAL_ADMIN)
 
 def _reject_setup_token(request):
     """Limited officer-setup JWTs cannot use normal dashboard APIs."""
-    return is_setup_token(getattr(request, "auth", None))
+    user = getattr(request, "user", None)
+    return is_setup_token(getattr(request, "auth", None)) or (
+        getattr(user, "is_super_admin", False)
+        and (not user.wallet_verified or not user.wallet_address)
+    )
 
 
 class IsInstitutionSetupAdmin(BasePermission):
@@ -108,7 +112,7 @@ class IsOfficerSetupSession(BasePermission):
         user = request.user
         if not user or not user.is_authenticated:
             return False
-        if not getattr(user, "is_officer", False):
+        if not (getattr(user, "is_officer", False) or getattr(user, "is_super_admin", False)):
             return False
         if not is_setup_token(getattr(request, "auth", None)):
             return False

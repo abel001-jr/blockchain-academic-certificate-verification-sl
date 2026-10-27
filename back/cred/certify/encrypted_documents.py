@@ -81,6 +81,7 @@ def document_sha256(pdf_bytes: bytes) -> str:
 
 def fetch_verified_document(
     cid: str, associated_id: str, document_kind: str, expected_hash: str,
+    *, fast=False,
 ) -> bytes:
     """Fetch, decrypt and re-verify one credential document.
 
@@ -97,12 +98,12 @@ def fetch_verified_document(
     """
     from .ipfs import fetch_file_from_ipfs
 
-    encrypted = fetch_file_from_ipfs(cid)
+    encrypted = fetch_file_from_ipfs(cid, fast=True) if fast else fetch_file_from_ipfs(cid)
     if not is_encrypted_document(encrypted):
         raise DocumentEncryptionError(
             "This credential contains a legacy document that has not been re-encrypted."
         )
     document = decrypt_document(encrypted, associated_id, document_kind)
-    if document_sha256(document).lower() != (expected_hash or "").lower():
+    if document_sha256(document).lower().removeprefix("0x") != (expected_hash or "").lower().removeprefix("0x"):
         raise DocumentEncryptionError("Decrypted document does not match its anchored hash.")
     return document

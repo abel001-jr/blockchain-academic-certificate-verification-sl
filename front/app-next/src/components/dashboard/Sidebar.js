@@ -1,5 +1,7 @@
 "use client";
+import { subscribeDashboardRefresh } from "@/lib/dashboardRefresh.mjs";
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { usePendingApplications } from "./PendingApplicationsProvider";
 import Link from "next/link";
 import AnimatedBrandMark from "../ui/AnimatedBrandMark";
 import { createPortal } from "react-dom";
@@ -101,12 +103,13 @@ const VC_ITEMS = [
   
   // APPROVALS
   { section: "APPROVALS", badge: "ACTION" },
-  { label: "Approvals", href: "/dashboard/approvals", icon: UserCheck },
+  { label: "Credential approvals", href: "/dashboard/approvals", icon: UserCheck },
   
   // CERTIFICATES
-  { section: "CERTIFICATES", badge: "READ ONLY" },
-  { label: "Certificates", href: "/dashboard/certificates", icon: ScrollText },
+  { section: "CREDENTIALS", badge: "READ ONLY" },
+  { label: "Credentials", href: "/dashboard/certificates", icon: ScrollText },
   { section: "ACTIVITY" },
+  { label: "Approval activity", href: "/dashboard/approval-activity", icon: UserCheck },
   { label: "Audit Logs", href: "/dashboard/audit", icon: History },
 ];
 
@@ -117,12 +120,13 @@ const CHANCELLOR_ITEMS = [
   
   // APPROVALS
   { section: "APPROVALS", badge: "ACTION" },
-  { label: "Approvals", href: "/dashboard/approvals", icon: Gavel },
+  { label: "Credential approvals", href: "/dashboard/approvals", icon: Gavel },
   
   // CERTIFICATES
-  { section: "CERTIFICATES", badge: "READ ONLY" },
-  { label: "Certificates", href: "/dashboard/certificates", icon: ScrollText },
+  { section: "CREDENTIALS", badge: "READ ONLY" },
+  { label: "Credentials", href: "/dashboard/certificates", icon: ScrollText },
   { section: "ACTIVITY" },
+  { label: "Approval activity", href: "/dashboard/approval-activity", icon: UserCheck },
   { label: "Audit Logs", href: "/dashboard/audit", icon: History },
 ];
 
@@ -161,6 +165,7 @@ function subscribeViewport(callback) {
 }
 
 export default function Sidebar({ open, onClose, collapsed = false, onToggleCollapsed }) {
+  const pendingApplications = usePendingApplications();
   const desktop = useSyncExternalStore(subscribeViewport, () => window.matchMedia("(min-width: 1024px)").matches, () => true);
   const pathname = usePathname();
   const { user, role: currentRole } = useAuth();
@@ -184,19 +189,13 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
     if (role !== "registrar") return;
     let cancelled = false;
 
-    api.get("/certificates/?page_size=1")
-      .then((data) => {
-        if (!cancelled) {
-          setCertificateTotal(typeof data?.count === "number"
-            ? data.count
-            : (data?.results ?? data ?? []).length);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setCertificateTotal(null);
-      });
-
-    return () => { cancelled = true; };
+    const unsubscribe = subscribeDashboardRefresh(async () => {
+      try {
+        const data = await api.get("/certificates/?page_size=1");
+        if (!cancelled) setCertificateTotal(typeof data?.count === "number" ? data.count : (data?.results ?? data ?? []).length);
+      } catch { /* Keep the last known count during temporary failures. */ }
+    });
+    return () => { cancelled = true; unsubscribe(); };
   }, [role, pathname]);
 
   return (
@@ -249,7 +248,7 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
               key={href + label}
               href={href}
               data-nav-label={label}
-              aria-label={label}
+              aria-label={href === "/dashboard/admin/applications" && pendingApplications ? `${label}, ${pendingApplications} awaiting approval` : label}
               aria-current={active ? "page" : undefined}
               onClick={() => { setTooltip(null); onClose(); }}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
@@ -260,6 +259,7 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
             >
               <Icon size={17} strokeWidth={active ? 2.2 : 1.7} className="shrink-0" />
               <span className="truncate">{label}</span>
+              {href === "/dashboard/admin/applications" && pendingApplications > 0 && <span className="ml-auto min-w-5 rounded-full bg-[#A23B34] px-1.5 py-0.5 text-center text-[10px] font-bold text-white">{pendingApplications > 99 ? "99+" : pendingApplications}</span>}
               {showCertificateTotal && certificateTotal !== null && (
                 <span className={`ml-auto min-w-5 rounded-full px-1.5 py-0.5 text-center text-[10px] font-bold ${
                   active ? "bg-[#B98A28] text-white" : "bg-[#EAF2FB] text-[#4A5A68]"

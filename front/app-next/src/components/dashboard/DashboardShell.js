@@ -1,14 +1,17 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import InstitutionAuthorizationNotice from "./InstitutionAuthorizationNotice";
 import Sidebar from "./Sidebar";
 import TopHeader from "./TopHeader";
 import DashboardLoader from "./DashboardLoader";
 import { api, clearSession, jwtPayload } from "@/lib/api";
 import DashboardThemeProvider from "./DashboardThemeProvider";
+import PendingApplicationsProvider, { PendingApplicationsNotice } from "./PendingApplicationsProvider";
+import WelcomeBackToast from "./WelcomeBackToast";
 
 export default function DashboardShell({ children }) {
-  return <DashboardThemeProvider><DashboardContent>{children}</DashboardContent></DashboardThemeProvider>;
+  return <DashboardThemeProvider><PendingApplicationsProvider><DashboardContent>{children}</DashboardContent></PendingApplicationsProvider></DashboardThemeProvider>;
 }
 
 function DashboardContent({ children }) {
@@ -70,7 +73,12 @@ function DashboardContent({ children }) {
         return;
       }
       try {
-        await api.get("/auth/me/");
+        const profile = await api.get("/auth/me/");
+        if (profile.role === "super_admin" && (!profile.wallet_verified || !profile.wallet_address)) {
+          hide();
+          window.location.replace("/login");
+          return;
+        }
         if (disposed || currentCheck !== checkId || !jwtPayload()) return;
         setAllowed(true);
         if (shellRef.current) shellRef.current.style.visibility = "visible";
@@ -117,6 +125,7 @@ function DashboardContent({ children }) {
 
   return (
     <div ref={shellRef} className="min-h-screen bg-[#F8F7F2] flex">
+      {pathname === "/dashboard" && <WelcomeBackToast />}
 
       {/* Sidebar */}
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} onToggleCollapsed={() => setSidebarCollapsed(previous => !previous)} />
@@ -133,6 +142,8 @@ function DashboardContent({ children }) {
       <div className="cd-dashboard-main flex-1 flex flex-col min-w-0 min-h-screen" style={{ "--dashboard-sidebar-width": sidebarCollapsed ? "72px" : "288px" }}>
         <TopHeader onMenuClick={() => setSidebarOpen(true)} sidebarOpen={sidebarOpen} />
         <main className="flex-1 px-4 sm:px-6 md:px-10 py-5 sm:py-8 w-full min-w-0">
+          <PendingApplicationsNotice />
+          <InstitutionAuthorizationNotice />
           {children}
         </main>
       </div>

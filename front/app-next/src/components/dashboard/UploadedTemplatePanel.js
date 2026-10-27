@@ -9,7 +9,8 @@ import { useRouter } from "next/navigation";
 import TemplateCanvas from "./TemplateCanvas";
 import BrandingConsentDialog from "./BrandingConsentDialog";
 import BrandingStartGuide from "./BrandingStartGuide";
-import { RotateCcw, RefreshCw, CheckCircle2, Save, X, FileUp } from "lucide-react";
+import { RotateCcw, RefreshCw, CheckCircle2, Save, X, FileUp, SlidersHorizontal, ScanText, Sparkles } from "lucide-react";
+import { addSuggestedFields, suggestionIsAdded } from "@/lib/templateSuggestions.mjs";
 import { nextFieldArea } from "@/lib/templateGeometry.mjs";
 import styles from "./UploadedTemplatePanel.module.css";
 import { FIELD_GROUPS, fieldLabel } from "./templateFieldGroups";
@@ -24,7 +25,13 @@ async function request(path, options = {}) {
   const response = await fetch(`${BASE}${path}`, { ...options, headers: { ...headers(), ...options.headers } });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.detail || "The template request failed.");
+    const error = new Error(data.detail || "The template request failed.");
+    if (response.status === 429) {
+      const seconds = Number(response.headers.get("Retry-After"));
+      error.retryAfter = Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds) : 60;
+      error.message = `AI request limit reached. Try again in ${error.retryAfter} seconds.`;
+    }
+    throw error;
   }
   return response;
 }
@@ -56,11 +63,21 @@ export default function UploadedTemplatePanel({ editorRevisionId = null }) {
   const [pageUrl, setPageUrl] = useState("");
   const [sampleUrl, setSampleUrl] = useState("");
   const [master, setMaster] = useState(null);
+  const [designMode, setDesignMode] = useState("existing");
+  const [certificateType, setCertificateType] = useState("bsc");
   const [name, setName] = useState("Institutional certificate");
   const [rotation, setRotation] = useState(0);
   const [logo, setLogo] = useState(null);
   const [seal, setSeal] = useState(null);
+  const [assetProposal, setAssetProposal] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [suggestionMode, setSuggestionMode] = useState(null);
+  const [aiRetrySeconds, setAiRetrySeconds] = useState(0);
+  useEffect(() => {
+    if (!aiRetrySeconds) return;
+    const timer = window.setTimeout(() => setAiRetrySeconds(seconds => Math.max(0, seconds - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [aiRetrySeconds]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [consent, setConsent] = useState(null);
@@ -70,7 +87,7 @@ export default function UploadedTemplatePanel({ editorRevisionId = null }) {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [templatesLoading, setTemplatesLoading] = useState(true);
-  const unsavedChanges = JSON.stringify(fields) !== JSON.stringify(revision?.fields || []) || Boolean(logo || seal);
+  const unsavedChanges = JSON.stringify(fields) !== JSON.stringify(revision?.fields || []) || Boolean(logo || seal) || Boolean(revision && certificateType !== (revision.analysis?.certificate_type || "bsc")) || Boolean(revision && designMode !== (revision.analysis?.design_mode || "existing"));
   const revisionId = revision?.id;
   useEffect(() => {
     if (!editing || !revisionId) return;
@@ -86,11 +103,13 @@ export default function UploadedTemplatePanel({ editorRevisionId = null }) {
   const approvedRevisions = revisions.filter(item => item.approved_at);
   const enableRevision = (revision?.approved_at && revision) || approvedRevisions[0];
 
-  const choose = useCallback(item => {
-    setEditing(Boolean(editorRevisionId && item && !item.approved_at)); setPreviewError(""); setPreviewLoading(false);
+  const choose = useCallback((item, brandingActive = false) => {
+    setEditing(Boolean(editorRevisionId && item && !item.approved_at && !brandingActive)); setPreviewError(""); setPreviewLoading(false);
     setSuggestions(item?.analysis?.suggestions || null);
+    setDesignMode(item?.analysis?.design_mode || "existing");
+    setCertificateType(item?.analysis?.certificate_type || "bsc");
     setPageUrl(""); setRevision(item || null); fieldsRef.current = item?.fields || []; historyRef.current = {past: [], future: []}; setHistoryStatus({canUndo: false, canRedo: false}); setFieldsState(fieldsRef.current); setSelected(0); setPage(1);
-    setLogo(null); setSeal(null); setSampleUrl(""); setMessage("");
+    setLogo(null); setSeal(null); setAssetProposal(null); setSampleUrl(""); setMessage("");
   }, [editorRevisionId]);
 
   const load = useCallback(async () => {
@@ -101,7 +120,7 @@ export default function UploadedTemplatePanel({ editorRevisionId = null }) {
       const requestedId = editorRevisionId || new URLSearchParams(window.location.search).get("template");
       const requested = data.revisions.find(item => item.id === requestedId);
       if (editorRevisionId && !requested) { setError("This draft is not available to your institution."); choose(null); }
-      else choose(requested || data.revisions.find(item => !item.approved_at && item.fields?.length) || data.revisions.find(item => !item.approved_at) || data.revisions.find(item => item.id === data.active_id) || null);
+      else choose(requested || data.revisions.find(item => !item.approved_at && item.fields?.length) || data.revisions.find(item => !item.approved_at) || data.revisions.find(item => item.id === data.active_id) || null, Boolean(data.active_id));
     } catch (err) { setError(err.message); } finally { setTemplatesLoading(false); }
   }, [choose, editorRevisionId]);
 
@@ -146,9 +165,10 @@ export default function UploadedTemplatePanel({ editorRevisionId = null }) {
   }
 
   async function save(approve = false, extractAsset = null) {
+    if (activeId || locked) { setError("Disable branding using Edit template before changing this version."); return; }
     setBusy(true); setError(""); setMessage("");
     try {
-      const fd = new FormData(); fd.append("fields", JSON.stringify(fields));
+      const fd = new FormData(); fd.append("fields", JSON.stringify(fields)); fd.append("design_mode", designMode); fd.append("certificate_type", certificateType);
       if (logo) fd.append("logo", logo); if (seal) fd.append("seal", seal);
       if (approve) fd.append("approve", "true");
       if (extractAsset) fd.append("extract_asset", JSON.stringify(extractAsset));
@@ -167,17 +187,67 @@ export default function UploadedTemplatePanel({ editorRevisionId = null }) {
     setFields(previous => previous.map((field, index) => index === selected ? { ...field, [key]: value } : field));
   }
 
-  async function detectFields(useAI = false, confirmed = false) {
+  async function detectFields(useAI = false, confirmed = false, fullDesign = false) {
+    if (busy || locked || activeId || (useAI && aiRetrySeconds)) return;
     if (useAI && !confirmed) {
-      setConsent({title: "Request AI suggestions?", description: "Send this draft's extracted text to Groq for field suggestions. The PDF, images and signature assets are not sent. Review each suggestion before adding it; nothing is saved automatically.", label: "Request suggestions", action: () => detectFields(true, true)});
+      setConsent({title: fullDesign ? "Compose an editable certificate draft?" : "Request AI suggestions?", description: "Send a rendered image of the selected certificate page, its extracted text, and available uploaded logo and seal images to Groq vision. AI will propose fields and artwork positions for review. Local PDF/OCR suggestions remain available if AI is unavailable. Nothing is saved automatically.", label: fullDesign ? "Compose draft" : "Request suggestions", action: () => detectFields(true, true, fullDesign)});
       return;
     }
-    setBusy(true); setError("");
+    setBusy(true); setSuggestionMode(useAI ? "ai" : "rules"); setError(""); setMessage("");
     try {
-      setSuggestions(await (await request(`/certificate-templates/${revision.id}/${useAI ? "ai-suggestions" : "suggestions"}/`, {method: "POST"})).json());
-    } catch (err) { setError(err.message); } finally { setBusy(false); }
+      let body;
+      {
+        body = new FormData();
+        body.append("visual", String(useAI));
+        body.append("certificate_type", certificateType);
+        if (fullDesign) body.append("full_design", "true");
+        body.append("page", String(page));
+        body.append("fields", JSON.stringify(fields));
+        if (logo) body.append("logo", logo);
+        if (seal) body.append("seal", seal);
+      }
+      const result = await (await request(`/certificate-templates/${revision.id}/${useAI ? "ai-suggestions" : "suggestions"}/`, {method: "POST", ...(body ? {body} : {})})).json();
+      setSuggestions(result);
+      setMessage(result.items.length ? `${result.items.length} ${useAI ? "AI-assisted / PDF/OCR" : "PDF/OCR"} suggestion${result.items.length === 1 ? "" : "s"} found. Review each field before adding it; nothing has been saved.` : useAI ? "No supported placeholders or clear layout areas found. Review the page and add uncertain fields manually. Nothing has been saved." : "No matching fields found. Use Add field and draw its area on the certificate. Nothing has been saved.");
+    } catch (err) { setError(err.message); if (useAI && err.retryAfter) setAiRetrySeconds(err.retryAfter); } finally { setBusy(false); setSuggestionMode(null); }
+  }
+  function requestAssetSize(key) {
+    setConsent({title: `Suggest ${key === "logo" ? "logo" : "seal"} size?`, description: "Use Groq, with Gemini fallback, to recommend a size from image and page dimensions. Only dimensions are sent to AI. Review the proposed size and position before applying; nothing is saved automatically.", label: "Suggest size", action: async () => {
+      setBusy(true); setError(""); setAssetProposal(null);
+      try {
+        const body = new FormData();
+        body.append("key", key); body.append("page", String(page)); body.append("fields", JSON.stringify(fields));
+        const image = key === "logo" ? logo : seal;
+        if (image) body.append("image", image);
+        setAssetProposal(await (await request(`/certificate-templates/${revision.id}/asset-suggestions/`, {method: "POST", body})).json());
+      } catch (err) { setError(err.message); if (err.retryAfter) setAiRetrySeconds(err.retryAfter); }
+      finally { setBusy(false); }
+    }});
+  }
+  function applyAssetSize() {
+    if (!assetProposal || locked || busy) return;
+    const candidate = assetProposal.field;
+    const index = fields.findIndex(item => item.key === candidate.key && item.page === candidate.page);
+    if (index < 0 && fields.length >= 60) { setError("Configure at most 60 labelled fields."); return; }
+    if (fields.some((item, i) => i !== index && item.page === candidate.page && item.x < candidate.x + candidate.width && item.x + item.width > candidate.x && item.y < candidate.y + candidate.height && item.y + item.height > candidate.y)) {
+      setError("The proposed image area now overlaps a field. Request a fresh size suggestion."); return;
+    }
+    setFields(index < 0 ? [...fields, candidate] : fields.map((item, i) => i === index ? {...item, ...candidate} : item));
+    setSelected(index < 0 ? fields.length : index); setPage(candidate.page); setSampleUrl(""); setAssetProposal(null);
+    setMessage("Image size applied to the draft. Review its position, then Save draft & preview.");
+  }
+  function addAllSuggestions() {
+    if (busy || locked || activeId) return;
+    const result = addSuggestedFields(fields, suggestions?.items || []);
+    if (result.added) {
+      setSelected(fields.length); setPage(result.fields[fields.length].page);
+      setFields(result.fields); setSampleUrl("");
+    }
+    setError("");
+    setMessage(`${result.added} suggestions added.${result.skipped ? ` ${result.skipped} skipped because of overlap or the 60-field limit; review them individually.` : ""} Review placement, then Save draft & preview.`);
   }
   function addSuggestion(item) {
+    if (busy || locked || activeId || suggestionIsAdded(fields, item)) return;
     const next = item.field;
     if (fields.length >= 60) { setError("Configure at most 60 labelled fields."); return; }
     if (fields.some(f => f.page === next.page && f.x < next.x + next.width && f.x + f.width > next.x && f.y < next.y + next.height && f.y + f.height > next.y)) {
@@ -269,6 +339,9 @@ export default function UploadedTemplatePanel({ editorRevisionId = null }) {
       try {
         const item = await (await request(`/certificate-templates/${revision.id}/edit/`, {method: "POST"})).json();
         setActiveId(null);
+        setRevisions(previous => previous.map(saved => saved.id === item.id ? item : saved));
+        choose(item);
+        setEditing(true);
         router.push(`/dashboard/settings/certificate-branding/${item.id}`);
       } catch (err) { setError(err.message); } finally { setBusy(false); }
     }});
@@ -307,7 +380,7 @@ export default function UploadedTemplatePanel({ editorRevisionId = null }) {
   const field = fields[selected];
   return (
     <div className={`${styles.panel} flex flex-col gap-5`}>
-      <div><h3 className="text-xl font-semibold text-[#08283F]">{editorRevisionId ? "Certificate template editor" : "Institutional certificate template"}</h3>
+      <div className={styles.pageHeading}><span className={styles.eyebrow}>INSTITUTION / CERTIFICATE BRANDING</span><h3 className="text-xl font-semibold text-[#08283F]">{editorRevisionId ? "Certificate template editor" : "Institutional certificate template"}</h3>
         <p className="mt-2 text-sm text-[#4A5A68]">{editorRevisionId ? "Edit this template's fields, crest, seal and officer signature positions. Save and review the preview, then finish editing to enable the updated template." : "Upload your institution's blank master, label the variable fields, and configure crest, seal and officer signature positions. Embedded text is read directly; scans use OCR. Field placement is manually confirmed."}</p>
         <p className="mt-2 text-xs text-[#687B8E]">Use a clean master without previous student details or signatures. “Clear area” permanently removes content inside the labelled box in generated copies; inspect the sample carefully. Fixed wording, borders and artwork are preserved.</p>
       </div>
@@ -326,6 +399,7 @@ export default function UploadedTemplatePanel({ editorRevisionId = null }) {
       <ActionButton type="button" disabled={busy} onClick={requestFullRestart} className="cred-btn cred-btn-primary gap-2 self-start"><RefreshCw size={16} /> Start branding from scratch</ActionButton>
       {!templatesLoading && <BrandingStartGuide key={`branding-guide-${uploadKey}`} seenKey={guideSeenKey} initiallyOpen={!activeId && !revisions.some(item => item.fields?.length)} onContinue={() => versionNameRef.current?.focus()} />}
       <form key={`branding-upload-${uploadKey}`} onSubmit={upload} className="flex flex-wrap items-end gap-5 rounded-xl border p-5">
+        <p className="w-full text-sm text-[#687B8E]">Upload your certificate. The system detects existing wording, placeholders and blank designs automatically using PDF text or OCR.</p>
         <label className="text-sm">Version name<input ref={versionNameRef} required maxLength={120} value={name} onChange={e => setName(e.target.value)} className="block border rounded p-2" /></label>
         <label className="text-sm flex flex-col gap-2">Master PDF or scan
           <span className={`relative flex cursor-pointer items-center gap-3 rounded-lg border-2 px-4 py-3 transition-colors hover:border-[#B98A28] hover:bg-[#F5EBDB] focus-within:border-[#B98A28] focus-within:ring-2 focus-within:ring-[#B98A28]/30 ${master ? "border-[#08283F] bg-[#EAF2FB]" : "border-[#8A9BAA] bg-white"}`}>
@@ -342,37 +416,69 @@ export default function UploadedTemplatePanel({ editorRevisionId = null }) {
       </>}
       {revision && <>
         {!editing && <section className="overflow-hidden rounded-xl border border-[#D8DEE6] bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4"><div><h4 className="font-semibold text-[#08283F]">{revision.name} · {locked ? "Approved template" : "Saved draft preview"}</h4><p className="mt-1 text-xs text-[#687B8E]">Sample data · unsigned review copy · {revision.fields.length} saved fields</p></div><button type="button" disabled={busy} onClick={() => locked ? requestEditTemplate() : router.push(`/dashboard/settings/certificate-branding/${revision.id}`)} className="cred-btn cred-btn-secondary">{locked ? "Edit template" : "Edit draft"}</button>{sampleUrl && <a href={sampleUrl} target="_blank" rel="noopener noreferrer" className="cred-btn cred-btn-secondary">Open preview PDF</a>}</div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4"><div><h4 className="font-semibold text-[#08283F]">{revision.name} · {locked ? "Approved template" : "Saved draft preview"}</h4><p className="mt-1 text-xs text-[#687B8E]">Sample data · unsigned review copy · {revision.fields.length} saved fields</p></div><button type="button" disabled={busy} onClick={() => {
+            if (activeId || locked) { requestEditTemplate(); return; }
+            setEditing(true);
+            router.push(`/dashboard/settings/certificate-branding/${revision.id}`);
+          }} className="cred-btn cred-btn-secondary">{locked ? "Edit template" : "Edit draft"}</button>{sampleUrl && <a href={sampleUrl} target="_blank" rel="noopener noreferrer" className="cred-btn cred-btn-secondary">Open preview PDF</a>}</div>
           <div className="grid items-start lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
           <div className="min-w-0 lg:border-r">
           {previewLoading ? <p role="status" className="p-5 text-sm">Loading saved preview...</p> : previewError ? <p role="alert" className="p-5 text-sm text-red-700">Preview needs attention: {previewError} Use Edit draft to correct the layout, then save again.</p> : sampleUrl ? <iframe title="Saved template sample preview" src={sampleUrl} className="h-[650px] w-full" /> : <p className="p-5 text-sm text-[#687B8E]">Configure fields and select Save draft & preview to see the sample here.</p>}
           </div><aside className="min-w-0"><div className="p-4"><h5 className="font-semibold">Review your saved draft</h5><p className="mt-2 text-sm text-[#4A5A68]">Check text fit, placement and artwork before approval. Use Edit draft to adjust fields.</p></div><TemplatePreviewChecks warnings={revision.validation_warnings} />{!revision.validation_warnings?.length && <p className="px-4 pb-4 text-sm text-[#2F6F4E]">Sample text fits the saved field configuration.</p>}</aside></div>
         </section>}
-        {editing && <section ref={editorRef} tabIndex={-1} className="w-full scroll-mt-24 space-y-5 rounded-xl border-2 border-[#8A9BAA] bg-white p-4 outline-none md:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3"><div><h4 className="text-xl font-semibold text-[#08283F]">Editing {revision.name}</h4><p className="mt-1 text-sm text-[#4A5A68]">Configure fields on the left; move and resize their boxes on the document at the right.</p></div><NavigationButton direction="back" type="button" disabled={busy} className="cred-btn cred-btn-secondary" onClick={() => {
+        {editing && <section ref={editorRef} tabIndex={-1} className={`${styles.editor} w-full scroll-mt-24 space-y-5 outline-none`}>
+        <div className={styles.editorHeading}><div><span className={styles.eyebrow}>TEMPLATE WORKSPACE</span><h4>{revision.name}</h4><p>Choose a field, refine its placement, then review your saved preview.</p><span className={styles.draftBadge}>{unsavedChanges ? "Unsaved changes" : "Draft saved"} | {fields.length} fields</span></div><NavigationButton direction="back" type="button" disabled={busy} className="cred-btn cred-btn-secondary" onClick={() => {
           const restore = () => router.push(`/dashboard/settings?tab=Certificate%20Branding&template=${revision.id}`);
           if (unsavedChanges) setConsent({title: "Return to saved preview?", description: "Discard unsaved field and asset changes and reopen the saved draft preview.", label: "Discard changes", danger: true, action: restore});
           else restore();
         }}>Return to saved preview</NavigationButton></div>
+        {!locked && <div className="rounded-lg border p-4">
+          <label className="text-sm font-semibold">Editing mode<select value={designMode} onChange={e => setDesignMode(e.target.value)} className="ml-3 rounded border p-2"><option value="blank">Blank design ? compose editable wording</option><option value="existing">Existing text ? configure variable fields</option></select></label>
+          <p className="mt-2 text-xs">{revision.analysis?.design_detection?.detail || "Choose the mode that matches your uploaded design."} You can change the mode before saving.</p>
+        </div>}
         {locked && <p className="text-sm text-[#2F6F4E]">This version is approved. Return to certificate branding and select Edit template to disable branding and edit this version.</p>}
-        {!locked && <section className="rounded-xl border border-[#CFE1F2] bg-[#EAF2FB] p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3"><div><h4 className="font-semibold">Suggested fields from PDF text / OCR</h4><p className="mt-1 text-xs">Rules match supported printed placeholders. Review each suggestion; nothing is saved or approved automatically.</p></div><button type="button" disabled={busy} onClick={() => detectFields()} className="cred-btn cred-btn-secondary">{busy ? "Reading..." : "Read and suggest fields"}</button><button type="button" disabled={busy} onClick={() => detectFields(true)} className="cred-btn cred-btn-secondary">Ask AI for suggestions</button></div>
-          {suggestions && <><div className="mt-3 grid gap-2 sm:grid-cols-2">{suggestions.items.map((item, index) => <div key={index} className="rounded-lg border bg-white p-3 text-sm"><p className="font-semibold">{label(item.field.key)} · page {item.field.page}</p><p className="mt-1 text-xs">{item.source_text} · {item.method === "ai" ? "AI suggestion" : item.method === "ocr" ? `OCR ${Math.round(item.confidence)}%` : "Live text"}</p><p className="mt-1 text-xs">{item.note}</p><button type="button" disabled={busy} onClick={() => addSuggestion(item)} className="mt-2 rounded border px-3 py-1 font-semibold">Add this suggestion</button></div>)}</div>{suggestions.warnings.map((warning, index) => <p key={index} className="mt-2 text-xs text-amber-800">{warning}</p>)}</>}
+        {!locked && <div className="rounded-lg border p-4">
+          <label className="block text-sm font-semibold">Certificate type
+            <select value={certificateType} disabled={busy} onChange={e => { setCertificateType(e.target.value); setSuggestions(null); }} className="mt-2 block w-full rounded border p-2">
+              <option value="bsc">Bachelor of Science (BSc)</option><option value="ba">Bachelor of Arts (BA)</option><option value="beng">Bachelor of Engineering (BEng)</option><option value="msc">Master of Science (MSc)</option><option value="ma">Master of Arts (MA)</option><option value="phd">Doctor of Philosophy (PhD)</option><option value="diploma">Diploma</option>
+            </select>
+          </label>
+          <p className="mt-2 text-xs">Choose the award type before requesting recommendations. Bachelor of Science is the default. The programme title, student, year and classification remain editable inputs.</p>
+        </div>}
+        {!locked && <section className={styles.suggestions}>
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h4 className={styles.sectionTitle}><ScanText size={18} aria-hidden="true" /> Discover fields</h4><p className="mt-1 text-xs">Read the master to find fields and signing areas, or ask AI to inspect this page and position uploaded logos and seals. Review each suggestion before adding it.</p></div><button type="button" disabled={busy} onClick={() => detectFields()} aria-busy={suggestionMode === "rules"} className="cred-btn cred-btn-secondary">{suggestionMode === "rules" ? "Reading PDF / OCR..." : "Read and suggest fields"}</button><button type="button" disabled={busy || aiRetrySeconds > 0} onClick={() => detectFields(true)} className="cred-btn cred-btn-secondary" aria-busy={suggestionMode === "ai"}><Sparkles size={15} aria-hidden="true" />{aiRetrySeconds ? `Retry AI in ${aiRetrySeconds}s` : suggestionMode === "ai" ? "Asking AI..." : "Ask AI for suggestions"}</button></div>
+          {designMode === "blank" && <div className="mt-3 rounded-lg border border-[#D8DEE6] p-3">
+            <p className="text-sm font-semibold">Start from a blank certificate design</p>
+            <p className="mt-1 text-xs">Upload a blank background with borders or artwork. AI can compose editable wording, input fields and uploaded artwork on the selected page. Review and add the proposed boxes, then move, resize or rewrite each one before saving. Text already embedded in the master stays part of the background.</p>
+            <button type="button" disabled={busy || aiRetrySeconds > 0} onClick={() => detectFields(true, false, true)} className="cred-btn cred-btn-secondary mt-3"><Sparkles size={15} aria-hidden="true" />Compose editable certificate with AI</button>
+          </div>}
+          {suggestions && <>
+            {suggestions.missing_required_fields?.length > 0 && <p className="mt-3 text-xs text-amber-800">Core fields still needing placement: {suggestions.missing_required_fields.filter(key => !fields.some(field => field.key === key)).map(label).join(", ")}. Add these manually where the design has room.</p>}
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-[#08283F]">{suggestions.items.filter(item => !suggestionIsAdded(fields, item)).length} suggestions to add</p>
+              <button type="button" disabled={busy || locked || !suggestions.items.some(item => !suggestionIsAdded(fields, item))} onClick={addAllSuggestions} className="cred-btn cred-btn-primary">Add all suggestions</button>
+            </div>
+            <div className="mt-3 grid items-start gap-3 sm:grid-cols-2">{suggestions.items.filter(item => !suggestionIsAdded(fields, item)).map((item, index) => <details key={`${item.field.key}-${item.field.page}-${index}`} className="min-w-0 rounded-lg border border-[#8A9BAA] bg-white p-3 text-sm shadow-sm"><summary className="cursor-pointer font-semibold">{item.field.key === "static_text" ? `Wording: ${(item.field.text || "").slice(0, 55)}` : label(item.field.key)} | page {item.field.page}</summary><div className="mt-3 break-words"><p className="mt-1 text-xs">{item.source_text} | {item.method === "matched_value" ? "Matched institution data" : item.method === "layout" ? "Estimated blank area" : item.method === "vision" ? "Visual AI suggestion" : item.method === "ai" ? "AI suggestion" : item.method === "ocr" ? `OCR ${Math.round(item.confidence)}%` : "Live text"}</p><p className="mt-1 text-xs">{item.note}</p><button type="button" disabled={busy} onClick={() => addSuggestion(item)} className="cred-btn cred-btn-primary mt-3">Add this suggestion</button></div></details>)}</div>
+            {suggestions.items.some(item => suggestionIsAdded(fields, item)) && <details className="mt-3 rounded-lg border border-[#D8DEE6] bg-white/50 p-3"><summary className="cursor-pointer text-xs font-medium text-[#4A5A68]">Added suggestions ({suggestions.items.filter(item => suggestionIsAdded(fields, item)).length})</summary><div className="mt-2 flex flex-wrap gap-2">{suggestions.items.filter(item => suggestionIsAdded(fields, item)).map((item, index) => <span key={index} className="inline-flex items-center gap-1 rounded-full border border-[#B6D9C4] bg-[#EFFAF3] px-2 py-1 text-xs text-[#245C3E]"><CheckCircle2 size={12} aria-hidden="true" />{label(item.field.key)} | page {item.field.page}</span>)}</div></details>}
+            {suggestions.warnings.map((warning, index) => <p key={index} className="mt-2 text-xs text-amber-800">{warning}</p>)}
+          </>}
+
         </section>}
-        {!locked && <button type="button" disabled={busy} onClick={requestConfigurationReset} className="inline-flex items-center gap-2 self-start rounded-lg border border-amber-700 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 disabled:opacity-50"><RotateCcw size={16} /> Clear field configuration</button>}
-        {!locked && <div className="flex items-center gap-3"><button type="button" disabled={busy} onClick={requestBrandingReset} className="inline-flex items-center gap-2 rounded-lg border border-amber-700 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 disabled:opacity-50"><RotateCcw size={16} /> Reset draft branding</button><span className="text-xs text-[#687B8E]">Clears and saves this draft&apos;s fields, crest and seal; keeps the master.</span></div>}
+        {!locked && <details className={styles.resetOptions}><summary>Reset options</summary><div className={styles.resetActions}><button type="button" disabled={busy} onClick={requestConfigurationReset} className="inline-flex items-center gap-2 self-start rounded-lg border border-amber-700 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 disabled:opacity-50"><RotateCcw size={16} /> Clear field configuration</button>
+        <div className="flex flex-wrap items-center gap-3"><button type="button" disabled={busy} onClick={requestBrandingReset} className="inline-flex items-center gap-2 rounded-lg border border-amber-700 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 disabled:opacity-50"><RotateCcw size={16} /> Reset draft branding</button><span className="text-xs text-[#687B8E]">Clears and saves this draft&apos;s fields, crest and seal; keeps the master.</span></div></div></details>}
+        {suggestions?.checked_fields && <div className="rounded-lg border bg-[#F8F7F2] p-3 text-xs text-[#4A5A68]"><p className="font-semibold">Placement checks</p><p className="mt-1">{suggestions.checked_fields.map(key => `${label(key)}: ${fields.some(item => item.key === key) ? "configured" : suggestions.items.some(item => item.field.key === key) ? "suggested" : "place manually"}`).join(" ? ")}</p></div>}
         {revision.analysis.warning && <p className="text-sm text-amber-800">Reading unavailable: {revision.analysis.warning} You can still label fields manually.</p>}
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(240px,320px)_minmax(0,1fr)]">
-          <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-[#D8DEE6] p-4 lg:max-h-[85vh] lg:overflow-y-auto">
+        <div className={styles.workspace}>
+          <aside className={styles.inspector} aria-label="Field settings"><div className={styles.inspectorHeading}><SlidersHorizontal size={18} aria-hidden="true" /><div><h4>Field settings</h4><p>Content, position and appearance</p></div></div>
             <label className="text-sm">Page<select className="ml-2 border rounded p-2" value={page} onChange={e => { setPageUrl(""); setPage(Number(e.target.value)); }}>{revision.analysis.pages.map(p => <option key={p.page} value={p.page}>{p.page}</option>)}</select></label>
-            <label className="text-sm">Labelled field ({fields.length})<select disabled={!fields.length} className="cd-input block w-full min-w-0 bg-white text-[#08283F] disabled:opacity-70" value={fields.length ? selected : ""} onChange={e => setSelected(Number(e.target.value))}>{!fields.length && <option value="">No fields yet - click Add field</option>}{FIELD_GROUPS.map(group => {
+            <label className="text-sm">Selected field ({fields.length})<select disabled={!fields.length} className="cd-input block w-full min-w-0 bg-white text-[#08283F] disabled:opacity-70" value={fields.length ? selected : ""} onChange={e => setSelected(Number(e.target.value))}>{!fields.length && <option value="">No fields yet - click Add field</option>}{FIELD_GROUPS.map(group => {
               const members = fields.map((f, i) => ({f, i})).filter(({f}) => group.keys.some(([key]) => key === f.key));
               return members.length ? <optgroup key={group.name} label={group.name}>{members.map(({f, i}) => <option className="bg-white text-[#08283F]" key={i} value={i}>{label(f.key)} (page {f.page})</option>)}</optgroup> : null;
             })}</select></label>
             {!locked && <button type="button" className="cred-btn cred-btn-secondary" onClick={() => { setSelected(fields.length); setFields([...fields, { key: "student_name", ...nextFieldArea(fields, page), font: "Times-Roman", font_size: 18, align: "center", clear: false }]); setSampleUrl(""); }}>Add field</button>}
-            {field && <fieldset disabled={locked || busy} className="flex flex-col gap-2">
+            {field && <fieldset disabled={locked || busy} className={styles.fieldGroup}><legend>Field content &amp; validation</legend>
               <label className="text-sm">Field content<select ref={contentRef} value={field.key} onChange={e => { const key = e.target.value; setFields(previous => previous.map((f, i) => i === selected ? { ...f, key, input_type: key === "graduation_year" ? "number" : "text", min_length: key === "student_name" ? 2 : 0, max_length: LIMITS[key] || 200, min_value: 1900, max_value: new Date().getFullYear() } : f)); setSampleUrl(""); }} className="block w-full border rounded p-2">{FIELD_GROUPS.map(group => <optgroup key={group.name} label={group.name}>{group.keys.map(([key, name]) => <option key={key} value={key}>{name}</option>)}</optgroup>)}</select></label>
-              {field.key === "static_text" && <input aria-label="Fixed text" value={field.text || ""} onChange={e => edit("text", e.target.value)} className="border rounded p-2" />}
+              {field.key === "static_text" && <input aria-label="Editable certificate wording" maxLength={1000} value={field.text || ""} onChange={e => edit("text", e.target.value)} className="border rounded p-2" />}
               <label className="text-xs">Input type<select value={field.key === "graduation_year" ? "number" : "text"} disabled className="ml-2 border rounded"><option value="text">Text</option><option value="number">Number</option></select></label>
               {field.key === "degree_title" && <p className="text-xs">Value comes from the configured program dropdown. Update the catalog rather than typing an award at issuance.</p>}
               {LIMITS[field.key] && <div className="grid grid-cols-2 gap-2">{["min_length", "max_length"].map(key => <label key={key} className="text-xs">{key === "min_length" ? "Minimum characters" : "Maximum characters"}<input type="number" min="0" max={LIMITS[field.key]} value={field[key] ?? (key === "min_length" ? (field.key === "student_name" ? 2 : 0) : LIMITS[field.key])} onChange={e => edit(key, Number(e.target.value))} className="w-full border rounded" /></label>)}</div>}
@@ -380,24 +486,25 @@ export default function UploadedTemplatePanel({ editorRevisionId = null }) {
               {LIMITS[field.key] && <label className="text-xs"><input type="checkbox" checked={field.required ?? ["student_name", "degree_title", "institution_name", "certificate_id"].includes(field.key)} onChange={e => edit("required", e.target.checked)} /> Required value</label>}
               <label className="text-xs">Minimum readable font size<input type="number" min="6" max={field.font_size || 18} step="0.5" value={field.min_font_size ?? 6} onChange={e => edit("min_font_size", Number(e.target.value))} className="ml-2 w-16 border rounded" /></label>
               <p className="text-xs text-amber-800">For long names or awards, widen the field or adjust font size. Do not shorten official data to fit the template.</p>
-              <p className="text-xs">Draw a box on the page or enter proportions from 0 to 1.</p>
-              <div className="grid grid-cols-2 gap-2">{["x", "y", "width", "height"].map(key => <label key={key} className="text-xs">{key}<input className="block w-full border rounded p-1" type="number" min="0" max="1" step="0.001" value={field[key]} onChange={e => edit(key, Number(e.target.value))} /></label>)}</div>
-              <label className="text-xs">Font<select value={field.font || "Times-Roman"} onChange={e => edit("font", e.target.value)} className="ml-2 border rounded">{["Times-Roman", "Times-Bold", "Times-Italic", "Helvetica", "Helvetica-Bold"].map(font => <option key={font}>{font}</option>)}</select></label>
+              <h5 className={styles.controlHeading}>Position &amp; size</h5><p className="text-xs">Drag the box on the certificate, or adjust its proportions below (0 to 1).</p>
+              <div className="grid grid-cols-2 gap-2">{["x", "y", "width", "height"].map(key => <label key={key} className="text-xs">{{x: "Left", y: "Top", width: "Width", height: "Height"}[key]}<input className="block w-full border rounded p-1" type="number" min="0" max="1" step="0.001" value={field[key]} onChange={e => edit(key, Number(e.target.value))} /></label>)}</div>
+              <h5 className={styles.controlHeading}>Typography</h5><label className="text-xs">Font<select value={field.font || "Times-Roman"} onChange={e => edit("font", e.target.value)} className="ml-2 border rounded">{["Times-Roman", "Times-Bold", "Times-Italic", "Helvetica", "Helvetica-Bold"].map(font => <option key={font}>{font}</option>)}</select></label>
               <label className="text-xs">Text color<input type="color" value={field.color || "#000000"} onChange={e => edit("color", e.target.value)} className="ml-2" /></label>
               <label className="text-xs">Font size<input className="ml-2 w-16 border rounded" type="number" min="6" max="72" value={field.font_size || 18} onChange={e => edit("font_size", Number(e.target.value))} /></label>
               <label className="text-xs">Alignment<select value={field.align || "center"} onChange={e => edit("align", e.target.value)} className="ml-2 border rounded">{["left", "center", "right"].map(align => <option key={align}>{align}</option>)}</select></label>
               <label className="text-xs"><input type="checkbox" checked={Boolean(field.clear)} onChange={e => edit("clear", e.target.checked)} /> Clear existing content in this area</label>
               {["logo", "seal"].includes(field.key) && <button type="button" disabled={busy} onClick={() => save(false, field)} className="cred-btn cred-btn-secondary">Extract boxed artwork as {field.key}</button>}
-              <button type="button" className="text-xs text-red-700" onClick={() => removeField(selected)}>Remove field</button>
+              <button type="button" className={styles.removeField} onClick={() => removeField(selected)}>Remove field</button>
             </fieldset>}
-            <fieldset disabled={locked || busy} className="flex flex-col gap-3">
-              <label className="text-sm">Crest / logo {revision.has_logo && "(configured)"}<input type="file" accept="image/png,image/jpeg" onChange={e => { setLogo(e.target.files?.[0] || null); setSampleUrl(""); }} className="block text-xs mt-1" /></label>
-              <label className="text-sm">Seal {revision.has_seal && "(configured)"}<input type="file" accept="image/png,image/jpeg" onChange={e => { setSeal(e.target.files?.[0] || null); setSampleUrl(""); }} className="block text-xs mt-1" /></label>
+            <fieldset disabled={locked || busy} className={styles.fieldGroup}><legend>Institution artwork</legend>
+              <label className="text-sm">Crest / logo {revision.has_logo && "(configured)"}<input type="file" accept="image/png,image/jpeg" onChange={e => { setLogo(e.target.files?.[0] || null); setAssetProposal(null); setSampleUrl(""); }} className="block text-xs mt-1" /></label>
+              <label className="text-sm">Seal {revision.has_seal && "(configured)"}<input type="file" accept="image/png,image/jpeg" onChange={e => { setSeal(e.target.files?.[0] || null); setAssetProposal(null); setSampleUrl(""); }} className="block text-xs mt-1" /></label>
             </fieldset>
+            {!locked && <div className="space-y-2 rounded-lg border p-3"><p className="text-xs text-[#4A5A68]">Upload a crest or seal, then suggest a readable size that keeps its proportions.</p><div className="flex flex-wrap gap-2">{["logo", "seal"].map(key => <button key={key} type="button" disabled={busy || aiRetrySeconds > 0 || !(key === "logo" ? logo || revision.has_logo : seal || revision.has_seal)} onClick={() => requestAssetSize(key)} className="cred-btn cred-btn-secondary">{aiRetrySeconds ? `Retry in ${aiRetrySeconds}s` : `Suggest ${key} size`}</button>)}</div>{assetProposal && <div className="text-xs"><p>{label(assetProposal.field.key)}: {assetProposal.width_points} ? {assetProposal.height_points} pt ? page {assetProposal.field.page}</p><p className="mt-1">{assetProposal.note}</p><button type="button" disabled={busy} onClick={applyAssetSize} className="cred-btn cred-btn-secondary mt-2">Apply suggested size</button></div>}</div>}
             <p className="text-xs">Signature fields use the officer assets captured during approval. <Link href="/dashboard/settings" className="underline">Configure officer signatures in Settings.</Link></p>
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs mb-2">Select a field to move or resize it. Use Draw area to set a new rectangle.</p>
+          </aside>
+          <div className={styles.canvasCard}>
+            <h4 className={styles.sectionTitle}>Certificate canvas</h4><p className="text-xs mb-2">Select a field to move or resize it. Use Draw area to set a new rectangle.</p>
             <TemplateCanvas fields={fields} selected={selected} page={page} pageUrl={pageUrl} disabled={locked || busy}
               onSelect={setSelected} onChange={value => { setFields(value); setSampleUrl(""); }} onEdit={editField} onRemove={removeField}
               onUndo={undo} onRedo={redo} canUndo={historyStatus.canUndo} canRedo={historyStatus.canRedo} />
@@ -410,7 +517,7 @@ export default function UploadedTemplatePanel({ editorRevisionId = null }) {
               <pre className="whitespace-pre-wrap text-xs max-h-60 overflow-auto mt-2">{revision.analysis.pages[page - 1]?.text || "No readable text. Label fields manually."}</pre></details>
           </div>
         </div>
-        {!locked && <div className="flex flex-wrap items-center gap-5 border-t border-[#E4E1D6] pt-6 px-2 pb-2"><ActionButton type="button" disabled={busy} onClick={() => save(false)} className="cred-btn cred-btn-primary gap-2 self-start"><Save size={16} /> Save draft & preview</ActionButton><ActionButton type="button" disabled={busy || previewLoading || !sampleUrl || !!previewError || unsavedChanges} onClick={requestApproval} className="cred-btn cred-btn-primary gap-2 self-start"><CheckCircle2 size={16} /> Finish editing & enable</ActionButton></div>}
+        {!locked && <div className={styles.saveBar}><ActionButton type="button" disabled={busy} onClick={() => save(false)} className="cred-btn cred-btn-primary gap-2 self-start"><Save size={16} /> Save draft & preview</ActionButton><ActionButton type="button" disabled={busy || previewLoading || !sampleUrl || !!previewError || unsavedChanges} onClick={requestApproval} className="cred-btn cred-btn-primary gap-2 self-start"><CheckCircle2 size={16} /> Approve & enable template</ActionButton></div>}
         </section>}
         {!editing && !locked && <ActionButton type="button" disabled={busy || previewLoading || !sampleUrl || !!previewError || unsavedChanges} onClick={requestApproval} className="cred-btn cred-btn-primary gap-2 self-start">Approve reviewed template</ActionButton>}
       </>}

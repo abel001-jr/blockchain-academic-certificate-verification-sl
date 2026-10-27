@@ -179,6 +179,7 @@ class CertificateCreateSerializer(serializers.ModelSerializer):
     Accepts department_id / program_id / grade_classification_id,
     snapshots labels into CharFields for on-chain hashing.
     """
+    draft_id = serializers.UUIDField(write_only=True, required=False)
     department_id = serializers.UUIDField(write_only=True)
     def validate_student_name(self, value):
         from institutions.credential_validation import validate_name
@@ -203,7 +204,7 @@ class CertificateCreateSerializer(serializers.ModelSerializer):
         fields = [
             "institution", "student", "student_name", "student_email",
             "degree_title", "department", "graduation_year", "grade",
-            "department_id", "program_id", "grade_classification_id",
+            "department_id", "program_id", "grade_classification_id", "draft_id",
         ]
         read_only_fields = ["degree_title", "department", "grade", "qualification_type"]
         extra_kwargs = {

@@ -3,7 +3,7 @@ from io import BytesIO
 import math
 import re
 
-import fitz
+import pymupdf as fitz
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase.pdfmetrics import stringWidth
@@ -63,7 +63,7 @@ def validate_layout(fields, analysis):
     return fields
 
 
-def render_uploaded_template(certificate, revision, *, include_attestations=False, verification_base_url=""):
+def render_uploaded_template(certificate, revision, *, include_attestations=False, verification_base_url="", allow_partial_signatures=False):
     validate_layout(revision.fields, revision.analysis)
     template_preflight(certificate, revision)
     with revision.master.open("rb") as source:
@@ -119,15 +119,17 @@ def render_uploaded_template(certificate, revision, *, include_attestations=Fals
                         continue
                     asset = getattr(revision, key, None) if key in ("logo", "seal") else getattr(certificate, key + "_image", None)
                     if key.endswith("_signature") and not asset:
+                        if allow_partial_signatures:
+                            continue
                         raise ValueError(f"The {key} asset was not captured during approval. Configure officer signatures before submitting credentials.")
                     if asset:
                         with asset.open("rb") as image:
                             overlay.drawImage(ImageReader(BytesIO(image.read())), x, y, box_width, box_height, preserveAspectRatio=True, mask="auto")
             # The review status is explicit; the final rendering keeps the master style.
-            if not include_attestations:
+            if not include_attestations or allow_partial_signatures:
                 overlay.setFillColorRGB(0, 0, 0)
                 overlay.setFont("Helvetica", 7)
-                overlay.drawCentredString(width / 2, 7, "Review copy - unsigned, not yet issued")
+                overlay.drawCentredString(width / 2, 7, "Approval progress preview - not the anchored review PDF" if allow_partial_signatures else "Review copy - unsigned, not yet issued")
             overlay.save()
             with fitz.open(stream=buffer.getvalue(), filetype="pdf") as generated:
                 page.show_pdf_page(page.rect, generated, 0)

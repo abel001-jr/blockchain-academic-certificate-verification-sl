@@ -164,6 +164,7 @@ export default function OfficerSignaturePanel({
           )}
         </div>
 
+        {allowSkip && <ActionButton type="button" onClick={() => onSaved?.()} className="cd-btn-primary">Use saved signature &amp; complete setup</ActionButton>}
         {error && (
           <div className="bg-[#ffdad6] text-[#93000a] text-sm px-4 py-3 rounded-lg break-all">{error}</div>
         )}

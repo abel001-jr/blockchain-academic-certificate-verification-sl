@@ -343,9 +343,15 @@ class StudentInviteToken(models.Model):
             return None, "This invite link has already been used."
         if token.is_expired:
             return None, "This invite link has expired. Ask your institution to resend it."
+        claimed_at = timezone.now()
+        # A conditional write allows only one request to consume an invitation.
+        claimed = cls.objects.filter(pk=token.pk, used=False, expires_at__gt=claimed_at).update(
+            used=True, claimed_at=claimed_at
+        )
+        if not claimed:
+            return None, "This invite link has already been used or has expired."
         token.used = True
-        token.claimed_at = timezone.now()
-        token.save(update_fields=["used", "claimed_at"])
+        token.claimed_at = claimed_at
         return token, ""
 
 
@@ -468,7 +474,10 @@ class VerificationShareCode(models.Model):
             sc.used    = True
             sc.used_at = timezone.now()
             sc.used_by_ip = ip or None
-            sc.save(update_fields=["used", "used_at", "used_by_ip"])
+            claimed = cls.objects.filter(pk=sc.pk, used=False, revoked=False, expires_at__gt=sc.used_at).update(
+                used=True, used_at=sc.used_at, used_by_ip=sc.used_by_ip)
+            if not claimed:
+                return None, "This share code has already been used or is no longer active."
         return sc, ""
 
 
@@ -683,3 +692,14 @@ class DocumentReview(models.Model):
         Registrar has to upload a replacement, which produces a new analysis.
         """
         return not self.is_resolved
+
+
+class PinataStorageSnapshot(models.Model):
+    """Shared storage statistics and synchronization lease; never credential status."""
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    size_bytes = models.BigIntegerField(null=True)
+    synced_at = models.DateTimeField(null=True)
+    next_attempt_at = models.DateTimeField(null=True)
+    lease_until = models.DateTimeField(null=True)
+    failures = models.PositiveIntegerField(default=0)
+    unavailable = models.BooleanField(default=True)

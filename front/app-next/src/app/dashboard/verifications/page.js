@@ -11,6 +11,7 @@
  *   have a pre-shared code.  Student can approve or deny each one.
  */
 import { useCallback, useEffect, useState } from "react";
+import { subscribeDashboardRefresh } from "@/lib/dashboardRefresh.mjs";
 import {
   Loader2, Share2, Bell, Plus, Trash2, Copy,
   Check, ChevronDown, ChevronUp,
@@ -301,9 +302,14 @@ function ShareCodesTab() {
 function ConsentRequestCard({ cr, onResponded }) {
   const [busy,    setBusy]    = useState(null); // "approve" | "deny" | null
   const [error,   setError]   = useState("");
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Time remaining until expiry
-  const msLeft = Math.max(0, new Date(cr.expires_at) - Date.now());
+  const msLeft = Math.max(0, new Date(cr.expires_at) - now);
   const minLeft = Math.ceil(msLeft / 60000);
 
   async function respond(action) {
@@ -388,13 +394,7 @@ function ConsentRequestsTab() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
-
-  // Poll every 15 seconds for new requests
-  useEffect(() => {
-    const id = setInterval(load, 15000);
-    return () => clearInterval(id);
-  }, [load]);
+  useEffect(() => subscribeDashboardRefresh(load), [load]);
 
   function handleResponded(id, action) {
     // Optimistically remove from list
@@ -432,7 +432,7 @@ function ConsentRequestsTab() {
           <p className="text-[#43474e] text-sm">No pending consent requests.</p>
           <p className="text-[#8A929C] text-xs max-w-xs">
             When an employer requests live verification, it will appear here. This page
-            auto-refreshes every 15 seconds.
+            auto-refreshes every 30 seconds while this tab is visible.
           </p>
         </div>
       ) : (
@@ -460,9 +460,7 @@ export default function VerificationsPage() {
         api.get("/verify/consent/pending/")
           .then(data => setPendingCount((Array.isArray(data) ? data : data.results ?? []).length))
           .catch(() => {});
-      fetchCount();
-      const id = setInterval(fetchCount, 15000);
-      return () => clearInterval(id);
+      return subscribeDashboardRefresh(fetchCount);
     }
   }, [role, authLoading]);
 

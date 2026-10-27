@@ -3,6 +3,7 @@ import { Inter, Newsreader } from "next/font/google";
 import "./globals.css";
 import NotificationProvider from "@/components/NotificationProvider";
 import ExtensionErrorHandler from "@/components/ExtensionErrorHandler";
+import { FeedbackToastProvider } from "@/components/FeedbackToast";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -41,7 +42,7 @@ export default function RootLayout({ children }) {
         <ExtensionErrorHandler />
         <WalletCancellationToast />
         <NotificationProvider>
-          {children}
+          <FeedbackToastProvider>{children}</FeedbackToastProvider>
         </NotificationProvider>
       </body>
     </html>

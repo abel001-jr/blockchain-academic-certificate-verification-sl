@@ -1,7 +1,7 @@
 """Convert ordered scan pages into the PDF that will be reviewed and anchored."""
 from io import BytesIO
 
-import fitz
+import pymupdf as fitz
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 MAX_BYTES = 20 * 1024 * 1024

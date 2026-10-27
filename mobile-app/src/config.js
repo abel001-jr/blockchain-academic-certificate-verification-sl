@@ -16,9 +16,14 @@ import { Platform } from "react-native";
 const ENV_OVERRIDE = process.env.EXPO_PUBLIC_API_BASE;
 
 function getApiBase() {
+  if (Platform.OS === "web" && process.env.EXPO_PUBLIC_WEB_API_BASE) {
+    return process.env.EXPO_PUBLIC_WEB_API_BASE.replace(/\/$/, "");
+  }
   if (ENV_OVERRIDE) return ENV_OVERRIDE.replace(/\/$/, "");
 
-  if (!__DEV__) return "https://your-deployed-api.com/api";
+  if (!__DEV__) {
+    throw new Error("Set EXPO_PUBLIC_API_BASE to your deployed HTTPS API URL before building for production.");
+  }
 
   // Dev: pick the right loopback address per platform
   if (Platform.OS === "android") {
@@ -30,4 +35,8 @@ function getApiBase() {
   return "http://127.0.0.1:8000/api";
 }
 
-export default { API_BASE: getApiBase() };
+const WEB_BASE = (process.env.EXPO_PUBLIC_WEB_BASE || "https://credence.edu.sl").replace(/\/$/, "");
+export function verificationUrl(id) {
+  return `${WEB_BASE}/verify/${encodeURIComponent(id)}`;
+}
+export default { API_BASE: getApiBase(), WEB_BASE };

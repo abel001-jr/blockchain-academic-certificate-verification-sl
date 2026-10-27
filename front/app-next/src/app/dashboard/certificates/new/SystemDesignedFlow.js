@@ -1,4 +1,7 @@
 "use client";
+import FeedbackToast from "@/components/FeedbackToast";
+import { uploadDocument } from "@/lib/api";
+import WalletSigningControls from "@/components/WalletSigningControls";
 import DocumentReadingOverview from "@/components/DocumentReadingOverview";
 import DashboardTooltip from "@/components/dashboard/DashboardTooltip";
 import StudentNameInput from "@/components/StudentNameInput";
@@ -30,6 +33,7 @@ import {
   Wallet, ShieldCheck, Eye, User,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import GraduateEmailInput from "@/components/GraduateEmailInput";
 import CredentialSignerIndicator from "@/components/CredentialSignerIndicator";
@@ -40,7 +44,7 @@ import styles from "./ExternalUploadFlow.module.css";
 import { restoreDraftForm } from "@/lib/restoreDraftForm.mjs";
 import CertLoaderOverlay from "@/components/dashboard/CertLoaderOverlay";
 import DocumentReviewPanel from "@/components/DocumentReviewPanel";
-import { authHeaders, DocumentWorkbench, fetchDraftDocument } from "./ExternalUploadFlow";
+import { DocumentWorkbench, fetchDraftDocument } from "./ExternalUploadFlow";
 
 const STEPS = [
   { label: "Student Details", icon: User },
@@ -52,11 +56,12 @@ const STEPS = [
 ];
 
 // Multipart cannot go through `api`, which always sends JSON.
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api";
 
 export default function SystemDesignedFlow({ onBack, draftId = null }) {
   const { user } = useAuth();
+  const router = useRouter();
 
+  const [feedback, setFeedback] = useState("");
   const [step,     setStep]     = useState(0);
   const [certId,   setCertId]   = useState(null);
   const [cert,     setCert]     = useState(null);
@@ -76,6 +81,8 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
   const [transcriptFile,    setTranscriptFile]    = useState(null);
   const [transcriptPreview, setTranscriptPreview] = useState("");
   const [transcriptReview,  setTranscriptReview]  = useState(null);
+  const [savingTranscript, setSavingTranscript] = useState(false);
+  const [transcriptSaveError, setTranscriptSaveError] = useState(null);
   const transcriptInputRef  = useRef(null);
 
   // A review only counts once it is resolved, not rejected, and applies to the
@@ -152,6 +159,12 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
     (async () => {
       try {
         const data = await api.get(`/certificates/${draftId}/`);
+        if (data.status !== "draft" && data.flow_type === "system_designed") {
+          if (data.status === "pending_vc" && !data.tx_hash && data.cert_hash && data.doc_hash) {
+            setCertId(data.id); setCert(data); setCertData(data); setStep(3);
+          } else router.replace(`/dashboard/certificates/${data.id}`);
+          return;
+        }
         if (data.flow_type !== "system_designed" || data.status !== "draft") {
           throw new Error("This certificate is not an editable Intelligent Academic Credentialing design draft.");
         }
@@ -181,8 +194,8 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
             } else if (!cancelled) {
               setStep(1);
             }
-          } catch {
-            if (!cancelled) setStep(1);
+          } catch (failure) {
+            if (!cancelled) { setStep(1); setError(failure?.message || "The saved transcript could not be restored. Retry opening this draft."); }
           }
         }
       } catch (e) {
@@ -193,7 +206,7 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
     })();
 
     return () => { cancelled = true; };
-  }, [draftId]);
+  }, [draftId, router]);
 
   function upd(field, val) {
     setForm(prev => {
@@ -203,7 +216,7 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
     });
   }
 
-  function handleTranscriptChange(e) {
+  async function handleTranscriptChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".pdf")) {
@@ -221,12 +234,31 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
     // by hash, but leaving a cleared review beside an unread file is exactly the
     // misleading state the gate exists to prevent.
     setTranscriptReview(null);
+    setTranscriptSaveError(null);
+    setSavingTranscript(true);
+    try {
+      const body = new FormData();
+      body.append("kind", "transcript");
+      body.append("document_file", file);
+      await api.post(`/certificates/${certId}/save-draft-document/`, body);
+    } catch (failure) {
+      setTranscriptSaveError({ kind: "transcript", message: failure?.detail || failure?.message || "The transcript could not be saved to this draft." });
+    } finally { setSavingTranscript(false); }
   }
 
-  function clearTranscript() {
+  async function clearTranscript() {
+    if (savingTranscript) return;
+    setSavingTranscript(true);
+    try {
+      await api.delete(`/certificates/${certId}/draft-document/?kind=transcript`);
+    } catch (failure) {
+      setError(failure?.detail || failure?.message || "The saved transcript could not be removed. Try again.");
+      return;
+    } finally { setSavingTranscript(false); }
     setTranscriptFile(null);
     setTranscriptPreview("");
     setTranscriptReview(null);
+    setTranscriptSaveError(null);
     if (transcriptInputRef.current) transcriptInputRef.current.value = "";
   }
 
@@ -246,20 +278,12 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
   // the reviewer never sees a half-committed state, and the certificate PDF is
   // only rendered once both halves are actually in place.
   async function handleAttachAndPrepare() {
-    if (!transcriptFile) return;
-    setBusy(true); setError("");
+    if (!transcriptFile || savingTranscript) return;
+    setFeedback(""); setBusy(true); setError("");
     try {
       const fd = new FormData();
       fd.append("transcript_file", transcriptFile);
-      const res = await fetch(`${API_BASE}/certificates/${certId}/upload-transcript/`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: fd,
-      });
-      const attached = await res.json();
-      if (!res.ok) {
-        throw new Error(attached.detail || "The transcript could not be attached.");
-      }
+      const attached = await uploadDocument(`/certificates/${certId}/upload-transcript/`, fd);
       setCert(attached);
 
       // `prepare/` re-checks the review against the transcript hash it just
@@ -267,6 +291,7 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
       // refused here rather than anchored.
       const prepared = await api.post(`/certificates/${certId}/prepare/`, {});
       setCertData(prepared);
+      setFeedback("Documents prepared successfully. Continue with the Registrar wallet to submit for approval.");
       setTranscriptFile(null);
       setTranscriptReview(null);
       setStep(3);
@@ -298,9 +323,11 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
 
   async function handleCreate(e) {
     e.preventDefault();
-    setBusy(true); setError("");
+    if (busy || resumeLoading) return;
+    setFeedback(""); setBusy(true); setError("");
     try {
       const payload = {
+        ...(certId || draftId ? { draft_id: certId || draftId } : {}),
         student_name:   form.student_name.trim(),
         student_email:  form.student_email.trim(),
         department_id:  form.department_id,
@@ -310,16 +337,24 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
       };
       if (form.grade_classification_id) payload.grade_classification_id = form.grade_classification_id;
       const data = await api.post("/certificates/", payload);
+      if (data.status !== "draft" && data.tx_hash) {
+        router.replace(`/dashboard/certificates/${data.id}`);
+        return;
+      }
       setCertId(data.id); setCert(data); setStep(1);
+      if (data.draft_details_changed) { setTranscriptReview(null); }
+      setFeedback(data.draft_reused ? "Continuing the existing credential draft. Saved documents have been kept." : "Student details saved to the draft.");
+      router.replace(`/dashboard/certificates/new?flow=${data.flow_type}&draft=${data.id}`, { scroll: false });
     } catch (e) {
       setError(e?.student_name?.[0] || e?.graduation_year?.[0] || e?.program_id?.[0] || e?.department_id?.[0] || e?.detail || JSON.stringify(e));
     } finally { setBusy(false); }
   }
 
   async function handleSign() {
-    setBusy(true); setFinalizing(true); setError("");
+    setFeedback(""); setBusy(true); setFinalizing(true); setError("");
     try {
       const { hash, blockNumber } = await submitForSealedReviewOnChain(certData);
+      setFeedback("Blockchain transaction confirmed. Confirm the submission to update the credential record.");
       setTxHash(hash); setBlockNum(blockNumber); setStep(4);
     } catch (e) {
       const msg = e?.data?.message || e?.reason || e?.shortMessage || e?.message || "";
@@ -331,17 +366,19 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
   }
 
   async function handleConfirm() {
-    setBusy(true); setError("");
+    setFeedback(""); setBusy(true); setError("");
     try {
       await api.post(`/certificates/${certId}/confirm-chain/`, { tx_hash: txHash, block_number: blockNum });
       setStep(5);
+      setFeedback("Credential submitted for institutional approval.");
     } catch (e) { setError(JSON.stringify(e)); }
     finally { setBusy(false); }
   }
 
   function resetAll() {
+    router.replace(`/dashboard/certificates/new?flow=${"system_designed"}`, { scroll: false });
     setStep(0); setCertId(null); setCert(null); setCertData(null);
-    setTxHash(""); setBlockNum(null); setError("");
+    setTxHash(""); setBlockNum(null); setError(""); setFeedback("");
     setTranscriptFile(null); setTranscriptPreview(""); setTranscriptReview(null);
     setForm({ student_name: "", student_email: "", department_id: "", program_id: "", grade_classification_id: "", graduation_year: new Date().getFullYear() });
   }
@@ -368,7 +405,7 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
           const done   = step > i;
           const active = step === i;
           return (
-            <div key={i} className={styles.step} aria-current={active ? "step" : undefined}>
+            <div key={i} className={styles.step} aria-label={label} aria-current={active ? "step" : undefined}>
               <div className={`flex w-full items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                 done   ? "bg-[#E7F1EB] text-[#2F6F4E]"
                 : active ? "bg-[#08283F] text-white"
@@ -383,12 +420,10 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
         })}
       </div>
 
-      {error && (
-        <div className="bg-[#F5E5E3] text-[#A23B34] text-sm px-4 py-3 rounded-lg flex items-start gap-2">
-          <span className="shrink-0 mt-0.5">⚠</span>
-          <span className="break-all">{error}</span>
-        </div>
-      )}
+      <p className="sm:hidden text-sm font-semibold text-[#08283F]">Step {step + 1} of {STEPS.length}: {STEPS[step]?.label}</p>
+
+      <FeedbackToast message={error} tone={/cancelled|canceled|rejected the request/i.test(error) ? "info" : "error"} title={/cancelled|canceled|rejected the request/i.test(error) ? "Wallet request cancelled" : step === 0 ? "Student details need attention" : "Credential issuance failed"} />
+      <FeedbackToast tone="success" message={!error ? feedback : ""} title="Issuance progress saved" />
 
       <div className="bg-white rounded-xl border border-[#E4E1D6] p-4">
         {resumeLoading ? (
@@ -480,7 +515,7 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
               logoUrl={cert?.logo_url || branding?.logo_url || ""}
               institutionName={cert?.institution_name || branding?.institution_name}
             />
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <DashboardTooltip style={{ width: "auto" }} title={previewStatus === "ready" ? "Certificate ready" : previewStatus === "error" ? "Certificate generation failed" : "Certificate generation in progress"} detail={previewStatus === "ready" ? "Continue to upload and review the transcript." : previewStatus === "error" ? "Resolve the preview error before continuing." : "Please wait for certificate generation to complete before continuing."}><span tabIndex={previewStatus !== "ready" ? 0 : undefined}><NavigationButton disabled={previewStatus !== "ready"} onClick={() => { if (previewStatus !== "ready") return; setStep(2); setError(""); }} className="cd-btn-primary">
                 Continue to transcript →
               </NavigationButton></span></DashboardTooltip>
@@ -516,11 +551,12 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
               preview={transcriptPreview}
               onClear={clearTranscript}
               onReplace={replaceTranscript}
-              saving={false}
-              saveError={null}
+              saving={savingTranscript}
+              saveError={transcriptSaveError}
             >
               {transcriptFile ? (
                 <DocumentReviewPanel
+                  disabled={savingTranscript}
                   showOverview={false}
                   certId={certId}
                   kind="transcript"
@@ -547,7 +583,7 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={handleAttachAndPrepare}
-                disabled={busy || !transcriptFile || !transcriptCleared}
+                disabled={busy || savingTranscript || !transcriptFile || !transcriptCleared}
                 title={transcriptCleared ? undefined : "Check the transcript against the certificate and clear the result first"}
                 className="cd-btn-primary disabled:opacity-60"
                 style={{ background: "#2F6F4E" }}>
@@ -597,9 +633,7 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
                 </div>
               ))}
             </div>
-            <button onClick={handleSign} disabled={busy} className="cd-btn-primary self-start disabled:opacity-60">
-              {busy ? <><Loader2 size={15} className="animate-spin" /> Waiting for MetaMask…</> : <><Wallet size={15} /> Sign submitForSealedReview</>}
-            </button>
+            <WalletSigningControls signing={busy} onSign={handleSign} />
           </div>
         )}
 
@@ -641,7 +675,7 @@ const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
               <ShieldCheck size={14} className="text-[#2F6F4E]" />
               <span className="font-mono text-[#08283F] text-xs">{txHash}</span>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <Link href="/dashboard/certificates" className="cd-btn-primary">View All Certificates</Link>
               <ActionButton onClick={resetAll} className="cd-btn-secondary">Issue Another</ActionButton>
             </div>

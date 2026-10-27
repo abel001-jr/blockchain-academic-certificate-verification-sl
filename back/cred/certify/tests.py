@@ -435,6 +435,20 @@ class PlatformStatsTests(TestCase):
     cannot narrow down.
     """
 
+    def test_chart_periods_and_zero_filled_verification_months(self):
+        self.client.force_authenticate(self.super_admin)
+        for months in (3, 6, 9, 12):
+            response = self.client.get(f"/api/admin/platform-stats/?credential_months=24&verification_months={months}")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(len(response.data["verifications"]["trend"]), months)
+            self.assertEqual(response.data["chart_periods"]["credentials"], 24)
+            self.assertIn("by_institution", response.data["credential_chart"])
+
+    def test_chart_period_limits_are_enforced(self):
+        self.client.force_authenticate(self.super_admin)
+        for query in ("credential_months=5", "verification_months=24", "credential_months=bad"):
+            self.assertEqual(self.client.get(f"/api/admin/platform-stats/?{query}").status_code, 400)
+
     def setUp(self):
         self.client = APIClient()
         self.super_admin = User.objects.create_user(
@@ -580,7 +594,7 @@ def build_pdf(lines, filename="document.pdf"):
     """A real single-page PDF with a text layer, built the way a registrar's
     actual upload would be. Using a genuine PDF rather than a stub keeps the
     extraction path under test honest."""
-    import fitz
+    import pymupdf as fitz
 
     key = tuple(lines)
     if key not in _PDF_CACHE:
@@ -1501,6 +1515,16 @@ class StudentInviteTokenTests(TestCase):
 
     # â”€â”€ TTL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+    def test_manual_invite_does_not_send_whatsapp(self):
+        from unittest.mock import patch
+        self.student.phone_number = "+23276123456"
+        self.student.save(update_fields=["phone_number"])
+        with patch("notifications.whatsapp.send_whatsapp") as send:
+            result = notify_student_issued(self.cert, force=True, deliver_whatsapp=False)
+            self.assertTrue(result["claim_url"])
+            self.assertFalse(result["twilio_sent"])
+            send.assert_not_called()
+
     def test_default_window_is_24_hours(self):
         token, _raw = StudentInviteToken.create_for_certificate(self.cert)
 
@@ -1661,6 +1685,12 @@ class MyCertificateDocumentsTests(TestCase):
     """
 
     def setUp(self):
+        from tempfile import TemporaryDirectory
+        self.local_cache = TemporaryDirectory(dir=__import__("pathlib").Path(__file__).resolve().parent.parent)
+        self.addCleanup(self.local_cache.cleanup)
+        self.cache_settings = override_settings(CREDENTIAL_LOCAL_DOCUMENT_ROOT=self.local_cache.name)
+        self.cache_settings.enable()
+        self.addCleanup(self.cache_settings.disable)
         self.client = APIClient()
         self.institution = Institution.objects.create(
             institution_id="CUSL-003", name="Central University SL"
@@ -1697,6 +1727,35 @@ class MyCertificateDocumentsTests(TestCase):
         self.encrypted_transcript = encrypt_document(
             TRANSCRIPT_PDF, self.cert.certificate_id, "transcript",
         )
+
+    def test_owner_can_fetch_certificate_alone_without_transcript(self):
+        self.client.force_authenticate(self.student)
+        self.cert.ipfs_cid_transcript = ""
+        self.cert.transcript_hash = ""
+        self.cert.save(update_fields=["ipfs_cid_transcript", "transcript_hash"])
+        with self._stub_ipfs():
+            response = self.client.get(f"/api/my-certificates/{self.cert.certificate_id}/documents/?document=certificate")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, CERT_PDF)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+
+    def test_owner_preview_renders_pdf_and_rejects_other_student(self):
+        import pymupdf as fitz
+        with fitz.open() as doc:
+            doc.new_page()
+            pdf = doc.tobytes()
+        self.cert.doc_hash = document_sha256(pdf)
+        self.cert.save(update_fields=["doc_hash"])
+        url = f"/api/my-certificates/{self.cert.certificate_id}/documents/?document=certificate&preview=true"
+        self.client.force_authenticate(self.student)
+        with mock.patch("certify.student_document_views.fetch_verified_document", return_value=pdf):
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertEqual(response["X-Document-Pages"], "1")
+        self.client.force_authenticate(self.other_student)
+        self.assertEqual(self.client.get(url).status_code, 404)
 
     def _stub_ipfs(self, cert_blob=None, transcript_blob=None):
         blobs = {
@@ -2359,6 +2418,27 @@ class DraftDocumentTests(TestCase):
         response = self.client.get(f"/api/certificates/{cert.id}/draft-document/")
 
         self.assertEqual(response.status_code, 404, response.data)
+
+    def test_background_restore_uses_json_without_download_headers(self):
+        import base64
+        from django.core.files.base import ContentFile
+        from .encrypted_documents import encrypt_document
+
+        cert = self._certificate()
+        original = b"%PDF-1.4\nDraft restore bytes\n%%EOF"
+        cert.transcript_file.save("restore.pdf.enc", ContentFile(
+            encrypt_document(original, cert.certificate_id, "transcript"),
+        ))
+        response = self.client.get(
+            f"/api/certificates/{cert.id}/draft-document/?kind=transcript&transport=json"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")
+        self.assertNotIn("Content-Disposition", response)
+        self.assertEqual(base64.b64decode(response.data["content_base64"]), original)
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        self.assertEqual(response["X-Content-Type-Options"], "nosniff")
 
     def test_reading_an_unknown_document_kind_is_rejected(self):
         cert = self._certificate()

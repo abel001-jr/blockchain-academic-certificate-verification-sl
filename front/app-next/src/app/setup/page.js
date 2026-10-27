@@ -10,7 +10,7 @@ import { ActionButton } from "@/components/ui/AnimatedControls";
  * Then wait for Registrar on-chain authorization.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Loader2, Wallet, KeyRound, CheckCircle2, Shield, PenLine } from "lucide-react";
@@ -44,6 +44,7 @@ export default function OfficerSetupPage() {
   const [ready,        setReady]        = useState(false);
   const [profile,      setProfile]      = useState(null);
   const [error,        setError]        = useState("");
+  const walletRequestLock = useRef(false);
   const [walletBusy,   setWalletBusy]   = useState(false);
   const [walletDone,   setWalletDone]   = useState(false);
   const [walletAddr,   setWalletAddr]   = useState("");
@@ -78,6 +79,8 @@ export default function OfficerSetupPage() {
   }, []);
 
   async function connectAndVerifyWallet() {
+    if (walletRequestLock.current) return;
+    walletRequestLock.current = true;
     setError("");
     setWalletBusy(true);
     try {
@@ -98,12 +101,19 @@ export default function OfficerSetupPage() {
       const vData = await vRes.json();
       if (!vRes.ok) throw new Error(vData.detail || "Wallet verification failed.");
 
+      if (vData.user?.role === "super_admin") {
+        if (!vData.access || !vData.refresh) throw new Error("Wallet linked. Sign in again to continue.");
+        localStorage.setItem("access_token", vData.access);
+        localStorage.setItem("refresh_token", vData.refresh);
+        window.location.replace("/dashboard");
+        return;
+      }
       setWalletDone(true);
       setProfile(vData.user);
     } catch (e) {
       setError(e?.message || String(e));
     } finally {
-      setWalletBusy(false);
+      walletRequestLock.current = false; setWalletBusy(false);
     }
   }
 
@@ -121,6 +131,11 @@ export default function OfficerSetupPage() {
       if (!res.ok) throw new Error(data.detail || "Could not set password.");
       setPasswordDone(true);
       setProfile(data.user);
+      if (data.user?.has_signature || profile?.has_signature) {
+        setSignatureDone(true);
+        setComplete(true);
+        window.location.href = "/dashboard";
+      }
     } catch (err) {
       setError(err?.message || String(err));
     } finally {
@@ -129,7 +144,18 @@ export default function OfficerSetupPage() {
   }
 
   function finishAndLogout() { clearSession(); window.location.href = "/login"; }
-  function finishSetup()     { setComplete(true); }
+  async function finishSetup() {
+    setComplete(true);
+    try {
+      if (jwtPayload()?.token_use === "officer_setup") {
+        const response = await fetch(BASE + "/auth/officer-setup/complete/", { method: "POST", headers: authHeaders() });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Could not complete setup.");
+        localStorage.setItem("access_token", data.access); localStorage.setItem("refresh_token", data.refresh);
+      }
+      window.location.href = "/dashboard";
+    } catch (failure) { setError(failure.message); }
+  }
 
   if (!ready) {
     return (
@@ -149,7 +175,7 @@ export default function OfficerSetupPage() {
             <Image src="/fav.png" alt="Intelligent Academic Credentialing" width={44} height={44} className="w-full h-full object-contain" />
           </div>
           <div>
-            <h1 className="text-[#08283F] font-bold text-2xl leading-tight">Officer setup</h1>
+            <h1 className="text-[#08283F] font-bold text-2xl leading-tight">{profile?.role === "super_admin" ? "Link your admin wallet" : "Officer setup"}</h1>
             <p className="text-[#4A5A68] text-sm mt-0.5">
               {profile?.full_name || "Officer"} · limited session
             </p>
@@ -160,8 +186,9 @@ export default function OfficerSetupPage() {
         <div className="bg-[#EAF2FB] border border-[#CFE1F2] rounded-xl p-4 mb-6 flex gap-3 items-start">
           <Shield size={17} className="text-[#08283F] mt-0.5 shrink-0" />
           <p className="text-[#4A5A68] text-sm leading-relaxed">
-            Connect MetaMask and sign a free challenge (no gas), then set a permanent password.
-            This screen is the only one available until setup is complete.
+            {profile?.role === "super_admin"
+              ? "Connect MetaMask and sign a free challenge to link your wallet before entering the dashboard. Use the contract owner wallet for blockchain administration."
+              : "Connect MetaMask and sign a free challenge (no gas), then set a permanent password. This screen is the only one available until setup is complete."}
           </p>
         </div>
 
@@ -182,19 +209,23 @@ export default function OfficerSetupPage() {
             {walletDone ? (
               <p className="text-[#2F6F4E] text-sm font-mono break-all">{walletAddr}</p>
             ) : (
+              <div className="flex flex-wrap gap-3">
               <ActionButton
                 type="button"
-                onClick={connectAndVerifyWallet}
+                onClick={() => connectAndVerifyWallet()}
                 disabled={walletBusy}
                 className="cd-btn-primary disabled:opacity-50"
               >
                 {walletBusy ? <Loader2 size={16} className="animate-spin" /> : <Wallet size={16} />}
                 {walletBusy ? "Verifying…" : "Connect Wallet"}
               </ActionButton>
+
+              </div>
             )}
           </div>
         </div>
 
+        {profile?.role !== "super_admin" && <>
         {/* Step 2 — Password */}
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-3">
@@ -257,10 +288,10 @@ export default function OfficerSetupPage() {
           <div className="pl-11 space-y-4 mb-2">
             <p className="text-[#2F6F4E] text-sm font-semibold">Setup complete. Your temporary password is retired.</p>
             <p className="text-[#4A5A68] text-sm leading-relaxed">
-              Wait for your Registrar to authorize your wallet on-chain. After that,
-              sign in with <strong>MetaMask only</strong>.
+              Your wallet and password setup are complete. Your institution invitation grants access to your role dashboard.
               {!signatureDone && <> You can add your certificate signature later in Settings.</>}
             </p>
+            <NavigationButton onClick={finishSetup} className="cd-btn-primary">Enter dashboard</NavigationButton>
             <NavigationButton direction="back"
               type="button"
               onClick={finishAndLogout}
@@ -272,6 +303,7 @@ export default function OfficerSetupPage() {
           </div>
         )}
 
+        </>}
         <div className="h-px bg-[#E4E1D6] mt-7 mb-4" />
         <p className="text-center text-[#8A929C] text-xs">
           Wrong account?{" "}

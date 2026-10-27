@@ -32,3 +32,11 @@
 @keyframes pendingReveal { from { opacity: .5; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @media(max-width:639px) { .pendingRow { flex-wrap: wrap; gap: 10px; } }
 @media(prefers-reduced-motion:reduce) { .dashboard .pendingAttention { animation: none; } }
+
+.activityGrid { display: grid; grid-template-columns: minmax(0,1.6fr) minmax(0,1fr); gap: 16px; align-items: stretch; }
+.activityGrid > * { min-width: 0; border-radius: 16px; }
+.activityGrid > :global(.cd-scroll-card) > div:first-child { min-height: 84px; display: flex; align-items: center; padding: 16px 20px; }
+.activityGrid h3 { font-family: inherit !important; font-size: 16px !important; font-weight: 600 !important; text-transform: none !important; letter-spacing: normal !important; }
+@media (max-width:900px) { .activityGrid { grid-template-columns: minmax(0,1fr); } }
+
+.activityGrid > :global(.cd-scroll-card) { height: 420px; }

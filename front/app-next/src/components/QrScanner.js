@@ -45,6 +45,7 @@ export default function QrScanner({ open, onClose, onScan }) {
   const onCloseRef = useRef(onClose);
   const [error, setError] = useState("");
   const [fileBusy, setFileBusy] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(false);
 
   useEffect(() => {
     onScanRef.current = onScan;
@@ -60,6 +61,7 @@ export default function QrScanner({ open, onClose, onScan }) {
 
   const emitScan = useCallback(
     (raw) => {
+      if (closedRef.current) return false;
       const id = parseCertificateIdFromScan(raw);
       if (!id) return false;
       closedRef.current = true;
@@ -72,9 +74,8 @@ export default function QrScanner({ open, onClose, onScan }) {
   );
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !cameraEnabled) return;
     closedRef.current = false;
-    setError("");
 
     let cancelled = false;
 
@@ -110,7 +111,7 @@ export default function QrScanner({ open, onClose, onScan }) {
               ctx.drawImage(videoEl, 0, 0, w, h);
               try {
                 const raw = await decodeFromCanvas(canvas);
-                if (raw && emitScan(raw)) return;
+                if (!cancelled && !closedRef.current && raw && emitScan(raw)) return;
               } catch {
                 // keep scanning
               } finally {
@@ -135,12 +136,14 @@ export default function QrScanner({ open, onClose, onScan }) {
       cancelled = true;
       stopCamera();
     };
-  }, [open, emitScan, stopCamera]);
+  }, [open, cameraEnabled, emitScan, stopCamera]);
 
   async function handleFile(e) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+    stopCamera();
+    setCameraEnabled(false);
     setFileBusy(true);
     setError("");
     try {
@@ -157,11 +160,11 @@ export default function QrScanner({ open, onClose, onScan }) {
 
   return (
     <div className="fixed inset-0 z-[80] bg-[#08283F]/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl">
+      <div role="dialog" aria-modal="true" aria-label="Read credential QR" className="bg-white rounded-2xl w-full max-w-md max-h-[90dvh] overflow-y-auto shadow-xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#E4E1D6]">
           <div className="flex items-center gap-2">
             <Camera size={18} className="text-[#08283F]" />
-            <h3 className="text-[#08283F] font-semibold text-base">Scan certificate QR</h3>
+            <h3 className="text-[#08283F] font-semibold text-base">Read credential QR</h3>
           </div>
           <button
             type="button"
@@ -173,7 +176,7 @@ export default function QrScanner({ open, onClose, onScan }) {
           </button>
         </div>
 
-        <div className="relative bg-black aspect-square">
+        {cameraEnabled && <div className="relative bg-black aspect-square overflow-hidden">
           <video
             ref={videoRef}
             className="absolute inset-0 w-full h-full object-cover"
@@ -184,18 +187,24 @@ export default function QrScanner({ open, onClose, onScan }) {
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
             <div className="w-[62%] h-[62%] rounded-xl border-2 border-white/85 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
           </div>
-        </div>
+        </div>}
 
         <div className="px-5 py-4 flex flex-col gap-3">
           <p className="text-[#4A5A68] text-sm">
-            Point the camera at the QR on an Intelligent Academic Credentialing certificate — works for system-designed and uploaded certificates.
+            {cameraEnabled ? "Point your camera at the credential QR code." : "Scan with your camera or upload a QR image."}
           </p>
-          {error && <p className="text-[#A23B34] text-sm">{error}</p>}
+          {error && <p role="alert" className="text-[#A23B34] text-sm">{error}</p>}
+          <button type="button" className="cd-btn-primary justify-center" disabled={fileBusy} onClick={() => {
+            setError("");
+            if (cameraEnabled) { stopCamera(); setCameraEnabled(false); }
+            else { closedRef.current = false; setCameraEnabled(true); }
+          }}><Camera size={16} />{cameraEnabled ? "Cancel camera" : "Scan using camera"}</button>
           <label className="cd-btn-secondary cursor-pointer justify-center">
             <ImagePlus size={15} />
             {fileBusy ? "Reading image…" : "Upload QR photo"}
-            <input type="file" accept="image/*" className="hidden" onChange={handleFile} />
+            <input type="file" accept="image/*" disabled={fileBusy} className="hidden" onChange={handleFile} />
           </label>
+          <button type="button" className="cd-btn-secondary justify-center" onClick={() => { closedRef.current = true; stopCamera(); onClose(); }}>Cancel</button>
         </div>
       </div>
     </div>

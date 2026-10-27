@@ -1,4 +1,5 @@
 # Env files — never commit real secrets
+APIs/*.json
 .env
 .env.local
 .env.*.local
@@ -36,3 +37,6 @@ chain/typechain-types/
 Thumbs.db
 .vscode/
 .idea/
+
+# Private encrypted owner-document cache
+back/cred/private_document_cache/

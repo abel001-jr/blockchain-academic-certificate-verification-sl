@@ -1,9 +1,11 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { fieldLabel } from "./templateFieldGroups";
 import { drawField, moveField, resizeField, overlappingFields } from "@/lib/templateGeometry.mjs";
 
 const name = key => key.replaceAll("_", " ");
-const buttonStyle = { border: "1px solid #CCD5DE", borderRadius: 6, padding: "6px 10px", background: "white", fontSize: 12 };
+const buttonStyle = { display: "inline-flex", alignItems: "center", justifyContent: "center", minHeight: 36, border: "1px solid #DADDDC", borderRadius: 7, padding: "8px 11px", background: "white", color: "#08283F", fontSize: 11, fontWeight: 600, lineHeight: 1.4 };
 
 export default function TemplateCanvas({ fields, selected, page, pageUrl, disabled, onSelect, onChange, onEdit, onRemove, onUndo, onRedo, canUndo, canRedo }) {
   const viewport = useRef(null), surface = useRef(null), gesture = useRef(null);
@@ -11,6 +13,25 @@ export default function TemplateCanvas({ fields, selected, page, pageUrl, disabl
   const [zoom, setZoom] = useState(100);
   const [tool, setTool] = useState("select");
   const [showLabels, setShowLabels] = useState(true);
+  const [tooltipsEnabled, setTooltipsEnabled] = useState(true);
+  const [hovered, setHovered] = useState(null);
+  const tooltipId = useId();
+  function showSummary(event, index) {
+    if (!tooltipsEnabled || tool !== "select" || gesture.current) return;
+    const box = event.currentTarget.getBoundingClientRect();
+    setHovered({index, left: Math.max(8, Math.min(box.left, window.innerWidth - 288)),
+      top: Math.max(8, Math.min(box.bottom + 10, window.innerHeight - 190))});
+  }
+  const summaryField = hovered ? fields[hovered.index] : null;
+  useEffect(() => {
+    const hideSummary = () => setHovered(null);
+    window.addEventListener("scroll", hideSummary, true);
+    window.addEventListener("resize", hideSummary);
+    return () => {
+      window.removeEventListener("scroll", hideSummary, true);
+      window.removeEventListener("resize", hideSummary);
+    };
+  }, []);
   const [draft, setDraft] = useState(null);
   const collisions = overlappingFields(fields);
 
@@ -26,6 +47,7 @@ export default function TemplateCanvas({ fields, selected, page, pageUrl, disabl
   }
   function start(event, index, kind, handle) {
     if (event.button !== 0) return;
+    setHovered(null);
     if (disabled && kind !== "pan") return;
     event.stopPropagation();
     event.preventDefault();
@@ -59,6 +81,7 @@ export default function TemplateCanvas({ fields, selected, page, pageUrl, disabl
     if (action?.kind === "draw") setTool("select");
   }
   function keyboard(event) {
+    if (event.key === "Escape") setHovered(null);
     if (disabled || /INPUT|SELECT|TEXTAREA|BUTTON/.test(event.target.tagName)) return;
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? onRedo() : onUndo(); return; }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") { event.preventDefault(); onRedo(); return; }
@@ -72,17 +95,18 @@ export default function TemplateCanvas({ fields, selected, page, pageUrl, disabl
   }
   return <div style={{ minWidth: 0 }}>
     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginBottom: 10 }}>
-      {["select", "draw", "pan"].map(value => <button key={value} type="button" aria-pressed={tool === value} disabled={value === "draw" && (disabled || !fields[selected])} onClick={() => setTool(value)} style={{ ...buttonStyle, background: tool === value ? "#EAF2FB" : "white" }}>{value === "select" ? "Select / move" : value === "draw" ? "Draw area" : "Pan"}</button>)}
+      {["select", "draw", "pan"].map(value => <button key={value} type="button" aria-pressed={tool === value} disabled={value === "draw" && (disabled || !fields[selected])} onClick={() => { setTool(value); setHovered(null); }} style={{ ...buttonStyle, background: tool === value ? "#F2EFE7" : "white", borderColor: tool === value ? "#B9AD95" : "#DADDDC" }}>{value === "select" ? "Select / move" : value === "draw" ? "Draw area" : "Pan"}</button>)}
       <button type="button" style={buttonStyle} onClick={() => setZoom(Math.max(50, zoom - 25))} aria-label="Zoom out">−</button>
       <select aria-label="Document zoom" value={zoom} onChange={event => setZoom(Number(event.target.value))} style={buttonStyle}>{[50, 75, 100, 125, 150, 175, 200].map(value => <option key={value} value={value}>{value}%</option>)}</select>
       <button type="button" style={buttonStyle} onClick={() => setZoom(Math.min(200, zoom + 25))} aria-label="Zoom in">+</button>
       <button type="button" style={buttonStyle} onClick={() => { setZoom(100); viewport.current.scrollTo({ left: 0, top: 0 }); }}>Fit page width</button>
       <button type="button" style={buttonStyle} disabled={disabled || !canUndo} onClick={onUndo}>Undo</button>
       <button type="button" style={buttonStyle} disabled={disabled || !canRedo} onClick={onRedo}>Redo</button>
+      <button type="button" style={buttonStyle} aria-pressed={!tooltipsEnabled} onClick={() => { setTooltipsEnabled(value => !value); setHovered(null); }}>{tooltipsEnabled ? "Pause field tooltips" : "Resume field tooltips"}</button>
       <label style={{ fontSize: 12 }}><input type="checkbox" checked={showLabels} onChange={event => setShowLabels(event.target.checked)} /> Labels</label>
     </div>
     {collisions.length > 0 && <p role="status" className="mb-2 rounded bg-amber-50 p-3 text-xs text-amber-800">Overlapping areas: {collisions.map(([a, b]) => `${a + 1}. ${name(fields[a].key)} / ${b + 1}. ${name(fields[b].key)}`).join("; ")}. Move or resize these areas and check the generated sample.</p>}
-    <div ref={viewport} style={{ overflow: "auto", maxHeight: "75vh", minHeight: 300, padding: 16, border: "1px solid #D8DEE6", background: "#EDF1F5", borderRadius: 8 }}>
+    <div ref={viewport} onScroll={() => setHovered(null)} style={{ overflow: "auto", maxHeight: "75vh", minHeight: 300, padding: 16, border: "1px solid #D8DEE6", background: "#EDF1F5", borderRadius: 8 }}>
       {pageUrl ? <div ref={surface} tabIndex={0} role="group" aria-label="Document field editor; arrows move, Delete removes, Enter edits" onKeyDown={keyboard} onPointerDown={event => {
         if (tool === "pan") start(event, null, "pan");
         else if (tool === "draw" && fields[selected]) start(event, selected, "draw");
@@ -93,7 +117,10 @@ export default function TemplateCanvas({ fields, selected, page, pageUrl, disabl
           const field = draft?.index === index ? draft.field : original;
           if (field.page !== page) return null;
           const active = selected === index;
-          return <div key={index} onPointerDown={event => { if (tool === "pan") start(event, null, "pan"); else start(event, index, "move"); }} onDoubleClick={event => { event.stopPropagation(); if (!disabled) onEdit(index); }} onContextMenu={event => { event.preventDefault(); if (!disabled) onRemove(index); }} title={`${index + 1}. ${name(field.key)}; drag to move, double-click to edit, right-click to remove`} style={{ position: "absolute", left: `${field.x * 100}%`, top: `${field.y * 100}%`, width: `${field.width * 100}%`, height: `${field.height * 100}%`, border: `2px solid ${active ? "#315BFF" : "#B98A28"}`, background: active ? "rgba(49,91,255,.06)" : "transparent", zIndex: active ? 5 : 2, cursor: disabled ? "default" : "move", touchAction: "none" }}>
+          return <div key={index} tabIndex={0} role="group" aria-label={`${fieldLabel(field.key)}, page ${field.page}`} aria-describedby={hovered?.index === index ? tooltipId : undefined}
+            onMouseEnter={event => showSummary(event, index)} onMouseLeave={() => setHovered(null)}
+            onFocus={event => { if (event.target === event.currentTarget) { onSelect(index); showSummary(event, index); } }} onBlur={() => setHovered(null)}
+            onPointerDown={event => { if (tool === "pan") start(event, null, "pan"); else start(event, index, "move"); }} onDoubleClick={event => { event.stopPropagation(); if (!disabled) onEdit(index); }} onContextMenu={event => { event.preventDefault(); if (!disabled) onRemove(index); }} style={{ position: "absolute", left: `${field.x * 100}%`, top: `${field.y * 100}%`, width: `${field.width * 100}%`, height: `${field.height * 100}%`, border: `2px solid ${active ? "#315BFF" : "#B98A28"}`, background: active ? "rgba(49,91,255,.06)" : "transparent", zIndex: active ? 5 : 2, cursor: disabled ? "default" : "move", touchAction: "none" }}>
             {showLabels && <span style={{ position: "absolute", top: field.y > .025 ? -23 : "100%", left: 0, whiteSpace: "nowrap", fontSize: 11, background: "white", padding: "1px 4px", color: "#08283F", borderRadius: 3, pointerEvents: "none" }}>{index + 1}. {name(field.key)}</span>}
             {active && !disabled && <>
               <button type="button" aria-label={`Remove ${name(field.key)}`} onPointerDown={event => event.stopPropagation()} onClick={() => onRemove(index)} style={{ position: "absolute", right: -10, top: -25, background: "white", color: "#A02323", border: "1px solid #D8DEE6", borderRadius: 4, width: 22, height: 22, fontSize: 12 }}>×</button>
@@ -103,6 +130,11 @@ export default function TemplateCanvas({ fields, selected, page, pageUrl, disabl
         })}
       </div> : <p className="text-sm">Loading document page...</p>}
     </div>
+    {tooltipsEnabled && tool === "select" && summaryField && createPortal(<div id={tooltipId} role="tooltip" style={{position: "fixed", left: hovered.left, top: hovered.top, width: 280, maxWidth: "calc(100vw - 16px)", zIndex: 150, pointerEvents: "none", padding: 12, borderRadius: 10, background: "#08283F", color: "#F8F7F2", boxShadow: "0 6px 20px #08283F33", fontSize: 12}}>
+      <strong>{fieldLabel(summaryField.key)}</strong><p className="mt-1">Page {summaryField.page} | {summaryField.key.endsWith("_signature") ? "Officer signature image" : ["logo", "seal"].includes(summaryField.key) ? "Institutional artwork" : summaryField.key === "qr" ? "Verification QR code" : "Certificate text field"}</p>
+      <p className="mt-1">Width {(summaryField.width * 100).toFixed(1)}% | Height {(summaryField.height * 100).toFixed(1)}%</p>
+      <p className="mt-1">{summaryField.clear ? "Clears existing content in this area." : "Keeps existing content underneath."}</p><p className="mt-1">Double-click or press Enter to edit. Pause field tooltips to navigate freely.</p>
+    </div>, document.body)}
     <details open className="mt-3 rounded-lg border p-3 text-xs"><summary className="font-semibold cursor-pointer">Navigation tips</summary><ul className="mt-2 list-disc pl-4 space-y-1">
       <li>Scroll on the page background; use Pan to drag the document viewport.</li><li>Click a field and drag to move it. Drag its handles to resize.</li><li>Use Draw area to replace the selected field&apos;s rectangle.</li><li>Right-click a field, click ×, or press Delete / X to remove it.</li><li>Double-click a field or press Enter to edit its content and asset settings.</li><li>Arrow keys move the selected field; Shift moves in larger steps.</li><li>Undo / Redo, Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z restore changes; Escape cancels a drag.</li><li>Zoom and Fit page width change the view without changing saved coordinates.</li>
     </ul></details>

@@ -100,35 +100,28 @@ class ShareCodeListCreateView(APIView):
     def post(self, request, certificate_id):
         cert  = _student_cert_or_404(certificate_id, request.user)
         label = (request.data.get("label") or "").strip()[:100]
-        single_use = bool(request.data.get("single_use", False))
+        single_use = bool(request.data.get("single_use", True))
         # Full-document access always closes. Default to one day if the client
         # does not choose a window, but never accept an explicit null: that
         # would mint a share code with no expiry at all.
-        raw_expires = request.data.get("expires_hours", DEFAULT_SHARE_EXPIRY_HOURS)
-        if raw_expires is None:
-            return Response(
-                {
-                    "detail": (
-                        "expires_hours is required — full-document access must "
-                        "have a closing time. Omit it to use the "
-                        f"{DEFAULT_SHARE_EXPIRY_HOURS}-hour default."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        raw_minutes = request.data.get("expires_minutes") if "expires_minutes" in request.data else None
         try:
-            h = int(raw_expires)
+            if "expires_minutes" in request.data:
+                if isinstance(raw_minutes, bool) or str(raw_minutes).strip() != str(int(raw_minutes)):
+                    raise ValueError
+                minutes = int(raw_minutes)
+            elif "expires_hours" in request.data:
+                raw_hours = request.data["expires_hours"]
+                if isinstance(raw_hours, bool) or str(raw_hours).strip() != str(int(raw_hours)):
+                    raise ValueError
+                minutes = int(raw_hours) * 60
+            else:
+                minutes = 15
         except (ValueError, TypeError):
-            return Response(
-                {"detail": "expires_hours must be a positive integer."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if not 0 < h <= MAX_SHARE_EXPIRY_HOURS:
-            return Response(
-                {"detail": f"expires_hours must be between 1 and {MAX_SHARE_EXPIRY_HOURS} hours."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        expires_at = timezone.now() + timezone.timedelta(hours=h)
+            return Response({"detail": "Choose an expiry in whole minutes (minimum 15)."}, status=400)
+        if not 15 <= minutes <= MAX_SHARE_EXPIRY_HOURS * 60:
+            return Response({"detail": "Expiry must be between 15 minutes and 30 days."}, status=400)
+        expires_at = timezone.now() + timezone.timedelta(minutes=minutes)
 
         sc, raw_code = VerificationShareCode.create(
             certificate=cert,

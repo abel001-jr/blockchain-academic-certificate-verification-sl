@@ -1,4 +1,6 @@
 "use client";
+import FeedbackToast from "@/components/FeedbackToast";
+import SignatureReadinessGate from "@/components/dashboard/SignatureReadinessGate";
 import NavigationButton from "@/components/ui/NavigationButton";
 
 /**
@@ -13,7 +15,7 @@ import NavigationButton from "@/components/ui/NavigationButton";
 import { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import WorkflowFlowSelector, { FLOW_IDS } from "@/components/WorkflowFlowSelector";
 import SystemDesignedFlow from "./SystemDesignedFlow";
@@ -23,13 +25,14 @@ import { api } from "@/lib/api";
 export default function IssueCertificatePage() {
   return (
     <Suspense fallback={<div className="flex justify-center py-16">Loading workflow…</div>}>
-      <IssueCertificateContent />
+      <SignatureReadinessGate><IssueCertificateContent /></SignatureReadinessGate>
     </Suspense>
   );
 }
 
 function IssueCertificateContent() {
   const { role } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const draftId = searchParams.get("draft");
   const requestedFlow = searchParams.get("flow");
@@ -44,7 +47,9 @@ function IssueCertificateContent() {
     api.get("/certificate-branding/").then(data => { if (alive) setBranding(data); }).catch(() => { if (alive) setBrandingError("Could not load institution issuance settings. Reload this page to try again."); });
     return () => { alive = false; };
   }, [role]);
-  const effectiveFlow = !draftId && branding?.active_revision_id && flow ? FLOW_IDS.DESIGN_WITH_CREDENCE : flow;
+  const activeFlow = Object.values(FLOW_IDS).includes(requestedFlow) ? requestedFlow : flow;
+  const effectiveFlow = !draftId && branding?.active_revision_id && activeFlow ? FLOW_IDS.DESIGN_WITH_CREDENCE : activeFlow;
+  function leaveWorkflow() { setFlow(null); router.replace("/dashboard/certificates/new"); }
 
   if (role && role !== "registrar") {
     return (
@@ -53,11 +58,11 @@ function IssueCertificateContent() {
       </div>
     );
   }
-  if (brandingError) return <p role="alert">{brandingError}</p>;
+  if (brandingError) return <FeedbackToast message={brandingError} title="Issuance settings unavailable" />;
   if (!branding) return <p role="status">Loading institution issuance settings...</p>;
 
   // ── Flow selector ──
-  if (!flow) {
+  if (!activeFlow) {
     return (
       <div className="flex flex-col gap-6 w-full">
         <div className="flex items-center gap-3">
@@ -100,7 +105,7 @@ function IssueCertificateContent() {
   if (effectiveFlow === FLOW_IDS.ASSISTED_PLACEMENT) {
     return (
       <div className="flex flex-col gap-6 w-full">
-        <NavigationButton direction="back" type="button" onClick={() => setFlow(null)} className="flex items-center gap-2 text-sm text-[#4A5A68] self-start">
+        <NavigationButton direction="back" type="button" onClick={leaveWorkflow} className="flex items-center gap-2 text-sm text-[#4A5A68] self-start">
           <ArrowLeft size={18} /> Back to workflows
         </NavigationButton>
         <div className="rounded-2xl border border-[#E4E1D6] bg-white p-6">
@@ -120,11 +125,11 @@ function IssueCertificateContent() {
 
   // Route to the appropriate flow component
   if (effectiveFlow === FLOW_IDS.DESIGN_WITH_CREDENCE) {
-    return <SystemDesignedFlow draftId={draftId} onBack={() => setFlow(null)} />;
+    return <SystemDesignedFlow draftId={draftId} onBack={leaveWorkflow} />;
   }
 
   if (effectiveFlow === FLOW_IDS.FULL_UPLOAD || effectiveFlow === FLOW_IDS.TRANSCRIPT_FIRST) {
-    return <ExternalUploadFlow draftId={draftId} onBack={() => setFlow(null)} flowType={effectiveFlow} emailDomain={branding.email_domain} />;
+    return <ExternalUploadFlow draftId={draftId} onBack={leaveWorkflow} flowType={effectiveFlow} emailDomain={branding.email_domain} />;
   }
 
   return null;

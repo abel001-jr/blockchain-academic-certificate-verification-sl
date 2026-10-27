@@ -1,32 +1,31 @@
 "use client";
+import { subscribeDashboardRefresh } from "@/lib/dashboardRefresh.mjs";
+import RecordPageHero from "@/components/dashboard/RecordPageHero";
+import styles from "./ApprovalsPage.module.css";
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, CheckCircle2, ScrollText, ExternalLink, FileText } from "lucide-react";
+import { Loader2, ScrollText } from "lucide-react";
+import { loadDashboardRecords } from "@/lib/dashboardRecords";
 import { api } from "@/lib/api";
 import { useAuth, ROLES } from "@/lib/useAuth";
 import StatusBadge from "@/components/dashboard/StatusBadge";
-import CertificatePreview from "@/components/dashboard/CertificatePreview";
-import { approveCertificateOnChain } from "@/lib/walletActions";
-import { notifyApprovalRecorded } from "@/lib/notifications";
+import CredentialDocumentPreview from "@/components/dashboard/CredentialDocumentPreview";
 import Link from "next/link";
 
 export default function ApprovalsPage() {
   const { role, loading: authLoading } = useAuth();
   const [certs, setCerts] = useState([]);
+  const [documentTab, setDocumentTab] = useState("certificate");
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(null);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [confirmingApproval, setConfirmingApproval] = useState(null);
 
   const isVc = role === ROLES.VC;
   const isChancellor = role === ROLES.CHANCELLOR;
   const statusFilter = isVc ? "pending_vc" : "pending_chancellor";
 
   const load = useCallback(async () => {
-    setLoading(true);
     try {
-      const data = await api.get(`/certificates/?status=${statusFilter}`);
+      const data = await loadDashboardRecords(`/certificates/?status=${statusFilter}&signing_ready=true`);
       const list = data.results ?? data;
       setCerts(list);
       setSelected((prev) => {
@@ -42,8 +41,8 @@ export default function ApprovalsPage() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (isVc || isChancellor) load();
-    else setLoading(false);
+    if (isVc || isChancellor) return subscribeDashboardRefresh(load, { intervalMs: 0 });
+    queueMicrotask(() => setLoading(false));
   }, [authLoading, isVc, isChancellor, load]);
 
   async function openReview(cert) {
@@ -53,56 +52,6 @@ export default function ApprovalsPage() {
       setSelected(detail);
     } catch {
       setSelected(cert);
-    }
-  }
-
-  async function handleApprove(cert) {
-    if (!cert.tx_hash) {
-      setError("This certificate has not been submitted on-chain. Ask the registrar to submit it before officer approval.");
-      return;
-    }
-    setBusy(cert.id);
-    setError("");
-    setSuccess("");
-    try {
-      const approval = await approveCertificateOnChain(
-        cert.certificate_id,
-        isVc ? "vc" : "chancellor",
-      );
-      const path = isVc
-        ? `/certificates/${cert.id}/confirm-vc/`
-        : `/certificates/${cert.id}/confirm-chancellor/`;
-      await api.post(path, { tx_hash: approval.hash });
-
-      setSuccess(`${cert.certificate_id} approved on-chain. Tx: ${approval.hash}`);
-      
-      // Confirms the actor's own transaction was recorded. The next officer in
-      // the chain is notified by the backend, which is the only side that can
-      // reach them.
-      notifyApprovalRecorded(
-        cert.certificate_id,
-        cert.student_name || 'Unknown Student',
-        isVc ? 'vc' : 'chancellor',
-      );
-      
-      setSelected(null);
-      load();
-    } catch (e) {
-      // MetaMask wraps revert reasons inside e.data.message for -32603 errors
-      const revertMsg =
-        e?.data?.message ||
-        e?.error?.data?.message ||
-        e?.reason ||
-        e?.shortMessage ||
-        e?.message ||
-        "";
-
-      // Extract the Solidity revert string if present (e.g. "execution reverted: CertificateRegistry: not an authorized VC")
-      const match = revertMsg.match(/execution reverted[:\s]*(.*)/i);
-      const display = match?.[1]?.trim() || revertMsg || JSON.stringify(e);
-      setError(display);
-    } finally {
-      setBusy(null);
     }
   }
 
@@ -120,53 +69,31 @@ export default function ApprovalsPage() {
 
   return (
     <div className="flex flex-col gap-6 w-full">
-      {confirmingApproval && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#081c2d]/55 p-4" role="dialog" aria-modal="true" aria-labelledby="approval-confirmation-title">
-          <div className="w-full max-w-lg rounded-2xl border border-[#D9E0E7] bg-white p-6 shadow-2xl">
-            <CheckCircle2 size={24} className="text-[#2F6F4E]" />
-            <h3 id="approval-confirmation-title" className="mt-3 text-lg font-bold text-[#142B41]">Confirm your approval</h3>
-            <p className="mt-2 text-sm leading-6 text-[#4A5A68]">
-              You are approving {confirmingApproval.certificate_id} as {isVc ? "VC" : "Chancellor"}. MetaMask will open to record your approval on-chain and may require gas.
-            </p>
-            <div className="mt-6 flex justify-end gap-3">
-              <button onClick={() => setConfirmingApproval(null)} className="cd-btn-secondary">Cancel</button>
-              <button onClick={() => { const cert = confirmingApproval; setConfirmingApproval(null); handleApprove(cert); }} className="cd-btn-primary">Confirm approval</button>
-            </div>
-          </div>
-        </div>
-      )}
-      <div>
-        <h2 className="text-[#022448] font-bold text-2xl">
-          {isVc ? "VC Approvals" : "Chancellor Approvals"}
-        </h2>
-        <p className="text-[#43474e] text-sm mt-0.5">
-          Review the certificate preview (same as issuance), then Approve with MetaMask.
-        </p>
-      </div>
+      <RecordPageHero eyebrow={isVc ? "Vice-Chancellor signing workspace" : "Chancellor signing workspace"} title="Credential approvals" description="Review the certificate and academic transcript together, then record your approval with MetaMask." count={certs.length} countLabel="awaiting your signature" />
 
               {error && <div className="bg-[#ffdad6] text-[#93000a] text-sm px-4 py-3 rounded-lg break-all">{error}</div>}
-      {success && <div className="bg-[#E8F5E9] text-[#2E7D32] text-sm px-4 py-3 rounded-lg break-all">{success}</div>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-5">
-        <div className="bg-white rounded-[14px] border border-[#c4c6cf]/10 overflow-hidden self-start">
+      <div className={styles.layout}>
+        <div className={styles.queue}>
+          <div className={styles.queueHeader}><h3>Credentials awaiting signature</h3><span>{certs.length} credentials</span></div>
           {certs.length === 0 ? (
-            <p className="px-5 py-10 text-center text-[#43474e] text-sm">Nothing waiting for your signature.</p>
+            <p className="px-5 py-10 text-center text-[#43474e] text-sm">No submitted credentials are currently ready for your signature.</p>
           ) : (
-            <div className="divide-y divide-[#c4c6cf]/10">
+            <div className={styles.queueBody} role="region" aria-label="Credentials awaiting your review" tabIndex={0}>
               {certs.map((cert) => (
                 <button
                   key={cert.id}
                   type="button"
                   onClick={() => openReview(cert)}
-                  className={`w-full text-left px-4 py-3.5 flex items-start gap-3 transition-colors ${
-                    selected?.id === cert.id ? "bg-[#eef4ff]" : "hover:bg-[#FAF7F2]"
-                  }`}
+                  aria-pressed={selected?.id === cert.id}
+                  className={`${styles.row} ${selected?.id === cert.id ? styles.selected : ""}`}
                 >
                   <ScrollText size={16} className="text-[#022448] shrink-0 mt-0.5" />
                   <div className="min-w-0">
                     <p className="text-[#022448] text-sm font-semibold truncate">{cert.certificate_id}</p>
                     <p className="text-[#43474e] text-xs truncate">{cert.student_name}</p>
-                    <div className="mt-1.5"><StatusBadge status={cert.status} /></div>
+                    <p className="mt-1 text-xs text-[#687B8E] break-words">{cert.degree_title}</p>
+                    <div className="mt-2"><StatusBadge status={cert.status} /></div>
                   </div>
                 </button>
               ))}
@@ -174,41 +101,28 @@ export default function ApprovalsPage() {
           )}
         </div>
 
-        <div className="bg-white rounded-[14px] border border-[#c4c6cf]/10 p-5 md:p-6 min-h-[280px]">
+        <div className={styles.preview}>
           {!selected ? (
-            <p className="text-[#43474e] text-sm py-12 text-center">Select a certificate to review the preview.</p>
+            <p className="text-[#43474e] text-sm py-12 text-center">Select a credential to review its certificate and transcript.</p>
           ) : (
             <div className="flex flex-col gap-5">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
                   <p className="font-mono text-[#022448] text-sm font-semibold">{selected.certificate_id}</p>
                   <p className="text-[#43474e] text-sm mt-0.5">
-                  Review the full credential below, then approve it.
+                  Preview the documents below, then open the full detail to review and approve.
                   </p>
                 </div>
                 <StatusBadge status={selected.status} />
               </div>
 
-              {["full_upload", "transcript_then_cert"].includes(selected.flow_type) ? (
-                <div className="space-y-4">
-                  {[["Certificate PDF", selected.ipfs_url_pdf], ["Transcript PDF", selected.ipfs_url_transcript]].filter(([, url]) => url).map(([label, url]) => (
-                    <section key={label} className="overflow-hidden rounded-xl border border-[#E4E0D5]">
-                      <div className="flex items-center justify-between border-b border-[#E4E0D5] bg-[#FCFBF8] px-4 py-3">
-                        <span className="flex items-center gap-2 text-sm font-semibold text-[#142B41]"><FileText size={15} />{label}</span>
-                        <a href={url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs font-semibold text-[#2F6F4E] hover:underline"><ExternalLink size={13} />Open</a>
-                      </div>
-                      <iframe src={url} title={label} className="w-full" style={{ height: "520px" }} />
-                    </section>
-                  ))}
-                </div>
-              ) : (
-                <CertificatePreview
-                  certificate={selected}
-                  presetId={selected.branding_preset}
-                  logoUrl={selected.logo_url || ""}
-                  institutionName={selected.institution_name}
-                />
-              )}
+              <section className="space-y-4" aria-label="Complete credential documents">
+                <div><h3 className="text-base font-semibold text-[#08283F]">Complete credential: certificate &amp; transcript</h3><p className="mt-1 text-xs text-[#687B8E]">Review both supporting documents before recording your approval.</p></div>
+                <div className="flex flex-wrap gap-2" aria-label="Credential document selection">{[["certificate", "Certificate document"], ["transcript", "Academic transcript"]].map(([kind, label]) => <button key={kind} type="button" aria-pressed={documentTab === kind} className={documentTab === kind ? "cd-btn-primary" : "cd-btn-secondary"} onClick={() => setDocumentTab(kind)}>{label}</button>)}</div>
+                <p className="rounded-lg bg-[var(--cd-tint)] px-4 py-3 text-xs leading-5 text-[#4A5A68]">Inspect the institution logo and seal in the submitted certificate before signing. For template-based certificates, this is an approval progress preview showing captured officer signatures; the original submitted PDF and its hash remain unchanged.</p>
+                {documentTab === "certificate" && <CredentialDocumentPreview key={selected.id + "certificate"} id={selected.id} kind="certificate" />}
+                {documentTab === "transcript" && <CredentialDocumentPreview key={selected.id + "transcript"} id={selected.id} kind="transcript" />}
+              </section>
 
               {!selected.tx_hash && (
                 <div className="rounded-lg border border-[#D8BF84] bg-[#FFF8E7] px-4 py-3 text-sm text-[#795A18]">
@@ -217,19 +131,11 @@ export default function ApprovalsPage() {
               )}
 
               <div className="flex flex-wrap items-center gap-3">
-                <button
-                  onClick={() => setConfirmingApproval(selected)}
-                  disabled={!!busy || !selected.tx_hash}
-                  className="flex items-center gap-2 bg-[#7b5900] text-white px-5 py-2.5 rounded-[12px] text-sm font-semibold disabled:opacity-50"
-                >
-                  {busy === selected.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                  Approve with MetaMask (gas)
-                </button>
                 <Link
                   href={`/dashboard/certificates/${selected.id}`}
-                  className="text-[#022448] text-xs font-semibold hover:underline"
+                  className="cd-btn-primary"
                 >
-                  Open full detail
+                  View in full before approval
                 </Link>
               </div>
             </div>

@@ -30,10 +30,10 @@ export default function AuthCountrySelect({ value, onChange }) {
   }
   return <div className={styles.field}>
     <span id={`${id}-label`} className={styles.label}>Country *</span>
-    <button type="button" ref={anchor} onClick={toggle} aria-labelledby={`${id}-label ${id}-value`} aria-haspopup="dialog" aria-expanded={open} className={styles.trigger}><span id={`${id}-value`}>{value}</span><ChevronDown size={16} /></button>
+    <button type="button" ref={anchor} onClick={toggle} aria-labelledby={`${id}-label ${id}-value`} aria-haspopup="dialog" aria-expanded={open} className={styles.trigger}><span id={`${id}-value`}>{value || "Choose country"}</span><ChevronDown size={16} /></button>
     {open && createPortal(<div ref={popup} role="dialog" aria-label="Choose country" className={styles.popup} style={position}>
       <input ref={searchInput} type="search" placeholder="Search countries" aria-label="Search countries" value={search} onChange={e => setSearch(e.target.value)} />
-      {results.length ? <select size={7} aria-label="Country options" value={results.some(row => row.name === value) ? value : ""} onChange={e => { onChange(e.target.value); setOpen(false); anchor.current?.focus(); }}>{results.map(country => <option key={country.code} value={country.name}>{country.name}</option>)}</select> : <p>No countries found.</p>}
+      {results.length ? <select size={7} aria-label="Country options" value={results.some(row => row.name === value) ? value : ""} onChange={e => { onChange(e.target.value); setOpen(false); anchor.current?.focus(); }}><option value="" disabled>Choose country</option>{results.map(country => <option key={country.code} value={country.name}>{country.name}</option>)}</select> : <p>No countries found.</p>}
     </div>, document.body)}
   </div>;
 }

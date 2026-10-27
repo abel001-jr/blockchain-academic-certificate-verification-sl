@@ -3,7 +3,7 @@ import { ArrowUpRight, BadgeCheck, Database, Globe2, LockKeyhole, ShieldCheck, W
 import styles from "./WhyCredence.module.css";
 
 const benefits = [
-  { icon: Wallet, title: "Wallet-based access", body: "Institutional staff connect a linked wallet to authenticate and sign authorised blockchain transactions.", href: "/wallet-signin", cta: "Connect your wallet" },
+  { icon: Wallet, title: "Wallet-based access", body: "Institutional staff connect a linked wallet to authenticate and sign authorised blockchain transactions.", href: "/login", cta: "Connect your wallet" },
   { icon: Database, title: "IPFS document storage", body: "Credential documents are stored on IPFS through Pinata, separate from the blockchain record.", href: "#lifecycle", cta: "Explore document storage" },
   { icon: ShieldCheck, title: "Blockchain integrity", body: "An on-chain digital fingerprint provides a reference for detecting changes to an issued credential.", href: "#lifecycle", cta: "See how anchoring works" },
   { icon: BadgeCheck, title: "Independent verification", body: "Check the credential, issuing institution and blockchain record together without a wallet or account.", href: "#verify", cta: "Verify a credential" },

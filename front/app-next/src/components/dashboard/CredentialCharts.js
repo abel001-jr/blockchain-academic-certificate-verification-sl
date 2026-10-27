@@ -31,6 +31,7 @@ function Activity({ items }) {
   return <><div className={styles.area}>
     <svg viewBox="0 0 800 280" role="img" aria-label="Monthly issuance, claims and verification activity">
       {[0, 1, 2, 3, 4].map(step => <g key={step}><line x1="48" x2="752" y1={y(ceiling * step / 4)} y2={y(ceiling * step / 4)} stroke="#E4E8EB" strokeDasharray="4 5" /><text x="36" y={y(ceiling * step / 4) + 4} textAnchor="end" className={styles.caption}>{ceiling * step / 4}</text></g>)}
+      {selected && <rect className={styles.activityBand} x={Math.max(48, x(active) - 27)} y="24" width={Math.min(54, 752 - Math.max(48, x(active) - 27))} height="212" rx="6" />}
       {keys.map(key => {
         const points = items.map((item, index) => [x(index), y(item[key])]);
         if (!points.length) return null;
@@ -43,12 +44,13 @@ function Activity({ items }) {
         return <g key={key}><path d={area} fill={colors[key]} fillOpacity=".12" /><path d={curve} fill="none" stroke={colors[key]} strokeWidth="3" strokeLinecap="round" /></g>;
       })}
       {items.map((item, index) => <g key={monthLabel(item)}><text x={x(index)} y="263" textAnchor="middle" className={styles.caption}>{monthLabel(item).split(" ")[0]}</text><rect x={x(index) - 27} y="24" width="54" height="215" fill="transparent" tabIndex={0} aria-label={`${monthLabel(item)}: ${item.issued} issued, ${item.claims} claims, ${item.verifications} verifications`} onClick={() => setActive(index)} onMouseEnter={() => setActive(index)} onMouseLeave={() => setActive(null)} onFocus={() => setActive(index)} onBlur={() => setActive(null)} />{active === index && <line x1={x(index)} x2={x(index)} y1="24" y2="236" stroke="#780110" strokeDasharray="3 4" pointerEvents="none" />}</g>)}
+      {selected && keys.map(key => <circle key={key} className={styles.activityPoint} cx={x(active)} cy={y(selected[key])} r="5" fill={colors[key]} stroke="#fff" strokeWidth="2" />)}
     </svg>
     {selected && <div role="tooltip" className={styles.tooltip}><b>{monthLabel(selected)}</b>{keys.map(key => <span key={key}>{label(key)} <strong>{selected[key]}</strong></span>)}</div>}
   </div><div className={styles.legend}>{keys.map(key => <span key={key}><i style={{ background: colors[key] }} />{key === "issued" ? "Issuance" : label(key)}</span>)}</div></>;
 }
 
-export default function CredentialCharts({ children, initialData = null }) {
+export default function CredentialCharts({ children, initialData = null, issuanceChart }) {
   const [data, setData] = useState(initialData);
   const [error, setError] = useState("");
   const [group, setGroup] = useState("programmes");
@@ -57,11 +59,13 @@ export default function CredentialCharts({ children, initialData = null }) {
   const field = { programmes: "degree_title", departments: "department", stages: "status" }[group];
   const rows = data[group] || [];
   const maximum = Math.max(1, ...rows.map(row => row.count));
-  return <section className={styles.layout} aria-label="Credential charts">
-    <article className={styles.card}><div className={styles.header}><div><h3>Credential comparison</h3><p>Compare the current credential portfolio</p></div><select data-dropdown="compact" aria-label="Compare credentials by" value={group} onChange={event => setGroup(event.target.value)}><option value="programmes">Programmes</option><option value="departments">Departments</option><option value="stages">Approval stages</option></select></div>
+  const comparison = (<article className={styles.card}><div className={styles.header}><div><h3>Credential comparison</h3><p>Compare the current credential portfolio</p></div><select data-dropdown="compact" aria-label="Compare credentials by" value={group} onChange={event => setGroup(event.target.value)}><option value="programmes">Programmes</option><option value="departments">Departments</option><option value="stages">Approval stages</option></select></div>
       <div className={styles.bars}>{rows.map(row => <DashboardTooltip key={row[field]} title={label(row[field] || "Unspecified")} detail={`${row.count} credentials · ${data.total ? (row.count / data.total * 100).toFixed(1) : 0}% of the portfolio.`}><div tabIndex={0} className={styles.barRow}><div><span>{label(row[field] || "Unspecified")}</span><b>{row.count}</b></div><div className={styles.track}><div style={{ width: `${row.count / maximum * 100}%` }} /></div></div></DashboardTooltip>)}{!rows.length && <p>No credentials recorded yet.</p>}</div>
-    </article>
+    </article>);
+  return <section className={`${styles.layout} ${issuanceChart ? styles.issuanceLayout : ""}`} aria-label="Credential charts">
+    {issuanceChart || comparison}
     <article className={styles.card}><div className={styles.header}><div><h3>Credential status</h3><p>Current share of the portfolio</p></div></div><Donut statuses={data.statuses} total={data.total} /></article>
+    {issuanceChart && <div className={styles.wide}>{comparison}</div>}
     {children && <div className={styles.wide}>{children}</div>}
     {data.activity && <article className={`${styles.card} ${styles.wide}`}><div className={styles.header}><div><h3>Credential activity over time</h3><p>Monthly issuance, student claims and verification checks · last 12 months</p></div></div><Activity items={data.activity} /></article>}
   </section>;

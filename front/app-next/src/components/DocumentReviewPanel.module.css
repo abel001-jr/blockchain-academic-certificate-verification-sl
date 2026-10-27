@@ -5,3 +5,5 @@
 .readButton:disabled { opacity: .6; cursor: wait; animation: none; }
 @keyframes readyPulse { 50% { box-shadow: 0 0 0 6px rgba(8,40,63,.05); } }
 @media (prefers-reduced-motion: reduce) { .readButton { animation: none; transition: none; } }
+
+.ready { padding: 12px 20px; min-height: 44px; font-size: 14px; box-shadow: 0 0 0 4px rgba(8,40,63,.15), 0 4px 12px rgba(8,40,63,.12); }

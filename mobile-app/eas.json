@@ -1,0 +1,19 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "environment": "development",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "494428742938-j24ie89hhpeh2612imhqvb0j6ebn34hp.apps.googleusercontent.com"
+      }
+    }
+  }
+}

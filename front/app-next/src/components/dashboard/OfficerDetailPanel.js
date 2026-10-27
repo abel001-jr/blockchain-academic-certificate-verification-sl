@@ -1,4 +1,5 @@
 "use client";
+import { subscribeDashboardRefresh } from "@/lib/dashboardRefresh.mjs";
 import NavigationButton from "@/components/ui/NavigationButton";
 
 /**
@@ -59,13 +60,11 @@ export default function OfficerDetailPanel({ id, onClose }) {
   const canEdit = officer && !officer.wallet_verified && !officer.on_chain_authorized;
   const canResend =
     officer &&
-    !officer.on_chain_authorized &&
-    (!officer.wallet_verified || officer.must_change_password);
+    !officer.on_chain_authorized;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (background = false) => {
     if (!id) return;
-    setLoading(true);
-    setError("");
+    if (!background) { setLoading(true); setError(""); }
     try {
       const data = await api.get(`/users/${id}/`);
       if (!["registrar", "vc", "chancellor"].includes(data.role)) {
@@ -73,7 +72,7 @@ export default function OfficerDetailPanel({ id, onClose }) {
         setOfficer(null);
       } else {
         setOfficer(data);
-        setForm({
+        if (!background) setForm({
           first_name: data.first_name || "",
           last_name: data.last_name || "",
           email: data.email || "",
@@ -83,8 +82,7 @@ export default function OfficerDetailPanel({ id, onClose }) {
         if (stashed) setTempPassword(stashed);
       }
     } catch (e) {
-      setError(e?.detail || "Failed to load officer.");
-      setOfficer(null);
+      if (!background) { setError(e?.detail || "Failed to load officer."); setOfficer(null); }
     } finally {
       setLoading(false);
     }
@@ -92,11 +90,13 @@ export default function OfficerDetailPanel({ id, onClose }) {
 
   useEffect(() => {
     if (authLoading) return;
+    const unsubscribe = isInstitutionSetupAdmin(role)
+      ? subscribeDashboardRefresh(() => load(true), { immediate: false }) : () => {};
     const timer = setTimeout(() => {
       if (isInstitutionSetupAdmin(role)) void load();
       else setLoading(false);
     }, 0);
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); unsubscribe(); };
   }, [authLoading, role, load]);
 
   async function copyWallet() {
@@ -166,6 +166,7 @@ export default function OfficerDetailPanel({ id, onClose }) {
 
   async function resendInvite() {
     if (!canResend) return;
+    if (!confirm("Generate a new temporary password? The current password will stop working and the officer must set a permanent password again.")) return;
     setResending(true);
     setError("");
     setSuccess("");

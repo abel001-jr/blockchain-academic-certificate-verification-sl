@@ -1,5 +1,6 @@
 "use client";
-import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { publishDashboardUpdate, subscribeDashboardRefresh } from "@/lib/dashboardRefresh.mjs";
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { api, jwtPayload } from "@/lib/api";
 import { enablePush, disablePush, syncPush } from "@/lib/pushNotifications";
@@ -10,6 +11,7 @@ export function useNotifications() { return useContext(NotificationContext); }
 
 export default function NotificationProvider({ children }) {
   const pathname = usePathname();
+  const latestNotification = useRef(null);
   const [inbox, setInbox] = useState({ results: [], unread_count: 0, next_offset: null });
   const [preferences, setPreferences] = useState(null);
   const [error, setError] = useState("");
@@ -20,16 +22,21 @@ export default function NotificationProvider({ children }) {
     const session = localStorage.getItem("access_token");
     try {
       const data = await api.get("/notifications/");
-      if (localStorage.getItem("access_token") === session) { setInbox(data); setError(""); }
+      if (localStorage.getItem("access_token") === session) {
+        const latest = data.results?.[0]?.id || "";
+        const changed = latestNotification.current !== null && latestNotification.current !== latest;
+        latestNotification.current = latest;
+        setInbox(data); setError("");
+        if (changed) publishDashboardUpdate("/notifications/new/");
+      }
     } catch (e) { if (localStorage.getItem("access_token") === session) setError(e?.detail || "Could not load notifications."); }
   }, []);
   useEffect(() => {
     let active = true;
-    const reset = () => { active = false; setInbox({ results: [], unread_count: 0, next_offset: null }); setPreferences(null); };
+    const reset = () => { latestNotification.current = null; active = false; setInbox({ results: [], unread_count: 0, next_offset: null }); setPreferences(null); };
     const check = async () => { if (document.visibilityState === "visible") await refresh(); };
     window.addEventListener("credence:session-ended", reset);
-    document.addEventListener("visibilitychange", check);
-    window.addEventListener("focus", check);
+    const unsubscribe = subscribeDashboardRefresh(check, { immediate: false });
     if (pathname?.startsWith("/dashboard") && jwtPayload()) {
       Promise.resolve().then(refresh);
       api.get("/notifications/preferences/").then(async data => {
@@ -39,8 +46,7 @@ export default function NotificationProvider({ children }) {
         if (data.push_enabled && data.push_configured) await syncPush(data.public_key);
       }).catch(() => { if (active) setError("Could not load notification preferences."); });
     }
-    const timer = setInterval(check, 30000);
-    return () => { active = false; clearInterval(timer); window.removeEventListener("credence:session-ended", reset); document.removeEventListener("visibilitychange", check); window.removeEventListener("focus", check); };
+    return () => { active = false; unsubscribe(); window.removeEventListener("credence:session-ended", reset); };
   }, [pathname, refresh]);
   async function setPush(enabled) {
     setBusy(true); setError("");

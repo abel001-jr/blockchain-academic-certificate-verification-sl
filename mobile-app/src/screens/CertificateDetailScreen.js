@@ -1,4 +1,9 @@
+import { useToast } from "../components/ToastProvider";
+import { apiErrorMessage, apiErrorData } from "../utils/apiError";
+import { colors as T, createStyles, fonts, cardShadow } from "../theme";
+import { verificationFailure } from "../utils/verification";
 import AnimatedButton from "../components/AnimatedButton";
+import ContourSplash from "../components/ContourSplash";
 /**
  * CertificateDetailScreen — full certificate detail.
  *
@@ -20,7 +25,7 @@ import AnimatedButton from "../components/AnimatedButton";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Linking,
+  Image,
   Platform,
   RefreshControl,
   ScrollView,
@@ -30,27 +35,9 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { File, Paths } from "expo-file-system";
-import * as Sharing from "expo-sharing";
-import { downloadMyDocuments, verifyCertificate } from "../services/certificates";
+import { saveDocumentArchive, createDocumentPreview } from "../services/documents";
+import { downloadMyDocuments, verifyCertificate, getMyDocumentPreview } from "../services/certificates";
 
-const T = {
-  navy:       "#08283F",
-  gold:       "#B98A28",
-  cream:      "#F8F7F2",
-  border:     "#E4E1D6",
-  muted:      "#4A5A68",
-  faint:      "#8A929C",
-  surface:    "#fff",
-  green:      "#2E7D32",
-  greenLight: "#E7F1EB",
-  greenBdr:   "#A3D9B1",
-  red:        "#A23B34",
-  redLight:   "#F5E5E3",
-  amber:      "#B98A28",
-  amberLight: "#FFF8E7",
-  amberBdr:   "#F0D080",
-};
 
 function fmtDate(iso) {
   if (!iso) return "—";
@@ -85,7 +72,7 @@ function MetaRow({ label, value, mono }) {
 }
 
 function AnchorBadge({ txHash, chainIssuedAt }) {
-  const anchored = Boolean(txHash);
+  const anchored = Boolean(txHash || chainIssuedAt);
   return (
     <View style={[s.anchorBadge, anchored ? s.anchorGreen : s.anchorAmber]}>
       <Text style={[s.anchorText, { color: anchored ? T.green : T.amber }]}>
@@ -102,7 +89,10 @@ function VerifyBanner({ result }) {
   if (!result) return null;
   const o = result.verification_outcome;
 
-  if (!result.found || o === "not_found") {
+  if (o === "unavailable" || !["valid", "revoked", "not_found", "not_verified"].includes(o)) {
+    return <View style={[s.banner, s.bannerAmber]}><View style={{ flex: 1 }}><Text style={[s.bannerTitle, { color: T.amber }]}>Verification unavailable</Text><Text style={s.bannerSub}>{result.error || "Pull down to try again."}</Text></View></View>;
+  }
+  if (result.found === false || o === "not_found") {
     return (
       <View style={[s.banner, s.bannerRed]}>
         <Text style={s.bannerIcon}>✗</Text>
@@ -130,7 +120,7 @@ function VerifyBanner({ result }) {
     return (
       <View style={[s.banner, s.bannerAmber]}>
         <Text style={s.bannerIcon}>⏳</Text>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={[s.bannerTitle, { color: T.amber }]}>Pending on-chain</Text>
           <Text style={s.bannerSub}>Not yet anchored to the blockchain.</Text>
         </View>
@@ -140,32 +130,55 @@ function VerifyBanner({ result }) {
   return (
     <View style={[s.banner, s.bannerGreen]}>
       <Text style={s.bannerIcon}>✓</Text>
-      <View>
+      <View style={{ flex: 1 }}>
         <Text style={[s.bannerTitle, { color: T.green }]}>Certificate verified</Text>
-        <Text style={s.bannerSub}>Anchored · Integrity confirmed · Institution confirmed</Text>
+        <Text style={s.bannerSub}>The registry reports this certificate as issued.</Text>
       </View>
     </View>
   );
 }
 
 // ── Main screen ────────────────────────────────────────────────────────────
-export default function CertificateDetailScreen({ route }) {
+export default function CertificateDetailScreen({ route, navigation }) {
+  const { showToast } = useToast();
   const cert = route.params?.cert ?? {};
 
   const [verifyResult, setVerifyResult] = useState(null);
   const [verifyLoading, setVerifyLoading] = useState(true);
   const [refreshing,    setRefreshing]    = useState(false);
   const [downloading,   setDownloading]   = useState(false);
+  const [documentKind, setDocumentKind] = useState("certificate");
+  const [documentPage, setDocumentPage] = useState(1);
+  const [preview, setPreview] = useState(null);
+  const [previewError, setPreviewError] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [imageReady, setImageReady] = useState(false);
+  const [previewRetry, setPreviewRetry] = useState(0);
   const [downloadError, setDownloadError] = useState("");
 
+  useEffect(() => {
+    if (!cert.certificate_id || cert.status !== "issued") return;
+    let active = true, cleanup;
+    setPreviewLoading(true); setImageReady(false); setPreviewError(""); setPreview(null);
+    getMyDocumentPreview(cert.certificate_id, documentKind, documentPage).then(data => {
+      if (!active) return;
+      const image = createDocumentPreview(data.bytes);
+      cleanup = image.cleanup;
+      setPreview({uri: image.uri, pages: data.pages, source: data.source});
+    }).catch(error => {if (active) setPreviewError(apiErrorData(error).detail || apiErrorMessage(error, "Could not load this document."));})
+      .finally(() => {if (active) setPreviewLoading(false);});
+    return () => {active = false; cleanup?.();};
+  }, [cert.certificate_id, cert.status, documentKind, documentPage, previewRetry]);
+
+
   const runVerify = useCallback(async () => {
-    if (!cert.certificate_id) return;
+    if (!cert.certificate_id) { setVerifyLoading(false); setRefreshing(false); return; }
+    setVerifyLoading(true);
     try {
       const data = await verifyCertificate(cert.certificate_id);
       setVerifyResult(data);
     } catch (err) {
-      const detail = err?.response?.data?.message ?? "Verification failed.";
-      setVerifyResult({ found: false, verification_outcome: "not_found", error: detail });
+      setVerifyResult(verificationFailure(err));
     } finally {
       setVerifyLoading(false);
       setRefreshing(false);
@@ -184,40 +197,25 @@ export default function CertificateDetailScreen({ route }) {
    */
   const handleDownload = useCallback(async () => {
     if (!cert.certificate_id || downloading) return;
-    setDownloading(true);
-    setDownloadError("");
+    setDownloading(true); setDownloadError("");
     try {
       const bytes = await downloadMyDocuments(cert.certificate_id);
-      const file = new File(Paths.cache, `${cert.certificate_id}-documents.zip`);
-      file.write(new Uint8Array(bytes));
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(file.uri, {
-          mimeType: "application/zip",
-          dialogTitle: "Your certificate and transcript",
-          UTI: "public.zip-archive",
-        });
-      } else {
-        // Web and any host without a share sheet. A cache URI is not reachable
-        // by a browser, so say where the file is rather than silently doing
-        // nothing on a tap.
-        setDownloadError(`Saved to ${file.uri}`);
-      }
+      await saveDocumentArchive(bytes, cert.certificate_id);
     } catch (err) {
-      const detail =
-        err?.response?.data?.detail ??
-        err?.message ??
-        "Could not download your documents.";
-      setDownloadError(detail);
+      const message = apiErrorMessage(err, "Could not download your documents.");
+      setDownloadError(message);
+      showToast(message, { title: "Documents unavailable" });
     } finally {
       setDownloading(false);
     }
-  }, [cert.certificate_id, downloading]);
+  }, [cert.certificate_id, downloading, showToast]);
 
   const live       = verifyResult?.certificate ?? {};
   const txHash     = live.tx_hash      || cert.tx_hash      || "";
   const issuedAt   = live.chain_issued_at || cert.chain_issued_at || "";
   const hasTranscript = Boolean(live.has_transcript ?? cert.has_transcript);
+
+  if (verifyLoading) return <ContourSplash message="Checking your credential against the blockchain?" loadingLabel="Verifying credential against blockchain" />;
 
   return (
     <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
@@ -245,17 +243,7 @@ export default function CertificateDetailScreen({ route }) {
         </View>
 
         {/* ── Verification banner ── */}
-        <Section>
-          {verifyLoading
-            ? (
-              <View style={s.verifyingRow}>
-                <ActivityIndicator color={T.navy} size="small" />
-                <Text style={s.verifyingText}>Verifying against blockchain…</Text>
-              </View>
-            )
-            : <VerifyBanner result={verifyResult} />
-          }
-        </Section>
+        <Section><VerifyBanner result={verifyResult} /></Section>
 
         {/* ── Academic details ── */}
         <Section title="Academic Details">
@@ -294,51 +282,52 @@ export default function CertificateDetailScreen({ route }) {
         </Section>
 
         {/* ── Actions ── */}
-        {cert.certificate_id
-          ? (
-            <AnimatedButton variant="download" label={downloading ? "Preparing your documents�" : "Download Certificate & Transcript"} onPress={handleDownload} busy={downloading} />
-          ) : null}
-
-        {downloadError
-          ? (
-            <View style={s.notice}>
-              <Text style={s.noticeText}>{downloadError}</Text>
+        {cert.status === "issued" && <Section title="Access your credential">
+          <View style={{padding: 16, gap: 14}}>
+            <Text style={{fontSize: 13, lineHeight: 19, color: T.muted}}>Choose a document to review, then download it or share employer access.</Text>
+            <View style={{flexDirection: "row", backgroundColor: T.input, borderRadius: 10, padding: 4, gap: 4}}>
+              {["certificate", "transcript"].map(kind => <TouchableOpacity accessibilityRole="tab" accessibilityState={{selected: documentKind === kind}} key={kind} onPress={() => {setDocumentKind(kind); setDocumentPage(1);}} style={{flex: 1, minHeight: 46, justifyContent: "center", alignItems: "center", padding: 8, borderRadius: 8, backgroundColor: documentKind === kind ? T.navy : "transparent"}}><Text style={{fontSize: 14, fontWeight: "600", color: documentKind === kind ? T.cream : T.navy}}>{kind === "certificate" ? "Certificate" : "Transcript"}</Text></TouchableOpacity>)}
             </View>
-          ) : null}
+            <View accessibilityLiveRegion="polite" style={{flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8}}>
+              <View style={{width: 8, height: 8, borderRadius: 4, backgroundColor: previewError ? T.red : imageReady ? T.green : T.amber}} />
+              <Text style={{fontSize: 12, fontWeight: "700", color: previewError ? T.red : imageReady ? T.green : T.navy}}>{previewError ? "Viewing unavailable" : previewLoading ? "Retrieving document" : preview && !imageReady ? "Preparing preview" : imageReady ? (preview?.source === "local_cache" || preview?.source === "local_file" ? "Currently viewing locally" : "Ready to view") : "Waiting for document"}</Text>
+              <Text style={{fontSize: 12, color: T.muted}}>{documentKind === "certificate" ? "Certificate" : "Transcript"}{preview ? ` ? Page ${documentPage} of ${preview.pages}` : ""}</Text>
+            </View>
+            {imageReady && !previewError && (preview?.source === "local_cache" || preview?.source === "local_file") && <Text style={{fontSize: 12, lineHeight: 18, color: T.muted}}>Showing your verified local copy automatically. Cloud access is not needed to view this document.</Text>}
+            {previewLoading && <View style={{paddingVertical: 28, alignItems: "center", gap: 10}}><ActivityIndicator color={T.navy} /><Text style={{fontSize: 12, color: T.muted}}>Loading your verified document copy?</Text></View>}
+            {previewError ? <View style={{padding: 14, borderRadius: 10, backgroundColor: T.redLight, borderWidth: 1, borderColor: T.redBdr, gap: 10}}>
+              <Text accessibilityRole="alert" style={{fontSize: 13, lineHeight: 20, color: T.red}}>{previewError}</Text>
+              <Text style={{fontSize: 12, lineHeight: 18, color: T.muted}}>Your credential record is still available. Retry viewing, choose the other document, or contact your registrar if the file remains unavailable.</Text>
+              <AnimatedButton label="Retry viewing" onPress={() => setPreviewRetry(value => value+1)} />
+            </View> : null}
+            {preview && !previewError && <View style={{borderRadius: 10, overflow: "hidden", borderWidth: 1, borderColor: T.border}}>
+              <Image source={{uri: preview.uri}} accessibilityLabel={`${documentKind} page ${documentPage}`} onLoad={() => setImageReady(true)} onError={() => {setImageReady(false); setPreviewError("The document was retrieved, but its preview could not be displayed. Please retry viewing.");}} resizeMode="contain" style={{width: "100%", height: 360, backgroundColor: T.input}} />
+              <View style={{flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 4}}><TouchableOpacity accessibilityRole="button" disabled={documentPage <= 1} onPress={() => setDocumentPage(value => value-1)} style={{padding: 12, opacity: documentPage <= 1 ? .35 : 1}}><Text>Previous</Text></TouchableOpacity><Text style={{fontSize: 12}}>{documentPage} / {preview.pages}</Text><TouchableOpacity accessibilityRole="button" disabled={documentPage >= preview.pages} onPress={() => setDocumentPage(value => value+1)} style={{padding: 12, opacity: documentPage >= preview.pages ? .35 : 1}}><Text>Next</Text></TouchableOpacity></View>
+            </View>}
+            <View style={{borderTopWidth: 1, borderColor: T.border, paddingTop: 12, gap: 8}}>
+              <Text style={{fontSize: 11, fontWeight: "700", color: T.muted, letterSpacing: 1}}>DOCUMENT ACTIONS</Text>
+              <AnimatedButton variant="download" label={downloading ? "Preparing download?" : "Download certificate & transcript"} onPress={handleDownload} busy={downloading} />
+              {downloadError ? <Text accessibilityRole="alert" style={{fontSize: 12, lineHeight: 18, color: T.red}}>{downloadError}</Text> : null}
+              <AnimatedButton label="Share employer access" onPress={() => navigation.navigate("Dashboard", {shareCertificate: cert})} />
+              <TouchableOpacity accessibilityRole="button" style={{minHeight: 44, justifyContent: "center", alignItems: "center", padding: 10}} onPress={() => navigation.navigate("Verify", {certificateId: cert.certificate_id})}><Text style={{fontSize: 13, fontWeight: "600", color: T.navy}}>Check credential record</Text></TouchableOpacity>
+            </View>
+          </View>
+        </Section>}
 
-        {live.certificate_id
-          ? (
-            <TouchableOpacity
-              style={[s.actionBtn, s.actionBtnGhost]}
-              onPress={() => {
-                const base = "http://localhost:3000";
-                Linking.openURL(`${base}/verify/${live.certificate_id}`);
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={[s.actionBtnText, { color: T.navy }]}>🔗  Open Verification Link</Text>
-            </TouchableOpacity>
-          ) : null}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 // ── Styles ─────────────────────────────────────────────────────────────────
-const s = StyleSheet.create({
+const s = createStyles({
   safe:   { flex: 1, backgroundColor: T.cream },
-  scroll: { paddingBottom: 48 },
+  scroll: { paddingBottom: 48, width: "100%", maxWidth: 760, alignSelf: "center" },
 
   // Hero
-  hero: {
-    backgroundColor: T.navy,
-    paddingHorizontal: 22,
-    paddingTop: 20,
-    paddingBottom: 28,
-    gap: 6,
-  },
+  hero: { backgroundColor: T.navy, padding: 24, margin: 18, marginBottom: 4, borderRadius: 18 },
   heroEyebrow: { fontSize: 11, fontWeight: "600", color: "#B0C8DC", textTransform: "uppercase", letterSpacing: 0.8 },
-  heroDegree:  { fontSize: 20, fontWeight: "700", color: "#fff", lineHeight: 27 },
+  heroDegree: { fontSize: 27, fontWeight: "600", color: T.cream, lineHeight: 35, marginVertical: 12, letterSpacing: -0.6 },
   heroStudent: { fontSize: 13, color: "#B0C8DC" },
 
   // Anchor badge
@@ -355,19 +344,7 @@ const s = StyleSheet.create({
   anchorDate:  { fontSize: 10, color: T.muted, marginTop: 1 },
 
   // Section
-  section: {
-    backgroundColor: T.surface,
-    marginHorizontal: 16,
-    marginTop: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: T.border,
-    overflow: "hidden",
-    ...Platform.select({
-      native: { shadowColor: "#000", shadowOpacity: 0.03, shadowRadius: 6, elevation: 1 },
-      web:    { boxShadow: "0 1px 4px rgba(0,0,0,0.04)" },
-    }),
-  },
+  section: { backgroundColor: T.surface, marginHorizontal: 18, marginTop: 16, borderRadius: 12, borderWidth: 1, borderColor: T.border, overflow: "hidden", ...cardShadow },
   sectionTitle: {
     fontSize: 10,
     fontWeight: "700",
@@ -382,17 +359,9 @@ const s = StyleSheet.create({
   },
 
   // Metadata row
-  metaRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: T.border,
-  },
-  metaLabel: { fontSize: 12, color: T.faint, flex: 1 },
-  metaValue: { fontSize: 12, color: T.navy, fontWeight: "600", flex: 2, textAlign: "right" },
+  metaRow: { gap: 6, paddingHorizontal: 18, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: T.border },
+  metaLabel: { fontSize: 11, color: T.muted },
+  metaValue: { fontSize: 14, color: T.navy, fontWeight: "500", lineHeight: 22 },
   mono:      { fontFamily: "monospace", fontSize: 11 },
   link:      { color: "#1A73E8", textDecorationLine: "underline" },
 

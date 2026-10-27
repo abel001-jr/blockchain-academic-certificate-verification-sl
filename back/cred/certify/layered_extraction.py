@@ -14,7 +14,7 @@ def api_fields(pages):
             if text and len(lines) < 500:
                 lines.append({"id": len(lines), "page": page["page"], "text": text[:600]})
     if not lines:
-        return {}
+        raise ValueError("No readable document lines for Deep reading")
     response = requests.post("https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
         json={"model": settings.GROQ_MODEL, "temperature": 0, "max_completion_tokens": 1200,
@@ -43,34 +43,47 @@ def api_fields(pages):
     return fields
 
 
-def extract_with_layers(pdf_bytes):
+def extract_with_layers(pdf_bytes, *, reading_mode="local"):
+    if reading_mode not in ("local", "deep"):
+        raise DocumentAnalysisError("Choose Local reading or Deep reading.")
+    if reading_mode == "deep" and not settings.GROQ_API_KEY:
+        raise DocumentAnalysisError("Deep reading requires GROQ_API_KEY on the server. Use Local reading or ask the administrator to configure Groq.")
     analysis = analyze_pdf(pdf_bytes)
-    fields = extract_fields(analysis["pages"])
+    fields = extract_fields(analysis["pages"]) if reading_mode == "local" else {}
     layers = [{"name": "PyMuPDF", "status": "used", "detail": "Read embedded PDF text and page layout."}]
     pages = analysis["pages"]
     if analysis["ocr_used"]:
         layers.append({"name": "Tesseract", "status": "used", "detail": "Read scanned pages."})
-    elif any(not fields.get(key) for key in DEFAULT_FIELDS):
+    elif reading_mode == "local" and any(not fields.get(key) for key in DEFAULT_FIELDS):
         try:
             ocr = analyze_pdf(pdf_bytes, force_ocr=True)
             ocr_fields = extract_fields(ocr["pages"])
             fields.update({key: value for key, value in ocr_fields.items() if value and not fields.get(key)})
             pages = pages + ocr["pages"]
+            # Comparisons must see the second reading too, including unlabelled
+            # values found only by OCR. Keep one entry per physical page.
+            combined = {page["page"]: dict(page) for page in analysis["pages"]}
+            for page in ocr["pages"]:
+                original = combined.get(page["page"], {})
+                combined[page["page"]] = {
+                    **page,
+                    "text": "\n".join(filter(None, (original.get("text"), page.get("text")))),
+                    "lines": original.get("lines", []) + page.get("lines", []),
+                    "items": original.get("items", []) + page.get("items", []),
+                }
+            analysis["pages"] = list(combined.values())
             analysis["ocr_used"] = True
             layers.append({"name": "Tesseract", "status": "used", "detail": "Rendered pages for a second reading of unlabelled or missing fields."})
         except DocumentAnalysisError as exc:
             layers.append({"name": "Tesseract", "status": "unavailable", "detail": str(exc)})
     else:
-        layers.append({"name": "Tesseract", "status": "not_needed", "detail": "All requested fields were read from the PDF text."})
-    if not settings.GROQ_API_KEY:
-        layers.append({"name": "Groq API", "status": "not_configured", "detail": "Configure the extraction API to interpret document text."})
-    else:
+        layers.append({"name": "Tesseract", "status": "not_needed", "detail": "Embedded PDF text is available; no additional OCR pass is needed."})
+    if reading_mode == "deep":
         try:
-            interpreted = api_fields(pages)
-            fields.update(interpreted)
-            layers.append({"name": "Groq API", "status": "used", "detail": f"Identified {len(interpreted)} fields with cited document text. Registrar review remains required."})
-        except (requests.RequestException, ValueError, KeyError, IndexError, TypeError):
-            layers.append({"name": "Groq API", "status": "unavailable", "detail": "API extraction failed. Local readings remain available; retry the document analysis."})
+            fields = api_fields(pages)
+            layers.append({"name": "Groq API", "status": "used", "detail": f"Deep reading identified {len(fields)} fields with cited document text. Registrar review remains required."})
+        except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as exc:
+            raise DocumentAnalysisError("Groq Deep reading is unavailable. Retry or choose Local reading.") from exc
     recognition_pages = {}
     for page in pages:
         confidences = [item.get("confidence") for item in page.get("items", []) if isinstance(item.get("confidence"), (int, float)) and item["confidence"] >= 0]
@@ -80,5 +93,5 @@ def extract_with_layers(pdf_bytes):
             "confidence": round(sum(confidences) / len(confidences), 1) if confidences else None,
             "low_confidence_words": sum(value < 60 for value in confidences),
         }
-    analysis["recognition"] = {"engine": "Tesseract", "pages": list(recognition_pages.values())}
+    analysis["recognition"] = {"engine": "Tesseract" if analysis["ocr_used"] else "PyMuPDF", "pages": list(recognition_pages.values())}
     return analysis, fields, layers

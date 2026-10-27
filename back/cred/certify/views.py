@@ -7,7 +7,8 @@ Lifecycle:
        → generate PDF + pin → finalizeCertificate on-chain → Issued
 """
 
-from django.db.models import Count, Q
+from django.db import connection, transaction
+from django.db.models import Count, F, Q
 from django.db.models.functions import TruncMonth
 from django.conf import settings
 from django.core.files.base import ContentFile
@@ -30,7 +31,7 @@ from institutions.pdf_certificate import generate_certificate_pdf
 
 from accounts.signature_views import snapshot_signature_to_certificate
 from .attestation_notices import notify_officer_pending_attestation
-from .ipfs import fetch_file_from_ipfs, pin_file_to_ipfs, pin_json_to_ipfs
+from .ipfs import fetch_file_from_ipfs, pin_file_to_ipfs, pin_json_to_ipfs, pinning_failure
 from .encrypted_documents import (
     DocumentEncryptionError,
     decrypt_document,
@@ -146,7 +147,7 @@ def _get_or_create_student(email: str, student_name: str = "", institution=None)
 
 # ── Student issuance notification ─────────────────────────────────────────────
 
-def notify_student_issued(cert: Certificate, *, force: bool = False) -> dict:
+def notify_student_issued(cert: Certificate, *, force: bool = False, deliver_whatsapp: bool = True) -> dict:
     """
     Called once a certificate reaches ISSUED status (or on resend).
 
@@ -221,13 +222,17 @@ def notify_student_issued(cert: Certificate, *, force: bool = False) -> dict:
     # ── Build the message body (used for both Twilio and wa.me) ───────────────
     body = (
         f"Hello {student.first_name},\n\n"
-        f"Your *{cert.degree_title}* certificate from {cert.institution.name} "
-        f"has been issued on the Intelligent Academic Credentialing blockchain platform.\n\n"
-        f"Tap the link below to access your certificate "
-        f"(valid for {ttl_hours} hours):\n"
-        f"{claim_url}\n\n"
-        f"After opening the link you can log in with Google to keep permanent access.\n\n"
-        f"— Intelligent Academic Credentialing"
+        f"Congratulations! {cert.institution.name} has issued your academic credential through Credence.\n\n"
+        f"Award: {cert.degree_title}\n"
+        f"Graduation year: {cert.graduation_year}\n"
+        f"Credential ID: {cert.certificate_id}\n\n"
+        f"Claim your credential and access your student portal:\n{claim_url}\n\n"
+        f"This private, single-use invitation expires in {ttl_hours} hours. "
+        f"It is intended only for you; please do not forward it or post it publicly.\n\n"
+        f"After claiming, complete your profile and link your Google account for future sign-ins. "
+        f"You can then download your credential and share its verification link with employers.\n\n"
+        f"If you need help or the invitation has expired, contact your institution's registrar.\n\n"
+        f"Office of the Registrar\n{cert.institution.name}\nPowered by Credence"
     )
 
     wa_url = f"https://wa.me/?text={urllib.parse.quote(body)}"
@@ -238,7 +243,7 @@ def notify_student_issued(cert: Certificate, *, force: bool = False) -> dict:
 
     # ── Optional: Twilio direct send ──────────────────────────────────────────
     phone = getattr(student, "phone_number", "").strip()
-    if phone:
+    if phone and deliver_whatsapp:
         from notifications.whatsapp import send_whatsapp
         sent = send_whatsapp(to=phone, body=body)
         result["twilio_sent"] = sent
@@ -291,12 +296,30 @@ class CertificateListCreateView(generics.ListCreateAPIView):
         if status_param:
             qs = qs.filter(status=status_param)
 
+        if self.request.query_params.get("signing_ready") == "true":
+            officer_stage = {Role.VC: CertificateStatus.PENDING_VC, Role.CHANCELLOR: CertificateStatus.PENDING_CHANCELLOR}.get(user.role)
+            if not officer_stage:
+                return qs.none()
+            qs = qs.filter(status=officer_stage).exclude(tx_hash="").exclude(doc_hash="")
+            if user.role == Role.CHANCELLOR:
+                qs = qs.exclude(vc_approval_tx_hash="")
+
         # Super admin only — narrow the platform-wide list to one institution.
         institution_param = self.request.query_params.get("institution")
         if institution_param:
             if user.role != Role.SUPER_ADMIN:
                 return qs.none()
             qs = qs.filter(institution_id=institution_param)
+
+        submission = self.request.query_params.get("submission")
+        if submission in ("submitted", "not_submitted"):
+            qs = qs.filter(status__in=[CertificateStatus.PENDING_VC, CertificateStatus.PENDING_CHANCELLOR, CertificateStatus.PENDING_FINALIZE])
+            qs = qs.exclude(tx_hash="") if submission == "submitted" else qs.filter(tx_hash="")
+        documents = self.request.query_params.get("documents")
+        if documents == "paired":
+            qs = qs.exclude(transcript_hash="")
+        elif documents == "missing_transcript":
+            qs = qs.filter(transcript_hash="")
 
         search = self.request.query_params.get("search")
         if search:
@@ -306,6 +329,7 @@ class CertificateListCreateView(generics.ListCreateAPIView):
                 Q(certificate_id__icontains=search)
                 | Q(student_name__icontains=search)
                 | Q(student_email__icontains=search)
+                | Q(degree_title__icontains=search)
             )
 
         ordering = self.request.query_params.get("ordering") or "-created_at"
@@ -397,17 +421,70 @@ class CertificateListCreateView(generics.ListCreateAPIView):
             detail=f"Draft certificate created: {cert_id} (flow: {flow_type})",
         )
 
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
+        from institutions.models import Institution
+        if request.user.institution_id:
+            if connection.vendor == "sqlite":
+                # SQLite has no row locks. Acquire its write lock before the
+                # first read so two retries cannot both create a new draft.
+                Institution.objects.filter(pk=request.user.institution_id).update(short_name=F("short_name"))
+            else:
+                Institution.objects.select_for_update().get(pk=request.user.institution_id)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
+        values = serializer.validated_data
+        draft_id = values.pop("draft_id", None)
+        # Serialize creation within an institution so simultaneous requests do
+        # not both miss the same unfinished credential on row-locking databases.
+        unfinished = Certificate.objects.select_for_update().filter(
+            institution=request.user.institution,
+            status__in=[CertificateStatus.DRAFT, CertificateStatus.PENDING_VC,
+                        CertificateStatus.PENDING_CHANCELLOR, CertificateStatus.PENDING_FINALIZE,
+                        CertificateStatus.PENDING],
+        )
+        drafts = unfinished.filter(status=CertificateStatus.DRAFT)
+        identity = {
+            "student_email__iexact": values["student_email"],
+            "department": values["department"],
+            "degree_title": values["degree_title"],
+            "qualification_type": values["qualification_type"],
+            "graduation_year": values["graduation_year"],
+        }
+        changed = False
+        if draft_id:
+            existing = get_object_or_404(unfinished, pk=draft_id)
+            editable_fields = ("student_name", "student_email", "department", "degree_title", "qualification_type", "graduation_year", "grade")
+            changed = any(getattr(existing, key) != values[key] for key in editable_fields)
+            if changed:
+                if existing.status != CertificateStatus.DRAFT or any((existing.tx_hash, existing.cert_hash, existing.doc_hash, existing.transcript_hash,
+                        existing.ipfs_cid_json, existing.ipfs_cid_pdf, existing.ipfs_cid_transcript)):
+                    return Response({"detail": "These documents have already been prepared for approval. Their student details cannot be changed."}, status=409)
+                if unfinished.filter(**identity).exclude(pk=existing.pk).exists():
+                    return Response({"detail": "An unfinished credential already exists for this student and award. Continue that draft from Credentials."}, status=409)
+                for key in editable_fields:
+                    setattr(existing, key, values[key])
+                existing.student, _ = _get_or_create_student(values["student_email"], values["student_name"], request.user.institution)
+                existing.save(update_fields=[*editable_fields, "student", "updated_at"])
+                existing.document_reviews.all().delete()
+                log_action(actor=request.user, action="certificate.draft_updated", target_type="Certificate",
+                           target_id=str(existing.id), detail="Draft student details updated; document reviews must be repeated.")
+        else:
+            # Match the student and award, not the upload workflow or grade.
+            # Reopening must preserve the original documents and review work.
+            existing = (unfinished.filter(**identity).exclude(status=CertificateStatus.DRAFT).order_by("created_at", "id").first()
+                        or drafts.filter(**identity).order_by("created_at", "id").first())
+        if existing:
+            serializer.instance = existing
+        else:
+            self.perform_create(serializer)
         cert = Certificate.objects.select_related(
             "institution", "institution__certificate_template", "issued_by",
         ).get(pk=serializer.instance.pk)
-        return Response(
-            CertificateDetailSerializer(cert, context={"request": request}).data,
-            status=status.HTTP_201_CREATED,
-        )
+        data = CertificateDetailSerializer(cert, context={"request": request}).data
+        data["draft_reused"] = bool(existing)
+        data["draft_details_changed"] = changed
+        return Response(data, status=status.HTTP_200_OK if existing else status.HTTP_201_CREATED)
 
 
 # ── Detail ────────────────────────────────────────────────────────────────────
@@ -435,6 +512,9 @@ class CertificateDetailView(generics.RetrieveAPIView):
 
 # ── Upload PDF (legacy — optional; final PDF is generated at finalize) ────────
 
+from .signature_readiness import require_signatures
+
+
 class CertificateUploadDocumentView(APIView):
     """POST /api/certificates/<id>/upload-document/ — legacy optional upload."""
     permission_classes = [IsRegistrar]
@@ -442,6 +522,7 @@ class CertificateUploadDocumentView(APIView):
 
     def post(self, request, pk):
         cert = get_object_or_404(Certificate, pk=pk, institution=request.user.institution)
+        require_signatures(request.user)
         if cert.status != CertificateStatus.DRAFT:
             return Response({"detail": "Only Draft certificates can have a document uploaded."},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -481,6 +562,7 @@ class CertificatePrepareView(APIView):
 
     def post(self, request, pk):
         cert = get_object_or_404(Certificate, pk=pk, institution=request.user.institution)
+        require_signatures(request.user)
 
         if cert.status != CertificateStatus.DRAFT:
             return Response({"detail": "Only Draft certificates can be prepared."},
@@ -560,7 +642,7 @@ class CertificatePrepareView(APIView):
             json_result = pin_json_to_ipfs(cert_json, cert.certificate_id)
         except RuntimeError as e:
             return Response(
-                {"detail": f"IPFS pinning failed: {str(e)}"},
+                pinning_failure(e),
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
@@ -568,6 +650,7 @@ class CertificatePrepareView(APIView):
         # doc_hash is the reviewed document. It is never rewritten, so an
         # officer approval always refers to these exact bytes.
         cert.doc_hash = review_hash
+        cert.document_file.save(f"{cert.certificate_id}-review.pdf.enc", ContentFile(encrypted_review), save=False)
         cert.ipfs_cid_pdf = review_result["cid"]
         cert.ipfs_url_pdf = review_result["ipfs_url"]
         cert.ipfs_cid_json = json_result["cid"]
@@ -640,7 +723,7 @@ class CertificateConfirmChainView(APIView):
 
         s = CertificateChainUpdateSerializer(cert, data=request.data, partial=True)
         s.is_valid(raise_exception=True)
-        if not cert.tx_hash:
+        if not cert.tx_hash or s.validated_data.get("tx_hash", cert.tx_hash) != cert.tx_hash:
             # These approvals may only exist in Django from the old off-chain
             # workflow. They must be repeated against the newly submitted chain record.
             cert.vc_approved_at = None
@@ -894,7 +977,7 @@ class CertificateFinalizeView(APIView):
             )
         except RuntimeError as e:
             return Response(
-                {"detail": f"IPFS pinning failed: {str(e)}"},
+                pinning_failure(e),
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
@@ -1037,6 +1120,7 @@ class CertificateUploadAndAnchorView(APIView):
 
     def post(self, request, pk):
         cert = get_object_or_404(Certificate, pk=pk, institution=request.user.institution)
+        require_signatures(request.user)
 
         # Allow upload for the two upload-based flows
         allowed_flows = ("full_upload", "transcript_then_cert")
@@ -1092,7 +1176,7 @@ class CertificateUploadAndAnchorView(APIView):
         if review_blocked:
             return Response(review_blocked, status=status.HTTP_409_CONFLICT)
 
-        if transcript_bytes is not None:
+        if transcript_bytes is not None and not (cert.transcript_hash == transcript_hash and cert.ipfs_cid_transcript):
             encrypted_transcript = _seal(transcript_bytes, cert, "transcript")
             # Pin transcript to IPFS
             transcript_filename = f"{cert.certificate_id}-transcript.pdf.enc"
@@ -1105,36 +1189,45 @@ class CertificateUploadAndAnchorView(APIView):
                 )
                 transcript_cid = transcript_result["cid"]
                 transcript_url = transcript_result["ipfs_url"]
+                # Checkpoint the confirmed pin before later uploads can fail.
+                cert.transcript_hash = transcript_hash
+                cert.transcript_file.save(transcript_filename, ContentFile(encrypted_transcript), save=False)
+                cert.ipfs_cid_transcript = transcript_cid
+                cert.ipfs_url_transcript = transcript_url
+                cert.save(update_fields=["transcript_file", "transcript_hash", "ipfs_cid_transcript", "ipfs_url_transcript", "updated_at"])
             except RuntimeError as e:
                 return Response(
-                    {"detail": f"Transcript IPFS pinning failed: {str(e)}"},
+                    pinning_failure(e),
                     status=status.HTTP_502_BAD_GATEWAY,
                 )
+
+        elif transcript_bytes is not None:
+            transcript_cid = cert.ipfs_cid_transcript
+            transcript_url = cert.ipfs_url_transcript
 
         cert_json = build_certificate_json(cert)
         cert_hash = compute_sha256_json(cert_json)
 
-        # Save the uploaded file
         filename = f"{cert.certificate_id}-uploaded.pdf"
-        encrypted_pdf = _seal(pdf_bytes, cert, "certificate")
-        cert.document_file.save(
-            f"{filename}.enc", ContentFile(encrypted_pdf), save=False
-        )
-
-        # Pin to IPFS
+        # Reuse a confirmed pin only when it belongs to these exact document bytes.
         try:
-            pdf_result  = pin_file_to_ipfs(
-                ContentFile(encrypted_pdf, name=f"{filename}.enc"),
-                f"{filename}.enc",
-                cert.certificate_id,
-                content_type="application/octet-stream",
-            )
+            if cert.doc_hash == doc_hash and cert.ipfs_cid_pdf:
+                pdf_result = {"cid": cert.ipfs_cid_pdf, "ipfs_url": cert.ipfs_url_pdf}
+            else:
+                encrypted_pdf = _seal(pdf_bytes, cert, "certificate")
+                pdf_result = pin_file_to_ipfs(
+                    ContentFile(encrypted_pdf, name=f"{filename}.enc"),
+                    f"{filename}.enc", cert.certificate_id,
+                    content_type="application/octet-stream",
+                )
+                cert.document_file.save(f"{filename}.enc", ContentFile(encrypted_pdf), save=False)
+                cert.doc_hash = doc_hash
+                cert.ipfs_cid_pdf = pdf_result["cid"]
+                cert.ipfs_url_pdf = pdf_result["ipfs_url"]
+                cert.save(update_fields=["document_file", "doc_hash", "ipfs_cid_pdf", "ipfs_url_pdf", "updated_at"])
             json_result = pin_json_to_ipfs(cert_json, cert.certificate_id)
         except RuntimeError as e:
-            return Response(
-                {"detail": f"IPFS pinning failed: {str(e)}"},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
+            return Response(pinning_failure(e), status=status.HTTP_502_BAD_GATEWAY)
 
         # Update certificate record
         cert.cert_hash        = cert_hash
@@ -1209,6 +1302,7 @@ class CertificateUploadTranscriptView(APIView):
 
     def post(self, request, pk):
         cert = get_object_or_404(Certificate, pk=pk, institution=request.user.institution)
+        require_signatures(request.user)
         transcript_allowed_statuses = (
             CertificateStatus.PENDING,
             CertificateStatus.DRAFT,
@@ -1218,8 +1312,6 @@ class CertificateUploadTranscriptView(APIView):
         )
         if cert.status not in transcript_allowed_statuses:
             return Response({"detail": "A transcript can only be attached before the credential is issued."}, status=status.HTTP_400_BAD_REQUEST)
-        if cert.transcript_hash:
-            return Response({"detail": "This credential already has a transcript."}, status=status.HTTP_400_BAD_REQUEST)
         if cert.tx_hash:
             return Response(
                 {
@@ -1242,6 +1334,10 @@ class CertificateUploadTranscriptView(APIView):
 
         transcript_bytes = transcript_file.read()
         transcript_sha = document_sha256(transcript_bytes)
+        if cert.transcript_hash:
+            if cert.transcript_hash == transcript_sha and cert.ipfs_cid_transcript:
+                return Response(CertificateDetailSerializer(cert, context={"request": request}).data)
+            return Response({"detail": "This credential already has a different transcript. Review the saved transcript before continuing.", "code": "transcript_already_attached", "retryable": False}, status=status.HTTP_409_CONFLICT)
 
         # Registrar document review (REMAINING_WORK item 4). Only the transcript
         # is required here: on the transcript-then-certificate flow the
@@ -1266,12 +1362,13 @@ class CertificateUploadTranscriptView(APIView):
                 content_type="application/octet-stream",
             )
         except RuntimeError as e:
-            return Response({"detail": f"Transcript IPFS pinning failed: {str(e)}"}, status=status.HTTP_502_BAD_GATEWAY)
+            return Response(pinning_failure(e), status=status.HTTP_502_BAD_GATEWAY)
 
         cert.transcript_hash = document_sha256(transcript_bytes)
+        cert.transcript_file.save(f"{filename}.enc", ContentFile(encrypted_transcript), save=False)
         cert.ipfs_cid_transcript = result["cid"]
         cert.ipfs_url_transcript = result["ipfs_url"]
-        cert.save(update_fields=["transcript_hash", "ipfs_cid_transcript", "ipfs_url_transcript", "updated_at"])
+        cert.save(update_fields=["transcript_file", "transcript_hash", "ipfs_cid_transcript", "ipfs_url_transcript", "updated_at"])
         log_action(actor=request.user, action="certificate.transcript_attached", target_type="Certificate", target_id=str(cert.id), detail=f"Transcript attached to {cert.certificate_id}")
         return Response(CertificateDetailSerializer(cert, context={"request": request}).data)
 
@@ -1364,7 +1461,7 @@ class CertificateResendInviteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        sent = notify_student_issued(cert, force=True)
+        sent = notify_student_issued(cert, force=True, deliver_whatsapp=request.data.get("manual_only") is not True)
 
         log_action(
             actor=request.user,

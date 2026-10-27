@@ -1,3 +1,5 @@
+from .signature_readiness import SignatureReadinessView
+from .chain_status_views import CertificateChainStatusView
 from django.urls import path
 from .views import (
     CertificateListCreateView,
@@ -18,7 +20,7 @@ from .views import (
     CertificateUpdateStudentEmailView,
 )
 from .platform_views import PlatformStatsView, PlatformCertificateOverviewView
-from .document_review_views import DocumentAnalyzeView, DocumentReviewResolveView, DocumentReviewImagesView
+from .document_review_views import DocumentAnalyzeView, DocumentReviewResolveView, DocumentReviewImagesView, OfficerCredentialDocumentView
 from .share_code_views import ShareCodeListCreateView, ShareCodeRevokeView
 from .document_analysis_views import DocumentAnalysisView
 from .student_document_views import MyCertificateDocumentsView
@@ -30,6 +32,9 @@ from .draft_views import (
 )
 
 urlpatterns = [
+    path("certificates/<uuid:pk>/chain-status/", CertificateChainStatusView.as_view(), name="certificate-chain-status"),
+    path("issuance/signature-readiness/", SignatureReadinessView.as_view(), name="signature-readiness"),
+    path("certificates/<uuid:pk>/review-document/<str:kind>/", OfficerCredentialDocumentView.as_view(), name="officer-credential-document"),
     path("certificates/<uuid:pk>/document-reviews/<str:kind>/images/", DocumentReviewImagesView.as_view(), name="certificate-review-images"),
     path("certificates/<uuid:pk>/prepare-document/", CertificateDocumentPrepareView.as_view(), name="certificate-document-prepare"),
     path("documents/analyze/", DocumentAnalysisView.as_view(), name="document-analysis"),

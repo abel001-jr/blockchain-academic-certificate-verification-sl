@@ -1,5 +1,10 @@
+import FeedbackToast from "@/components/FeedbackToast";
 /* eslint-disable @next/next/no-img-element -- extracted document pixels */
 const states = {
+  signature_visual_match: { label: "Signature appearance matches", colour: "text-green-800 bg-green-50", recommendation: "The officer-associated signature graphic resembles the stored reference. Confirm the officer role and recorded approval separately." },
+  signature_possible_difference: { label: "Possible signature difference", colour: "text-red-800 bg-red-50", recommendation: "Inspect the isolated signature and officer title. Check the reference belongs to the officer who signed this document before requesting correction." },
+  likely_visual_match: { label: "Likely visual match", colour: "text-green-800 bg-green-50", recommendation: "Confirm the displayed crop and institutional reference agree. This provisional score does not establish authenticity." },
+  possible_difference: { label: "Possible difference", colour: "text-red-800 bg-red-50", recommendation: "Check that the correct image was cropped. If the crop is correct and differs from the reference, request a corrected document." },
   visual_match: { label: "Visual match", colour: "text-green-800 bg-green-50", recommendation: "Confirm the image is in the correct location and belongs to the issuing institution. Signature approval must still be checked separately." },
   manual_review: { label: "Match not confirmed", colour: "text-amber-800 bg-amber-50", recommendation: "Compare the document image with the stored reference. If they differ, request a corrected document; if they agree, record your manual findings in the review reason." },
   reference_missing: { label: "Reference missing", colour: "text-amber-800 bg-amber-50", recommendation: "Ask the institutional administrator to configure the logo, seal or officer signature, then compare again." },
@@ -8,19 +13,20 @@ const states = {
 
 export default function InstitutionIdentityResults({ identity, error, apiBase }) {
   const items = identity?.items || [];
-  const matched = items.filter(item => item.status === "visual_match").length;
-  const pending = items.filter(item => item.status === "manual_review").length;
-  const missing = items.length - matched - pending;
-  const total = items.length || 5;
+  const visualItems = items.filter(item => item.category !== "signatures");
+  const matched = visualItems.filter(item => ["visual_match", "likely_visual_match"].includes(item.status)).length;
+  const pending = visualItems.filter(item => ["manual_review", "possible_difference"].includes(item.status)).length;
+  const missing = visualItems.length - matched - pending;
+  const total = visualItems.length || 2;
   return <section className="mt-4 rounded-xl border border-[var(--cd-line)] p-4" aria-label="Institutional identity results">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h5 className="text-sm font-semibold text-[#08283F]">Institutional identity</h5>
-      <span role="status" className={`rounded px-2 py-1 text-xs font-semibold ${matched === total ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-800"}`}>{!identity ? "Awaiting image results" : matched === total ? "All visual references matched" : "Identity review incomplete"}</span>
+      <span role="status" className={`rounded px-2 py-1 text-xs font-semibold ${matched === total ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-800"}`}>{!identity ? "Awaiting image results" : matched === total ? "Logo and seal likely match" : "Identity review incomplete"}</span>
     </div>
-    <p className="mt-2 text-xs text-[#4A5A68]">{matched} of {total} visual references matched. This measures visual comparison coverage, not authenticity or signing approval.</p>
+    <p className="mt-2 text-xs text-[#4A5A68]">{matched} of {total} logo/seal references likely match. Scores are provisional visual comparisons. Signature appearance is assessed separately from officer authorization.</p>
     <progress className="mt-2 h-2 w-full accent-[#08283F]" max={total} value={matched} aria-label="Institutional visual references matched" />
     {identity && <div className="mt-2 flex flex-wrap gap-2 text-xs"><span className="rounded bg-green-50 px-2 py-1 text-green-800">{matched} matched</span><span className="rounded bg-amber-50 px-2 py-1 text-amber-800">{pending} not confirmed</span><span className="rounded bg-[var(--cd-tint)] px-2 py-1 text-[#4A5A68]">{missing} reference issues</span></div>}
-    {error && <p role="alert" className="mt-2 text-xs text-red-800">{error}</p>}
+    <FeedbackToast message={error} title="Document images unavailable" />
     {!identity && <p className="mt-2 text-xs text-[#687B8E]">Image comparisons appear after the inspected document has been retrieved or re-read.</p>}
     {identity && <div className="mt-3 space-y-3">{[["logo", "Logo"], ["seal", "Seal"], ["signatures", "Officer signatures"]].map(([category, title]) => <section key={category} className="rounded-lg bg-[var(--cd-tint)] p-3">
       <h6 className="text-xs font-semibold uppercase tracking-wide text-[#08283F]">{title}</h6>
@@ -29,9 +35,13 @@ export default function InstitutionIdentityResults({ identity, error, apiBase })
         return <div key={item.label} className="mt-3 border-t border-[var(--cd-line)] pt-3">
           <div className="flex flex-wrap justify-between gap-2"><p className="text-sm font-semibold text-[#08283F]">{item.label}</p><span className={`rounded px-2 py-1 text-xs font-semibold ${state.colour}`}>{state.label}</span></div>
           <p className="mt-2 text-xs leading-5 text-[#4A5A68]">{item.detail}</p>
+          {item.document_page && <p className="mt-2 text-xs font-semibold text-[#08283F]">Manual review location: page {item.document_page}</p>}
+          {item.similarity_score != null && <p className="mt-2 text-xs font-semibold text-[#08283F]">Shape similarity: {item.similarity_score}% <span className="font-normal">&middot; {item.comparison_method}</span></p>}
           <p className="mt-2 text-xs leading-5 text-[#08283F]"><strong>Recommended action: </strong>{state.recommendation}</p>
+          {item.vision && <div className="mt-2 break-words rounded border border-[var(--cd-line)] bg-white p-3 text-xs"><p className="font-semibold text-[#08283F]">Model assessment: {item.vision.status === "used" ? item.vision.assessment : item.vision.status.replaceAll("_", " ")}</p><p className="mt-1 text-[#687B8E]">{item.vision.model} &middot; Advisory comparison</p>{item.vision.detail && <p className="mt-1">{item.vision.detail}</p>}{item.vision.observations && <ul className="mt-2 list-disc pl-4">{item.vision.observations.map((observation, index) => <li key={index}>{observation}</li>)}</ul>}{item.vision.recommendation && <p className="mt-2"><strong>Model recommendation: </strong>{item.vision.recommendation}</p>}</div>}
+          {item.comparison_image && <details className="mt-2"><summary className="cursor-pointer text-xs font-semibold">Signature graphic used for comparison</summary><img src={item.comparison_image} alt="Isolated officer-associated signature graphic" className="mt-2 h-24 w-full bg-white object-contain" /><p className="mt-1 text-xs">{item.signature_extraction}</p></details>}
           <details className="mt-3"><summary className="cursor-pointer text-xs font-semibold text-[#08283F]">Compare document and reference images</summary>
-            <div className="mt-2 grid grid-cols-2 gap-3">
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
               {item.document_image ? <figure className="rounded border border-[var(--cd-line)] bg-white p-2"><img src={item.document_image} alt={`${item.label} from uploaded document`} className="h-24 w-full object-contain" /><figcaption className="mt-1 text-[11px] text-[#4A5A68]">Document page {item.document_page}<br />{item.document_image_label}</figcaption></figure> : <p className="text-xs text-[#687B8E]">No image region located. Inspect the full document.</p>}
               {item.reference_url ? <figure className="rounded border border-[var(--cd-line)] bg-white p-2"><img src={new URL(item.reference_url, apiBase).href} alt={`Stored ${item.label}`} className="h-24 w-full object-contain" /><figcaption className="mt-1 text-[11px] text-[#4A5A68]">Stored institutional reference</figcaption><a href={new URL(item.reference_url, apiBase).href} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs underline">Open reference</a></figure> : <p className="text-xs text-[#687B8E]">No stored reference available.</p>}
             </div>

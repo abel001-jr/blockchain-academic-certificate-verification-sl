@@ -3,6 +3,7 @@ export default function DocumentReadingOverview({ review, label = "Document" }) 
   if (!review) return <section aria-label={label + " reading overview"} className="rounded-xl border border-[var(--cd-line)] bg-[var(--cd-tint)] p-4"><h4 className="text-sm font-semibold text-[#08283F]">{label} reading overview</h4><p className="mt-1 text-xs text-[#687B8E]">Upload and read the document to see image recognition and reading layer results here.</p></section>;
   return (      <section aria-label="Document reading overview" className="rounded-xl border border-[var(--cd-line)] bg-[var(--cd-tint)] p-4">
         <h4 className="text-sm font-semibold text-[#08283F]">{label} reading overview</h4>
+        {review.summary?.reading_mode && <p className="mt-1 text-xs font-semibold text-[#08283F]">{review.summary.reading_mode === "deep" ? "Deep reading — external AI model (Groq)" : "Local reading — PDF text and OCR"}</p>}
         <div className="mt-2">
           <h5 className="text-sm font-semibold text-[#08283F]">Image recognition and document reading</h5>
           <p className="mt-1 text-xs leading-6 text-[#4A5A68]">{review.ocr_used ? "Scanned document text was read using Tesseract OCR." : "Embedded PDF text was read directly."} OCR reads text; it does not establish document authenticity. Compare the values below with the original document before accepting.</p>

@@ -42,7 +42,7 @@ from rest_framework.views import APIView
 from audit.utils import log_action
 from certify.models import Certificate, CertificateStatus, ConsentRequest, ConsentRequestStatus
 from notifications.whatsapp import send_whatsapp
-from verification.views import _build_payload, get_client_ip
+from verification.views import _build_payload, _apply_report, get_client_ip
 from accounts.permissions import IsFullSession
 
 logger = logging.getLogger(__name__)
@@ -67,13 +67,11 @@ def _consent_request_data(cr: ConsentRequest, include_cert: bool = False) -> dic
     }
     if include_cert and cr.status == ConsentRequestStatus.APPROVED:
         cert = cr.certificate
-        if cert.status == CertificateStatus.REVOKED:
-            outcome = "revoked"
-        elif cert.status == CertificateStatus.ISSUED:
-            outcome = "valid"
-        else:
-            outcome = "not_verified"
-        d["certificate"] = _build_payload(cert, outcome)
+        from .integrity import verify_record
+        report = verify_record(cert, include_documents=True)
+        payload = _build_payload(cert, report["verification_outcome"], shared=True)
+        _apply_report(payload, report, shared=True)
+        d["certificate"] = payload
     return d
 
 
@@ -213,7 +211,9 @@ class ConsentRequestPollView(APIView):
         cr.resolve_expired()
 
         include_cert = cr.status == ConsentRequestStatus.APPROVED
-        return Response(_consent_request_data(cr, include_cert=include_cert))
+        response = Response(_consent_request_data(cr, include_cert=include_cert))
+        response["Cache-Control"] = "private, no-store"
+        return response
 
 
 class ConsentRequestRespondView(APIView):

@@ -1,0 +1,29 @@
+.group { position: relative; }
+.groupTrigger { display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; }
+.groupTrigger::-webkit-details-marker { display: none; }
+.group[open] .groupTrigger svg { transform: rotate(180deg); }
+.dropdown { position: absolute; top: calc(100% + 18px); left: -16px; min-width: 210px; display: grid; gap: 3px; padding: 8px; background: #F8F7F2; border: 1px solid #E4E1D6; border-radius: 12px; box-shadow: 0 16px 36px #08283f1f; z-index: 70; }
+.dropdownLink { display: block; padding: 12px; border-radius: 7px; color: #08283F; font-size: 13px; font-weight: 500; white-space: nowrap; }
+.dropdownLink:hover,.dropdownLink[aria-current] { background: #EDE9DF; color: #780110; }
+.groupTrigger:focus-visible,.dropdownLink:focus-visible { outline: 2px solid #780110; outline-offset: 3px; }
+.mobileGroup { padding-bottom: 14px; }
+.mobileHeading { padding: 12px 4px 4px; color: #780110; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .13em; }
+
+/* Group selection is independent of pointer hover, keyboard focus and open state. */
+.group .groupTrigger:global(.cred-nav-link) { color: #4c6074; }
+.group .groupTrigger:global(.cred-nav-link):hover { color: #08283F; }
+.group .groupTrigger:global(.cred-nav-link)::after { right: 100%; }
+.group .groupTrigger:global(.cred-nav-link)[data-current="true"] { color: #780110; }
+.group .groupTrigger:global(.cred-nav-link)[data-current="true"]::after { right: 0; background: #780110; }
+.group[open] .groupTrigger { background: #08283f06; border-radius: 6px; }
+
+.mobileGroup { padding-bottom: 0; border-bottom: 1px solid #E4E1D6; }
+.mobileHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 4px; min-height: 48px; color: #08283F; font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; list-style: none; cursor: pointer; }
+.mobileHeading::-webkit-details-marker { display: none; }
+.mobileHeading[data-current="true"] { color: #780110; }
+.mobileGroup[open] .mobileHeading svg { transform: rotate(180deg); }
+.mobileLinks { padding: 0 0 10px 12px; }
+.mobileLinks :global(.cred-nav-drawer-link) { display: block; width: 100%; min-height: 44px; padding: 12px; border-bottom: 0; border-radius: 7px; font-size: 14px; }
+.mobileHeading:focus-visible { outline: 2px solid #780110; outline-offset: -2px; border-radius: 6px; }
+
+@media (min-width: 1101px) { :global(.cred-nav-drawer) { display: none; } }

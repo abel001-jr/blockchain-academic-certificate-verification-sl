@@ -16,7 +16,7 @@ export default function CallToAction() {
           Institutional staff can access their credential workspace with a linked wallet. Use account sign-in for email and password access.
         </p>
         <div className="mt-8 flex gap-3 flex-wrap">
-          <ActionButton href="/wallet-signin" tone="inverse" className="cred-btn cred-btn-primary">
+          <ActionButton href="/login" tone="inverse" className="cred-btn cred-btn-primary">
             Institution sign in
           </ActionButton>
           <Link href="/login" className="cred-btn cred-btn-secondary cred-btn-inverse">

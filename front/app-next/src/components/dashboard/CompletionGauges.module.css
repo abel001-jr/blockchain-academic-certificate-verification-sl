@@ -7,3 +7,11 @@
 .card strong { color: #780110; font-size: 13px; }
 .card p { font-size: 12px; line-height: 1.5; color: #4a5a68; margin: 10px 0 0; }
 @media(max-width:650px) { .grid { grid-template-columns: 1fr; } }
+
+.card { transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease, background-color .2s ease; }
+.card:hover,.card:focus-visible { transform: translateY(-4px); border-color: var(--gauge-color,#780110); background: color-mix(in srgb,var(--gauge-color,#780110) 3%,white); box-shadow: 0 12px 28px color-mix(in srgb,var(--gauge-color,#780110) 12%,transparent); }
+.card:focus-visible { outline: 2px solid var(--gauge-color,#780110); outline-offset: 3px; }
+.card svg { transition: transform .2s ease; }
+.card:hover svg,.card:focus-visible svg { transform: scale(1.04); }
+.card:hover h3,.card:focus-visible h3 { color: var(--gauge-color,#780110); }
+@media(prefers-reduced-motion:reduce) { .card,.card svg { transition: none; } .card:hover,.card:focus-visible,.card:hover svg,.card:focus-visible svg { transform: none; } }

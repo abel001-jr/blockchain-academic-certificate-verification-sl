@@ -12,27 +12,32 @@ from .email_utils import send_officer_temp_password, should_return_temp_password
 
 
 class UserSerializer(serializers.ModelSerializer):
+    institution_name = serializers.CharField(source="institution.name", read_only=True, default="")
+    institution_code = serializers.CharField(source="institution.institution_id", read_only=True, default="")
     full_name = serializers.ReadOnlyField()
     officer_status = serializers.ReadOnlyField()
     needs_officer_setup = serializers.ReadOnlyField()
     has_signature = serializers.ReadOnlyField()
     signature_url = serializers.SerializerMethodField()
+    google_linked = serializers.ReadOnlyField()
 
     class Meta:
         model  = User
         fields = [
             "id", "email", "first_name", "last_name", "full_name", "profile_photo",
-            "role", "institution", "student_id", "wallet_address", "phone_number",
-            "is_active", "date_joined",
+            "role", "institution", "institution_name", "institution_code", "student_id", "wallet_address", "phone_number",
+            "is_active", "date_joined", "last_login", "updated_at",
             "must_change_password", "wallet_verified", "on_chain_authorized",
             "officer_status", "needs_officer_setup",
             "has_signature", "signature_url", "signature_set_at",
+            "google_linked", "google_email", "google_linked_at",
         ]
         read_only_fields = [
-            "id", "date_joined",
+            "id", "date_joined", "last_login", "updated_at",
             "must_change_password", "wallet_verified", "on_chain_authorized",
             "officer_status", "needs_officer_setup",
             "has_signature", "signature_url", "signature_set_at",
+            "google_linked", "google_email", "google_linked_at",
         ]
 
     def get_signature_url(self, obj):
@@ -45,7 +50,25 @@ class UserSerializer(serializers.ModelSerializer):
         return url
 
 
-class UserCreateSerializer(serializers.ModelSerializer):
+class OfficerNameValidationMixin:
+    def _validate_officer_name(self, value):
+        import unicodedata
+        value = " ".join(value.split())
+        if not value or not any(char.isalpha() for char in value) or any(
+            not (char.isalpha() or char == " " or unicodedata.category(char).startswith("M"))
+            for char in value
+        ):
+            raise serializers.ValidationError("Use letters and spaces only.")
+        return " ".join(word[:1].upper() + word[1:].lower() for word in value.split())
+
+    def validate_first_name(self, value):
+        return self._validate_officer_name(value)
+
+    def validate_last_name(self, value):
+        return self._validate_officer_name(value)
+
+
+class UserCreateSerializer(OfficerNameValidationMixin, serializers.ModelSerializer):
     """
     Create users. For VC/Chancellor: ignore client password/wallet,
     generate a temp password, email it, and leave wallet blank.
@@ -60,6 +83,18 @@ class UserCreateSerializer(serializers.ModelSerializer):
             "email", "password", "first_name", "last_name",
             "role", "institution", "student_id", "wallet_address", "phone_number",
         ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if attrs.get("role") in (Role.REGISTRAR, Role.VC, Role.CHANCELLOR):
+            actor = getattr(self.context.get("request"), "user", None)
+            institution = attrs.get("institution") or getattr(actor, "institution", None)
+            domain = getattr(institution, "email_domain", "").strip().lower()
+            if not domain:
+                raise serializers.ValidationError({"email": "Configure the institution email domain in Settings before adding officers."})
+            if attrs.get("email", "").rpartition("@")[2].lower() != domain:
+                raise serializers.ValidationError({"email": f"Use the institution's @{domain} domain."})
+        return attrs
 
     def validate_role(self, value):
         if value == Role.SUPER_ADMIN:
@@ -171,7 +206,7 @@ class UserStatusSerializer(serializers.ModelSerializer):
         fields = ["is_active"]
 
 
-class OfficerAdminUpdateSerializer(serializers.ModelSerializer):
+class OfficerAdminUpdateSerializer(OfficerNameValidationMixin, serializers.ModelSerializer):
     """
     Registrar may edit officer identity while setup is incomplete
     (before on-chain authorization / MetaMask full access).
@@ -210,6 +245,10 @@ class OfficerAdminUpdateSerializer(serializers.ModelSerializer):
 
     def validate_email(self, value):
         value = (value or "").strip().lower()
+        actor = getattr(self.context.get("request"), "user", None)
+        domain = getattr(getattr(actor, "institution", None), "email_domain", "").strip().lower()
+        if domain and value.rpartition("@")[2] != domain:
+            raise serializers.ValidationError(f"Use the institution's @{domain} domain.")
         qs = User.objects.filter(email__iexact=value)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
@@ -326,18 +365,15 @@ class CredenceTokenObtainSerializer(TokenObtainPairSerializer):
                     },
                 }
 
-            if not user.on_chain_authorized:
-                raise AuthenticationFailed(
-                    "Wallet verified — waiting for your institution administrator to authorize "
-                    "you on-chain. You cannot sign in until then.",
-                    code="pending_authorization",
-                )
-
             raise AuthenticationFailed(
-                "Officers sign in with MetaMask after on-chain authorization. "
+                "Setup is complete. Officers sign in with MetaMask. "
                 "Password login is no longer available.",
                 code="wallet_only",
             )
+
+        if user.is_super_admin and (not user.wallet_verified or not user.wallet_address):
+            return {**issue_setup_tokens(user), "setup_required": True,
+                    "user": UserSerializer(user).data}
 
         # Ensure full-session claim on access token from parent
         refresh = self.get_token(user)

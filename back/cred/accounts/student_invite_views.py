@@ -17,6 +17,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework import status
+from django.db import transaction
 
 from audit.utils import log_action
 from .tokens import issue_full_tokens
@@ -45,10 +46,12 @@ class StudentInviteClaimView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
 
+    @transaction.atomic
     def post(self, request):
         from certify.models import StudentInviteToken
 
-        raw = (request.data.get("token") or "").strip()
+        raw = request.data.get("token")
+        raw = raw.strip() if isinstance(raw, str) else ""
         if not raw:
             return Response(
                 {"detail": "token field is required."},

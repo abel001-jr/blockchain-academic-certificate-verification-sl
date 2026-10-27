@@ -24,12 +24,9 @@ the thresholds below are only a starting point. A field just above threshold is
 reported the same way as one far above it, because the difference is a
 Registrar's to judge, not the extractor's.
 
-Extraction is label-driven rather than positional. Transcripts and certificates
-vary enormously in layout but are consistent about using labels ("Name:",
-"Degree:"), so matching on the label and reading the value next to it is far
-more robust than guessing from geometry. A label whose value is not on the same
-line falls back to the following line, which covers the common two-column and
-underlined-label layouts.
+Extraction uses labels and positioned values first, then explicit narrative
+certificate wording and institution headings. Unsupported layouts retain the
+separate, weaker verbatim-text evidence; intake values never drive extraction.
 """
 
 from __future__ import annotations
@@ -47,7 +44,7 @@ from difflib import SequenceMatcher
 
 FIELD_LABELS: dict[str, tuple[str, ...]] = {
     "student_name": (
-        "full name", "student name", "candidate name", "learner name",
+        "student full name", "full name of student", "full name", "student name", "candidate name", "learner name",
         "graduate name", "name of student", "student", "name",
     ),
     "degree_title": (
@@ -62,7 +59,7 @@ FIELD_LABELS: dict[str, tuple[str, ...]] = {
         "school", "faculty",
     ),
     "graduation_year": (
-        "year of graduation", "graduation year", "year awarded", "class of",
+        "graduation year / issue date", "year of graduation", "graduation year", "year awarded", "class of",
         "graduation", "year",
     ),
 }
@@ -207,6 +204,9 @@ def _lines_from_pages(pages: list[dict]) -> list[str]:
     """
     lines: list[str] = []
     for page in pages:
+        if not page.get("items"):
+            lines.extend(line.get("text", "").strip() for line in page.get("lines", []) if line.get("text", "").strip())
+            continue
         # `items` is already in reading order; group on a y-tolerance band.
         current: list[str] = []
         current_top: float | None = None
@@ -254,6 +254,51 @@ def _split_label(line: str, label: str) -> str | None:
     return remainder.strip()
 
 
+def _narrative_fields(pages):
+    """Read explicit certificate wording, independently of intake values.
+
+    Require recipient/award cues rather than guessing from font size or an
+    arbitrary name/year elsewhere in a document. Ambiguous readings are omitted.
+    """
+    candidates = {key: set() for key in DEFAULT_FIELDS}
+    award_start = re.compile(r"^(?:bachelor|master|doctor|diploma|certificate)\b", re.I)
+    for page in pages:
+        positioned = page.get("lines", [])
+        lines = [line.get("text", "").strip() for line in positioned if line.get("text", "").strip()]
+        if not lines:
+            lines = _lines_from_pages([page])
+        for index, line in enumerate(lines):
+            recipient = re.fullmatch(r"(?:the\s+university\s+confers\s+upon|this\s+is\s+to\s+certify\s+that)\s*[:,-]?\s*(.*)", line, re.I)
+            if recipient:
+                name = recipient.group(1).strip() or (lines[index + 1] if index + 1 < len(lines) else "")
+                if 2 <= len(name.split()) <= 8 and all(c.isalpha() or c in " .'-’" for c in name) and not re.search(r"\b(university|degree|bachelor|master|registrar|chancellor|awarded|completed)\b", name, re.I):
+                    candidates["student_name"].add(name)
+            award = re.fullmatch(r"(?:the\s+)?degree\s+of\s*(.*)", line, re.I)
+            if award:
+                title = award.group(1).strip() or (lines[index + 1] if index + 1 < len(lines) else "")
+                if award_start.match(title):
+                    # A wrapped title may continue with its subject on the next line.
+                    following = index + (2 if not award.group(1).strip() else 1)
+                    if following < len(lines) and re.match(r"^(?:in|of)\s+", lines[following], re.I):
+                        title += " " + lines[following]
+                    candidates["degree_title"].add(title)
+            year = re.fullmatch(r"(?:graduated|completed|awarded)(?:\s+and\s+issued)?\s+in\s+((?:19|20)\d{2})[.]?", line, re.I)
+            if year:
+                candidates["graduation_year"].add(year.group(1))
+        # Institution headings must precede the credential body, not be a
+        # university mentioned in a course, footer, or signature block.
+        for index, line in enumerate(lines[:5]):
+            if re.search(r"\b(certif(?:icate|y)|transcript|confers|student)\b", line, re.I):
+                break
+            if re.search(r"\b(university|college|polytechnic|institute)\b", line, re.I) and not re.search(r"[:|]", line) and 2 <= len(line.split()) <= 12:
+                institution = line
+                country = lines[index + 1].split("|", 1)[0].strip() if index + 1 < len(lines) else ""
+                if normalize(country) == "sierra leone":
+                    institution += " " + country
+                candidates["institution"].add(institution)
+    return {key: next(iter(values)) for key, values in candidates.items() if len(values) == 1}
+
+
 def extract_fields(pages: list[dict], fields: tuple[str, ...] = DEFAULT_FIELDS) -> dict[str, str]:
     """Pull the configured fields out of analyzed pages.
 
@@ -286,6 +331,44 @@ def extract_fields(pages: list[dict], fields: tuple[str, ...] = DEFAULT_FIELDS) 
             if field in found:
                 break
 
+    # PDF/OCR reading order can list the whole label column before its values.
+    # Use positioned lines to associate a label with the value beside it first.
+    all_labels = [label for labels in FIELD_LABELS.values() for label in labels]
+    extra_labels = {"student identification", "transcript reference", "department",
+                    "period of study", "final classification"}
+    def is_label(text):
+        return text.strip().lower().rstrip(":") in set(all_labels) | extra_labels
+
+    for field in fields:
+        candidates = []
+        for page in pages:
+            positioned = [line for line in page.get("lines", []) if len(line.get("bbox", [])) == 4]
+            for label_line in positioned:
+                text = label_line.get("text", "").strip()
+                if not any(_split_label(text, label) == "" for label in FIELD_LABELS.get(field, ())):
+                    continue
+                x0, y0, x1, y1 = label_line["bbox"]
+                for line in positioned:
+                    value = line.get("text", "").strip()
+                    if not value or is_label(value) or line is label_line:
+                        continue
+                    a, b, c, d = line["bbox"]
+                    overlap = min(y1, d) - max(y0, b)
+                    if a >= x1 and overlap > min(y1 - y0, d - b) * .4:
+                        candidates.append((0, a - x1, value))
+                    elif 0 <= b - y1 < 22 and abs(a - x0) < 15:
+                        candidates.append((1, b - y1, value))
+        if candidates:
+            found[field] = min(candidates, key=lambda item: item[:2])[2]
+        elif field in found and is_label(found[field]):
+            del found[field]
+    if "graduation_year" in found:
+        year = re.match(r"^(?:19|20)\d{2}\b", found["graduation_year"])
+        if year:
+            found["graduation_year"] = year.group()
+    for key, value in _narrative_fields(pages).items():
+        if key in fields and key not in found:
+            found[key] = value
     return found
 
 

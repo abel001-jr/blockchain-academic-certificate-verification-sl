@@ -1,9 +1,12 @@
 "use client";
+import { subscribeDashboardRefresh } from "@/lib/dashboardRefresh.mjs";
+import tableStyles from "@/components/dashboard/RecordTable.module.css";
+import RecordPageHero from "@/components/dashboard/RecordPageHero";
 import NavigationButton from "@/components/ui/NavigationButton";
 
 import { ActionButton } from "@/components/ui/AnimatedControls";
 
-import { Suspense, useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { Search, Plus, Loader2, Pencil, ExternalLink } from "lucide-react";
 import StatusBadge from "@/components/dashboard/StatusBadge";
 import Link from "next/link";
@@ -30,6 +33,10 @@ function CertificatesContent() {
   const [count, setCount] = useState(0);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
+  const [submission, setSubmission] = useState("all");
+  const [documents, setDocuments] = useState("all");
+  const [ordering, setOrdering] = useState("-created_at");
+  const requestId = useRef(0);
   const [page, setPage] = useState(1);
   // Seeded from ?institution=<uuid> so the dashboard's per-institution bar
   // drill-down lands pre-filtered. `institutionOverride` is null until the
@@ -55,24 +62,27 @@ function CertificatesContent() {
   }, [isSuperAdmin, institutions.length]);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const currentRequest = ++requestId.current;
     setError("");
     try {
-      let url = `/certificates/?page=${page}&page_size=${PAGE_SIZE}&ordering=-created_at`;
+      let url = `/certificates/?page=${page}&page_size=${PAGE_SIZE}&ordering=${ordering}`;
       if (filter !== "all") url += `&status=${filter}`;
       if (search.trim()) url += `&search=${encodeURIComponent(search.trim())}`;
       if (isSuperAdmin && institution) url += `&institution=${encodeURIComponent(institution)}`;
+      if (submission !== "all") url += "&submission=" + submission;
+      if (documents !== "all") url += "&documents=" + documents;
       const data = await api.get(url);
+      if (currentRequest !== requestId.current) return;
       setCerts(data.results ?? data);
       setCount(data.count ?? (data.results ?? data).length);
     } catch {
-      setError("Failed to load certificates.");
+      if (currentRequest === requestId.current) setError("Failed to load credentials.");
     } finally {
-      setLoading(false);
+      if (currentRequest === requestId.current) setLoading(false);
     }
-  }, [page, filter, search, institution, isSuperAdmin]);
+  }, [page, filter, search, institution, isSuperAdmin, submission, documents, ordering]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => subscribeDashboardRefresh(load, { intervalMs: 0 }), [load]);
 
 
   async function handleRevoke(cert) {
@@ -99,61 +109,32 @@ function CertificatesContent() {
 
   return (
     <div className="flex flex-col gap-4 w-full">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-[#08283F] font-bold text-2xl">Certificates</h2>
-          <p className="text-[#4A5A68] text-sm mt-0.5">
-            {count} certificate{count !== 1 ? "s" : ""} · lists are off-chain reads
-          </p>
-        </div>
-        {canIssue && (
-          <ActionButton href="/dashboard/certificates/new"
-            className="flex items-center gap-2 bg-[#08283F] text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 transition-all self-start">
-            <Plus size={15} /> Issue Certificate
-          </ActionButton>
-        )}
-      </div>
+      <RecordPageHero eyebrow="Credential workspace" title="Credentials" description="Browse complete credential records, including certificates, transcripts and signature progress." count={count} countLabel="matching credentials">
+        {canIssue && <ActionButton href="/dashboard/certificates/new" tone="inverse"><Plus size={15} /> Issue credential</ActionButton>}
+      </RecordPageHero>
 
-      {/* Search + filter bar */}
-      <div className="bg-white rounded-xl border border-[#E4E1D6] px-4 py-3 flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-        <div className="dash-search flex-1 min-w-0">
-          <Search size={14} className="text-[#8A929C] shrink-0" />
-          <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Search by name, ID, email, or degree…" />
+      <section className="rounded-2xl border border-[var(--cd-line)] bg-white p-5 space-y-4" aria-label="Credential filters">
+        <div className="dash-search w-full"><Search size={16} aria-hidden="true" /><input type="search" aria-label="Search credentials" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Search student, credential ID, email or award" /></div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="text-xs font-semibold text-[#08283F]">Credential stage<select className="cd-input mt-1" value={filter} onChange={event => { setFilter(event.target.value); setPage(1); if (["draft", "issued", "revoked"].includes(event.target.value)) setSubmission("all"); }}><option value="all">All stages</option><optgroup label="Preparation"><option value="draft">Draft</option></optgroup><optgroup label="Signatures"><option value="pending_vc">Awaiting Vice-Chancellor</option><option value="pending_chancellor">Awaiting Chancellor</option><option value="pending_finalize">Awaiting finalization</option></optgroup><optgroup label="Issued records"><option value="issued">Issued</option><option value="revoked">Revoked</option></optgroup></select></label>
+          <label className="text-xs font-semibold text-[#08283F]">Pending submission<select className="cd-input mt-1" value={submission} onChange={event => { setSubmission(event.target.value); setPage(1); if (event.target.value !== "all" && ["draft", "issued", "revoked"].includes(filter)) setFilter("all"); }}><option value="all">All records</option><option value="submitted">Submitted on-chain</option><option value="not_submitted">Registrar submission needed</option></select></label>
+          <label className="text-xs font-semibold text-[#08283F]">Document support<select className="cd-input mt-1" value={documents} onChange={event => { setDocuments(event.target.value); setPage(1); }}><option value="all">All document sets</option><option value="paired">Transcript attached</option><option value="missing_transcript">Transcript not attached</option></select></label>
+          <label className="text-xs font-semibold text-[#08283F]">Sort records<select className="cd-input mt-1" value={ordering} onChange={event => { setOrdering(event.target.value); setPage(1); }}><option value="-created_at">Newest first</option><option value="created_at">Oldest first</option><option value="certificate_id">Credential ID</option><option value="-graduation_year">Graduation year</option></select></label>
+          {isSuperAdmin && <label className="text-xs font-semibold text-[#08283F]">Institution<select className="cd-input mt-1" value={institution} onChange={event => { setInstitutionOverride(event.target.value); setPage(1); }}><option value="">All institutions</option>{institutions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
         </div>
-        {isSuperAdmin && (
-          <select data-dropdown="compact"
-            value={institution}
-            onChange={e => { setInstitutionOverride(e.target.value); setPage(1); }}
-            className="rounded-lg border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#08283F] outline-none focus:border-[#08283F] max-w-[240px]"
-          >
-            <option value="">All institutions</option>
-            {institutions.map(inst => (
-              <option key={inst.id} value={inst.id}>{inst.name}</option>
-            ))}
-          </select>
-        )}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {STATUS_FILTERS.map(s => (
-            <button key={s} onClick={() => { setFilter(s); setPage(1); }}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all whitespace-nowrap ${
-                filter === s ? "bg-[#08283F] text-white" : "bg-[#EAF2FB] text-[#4A5A68] hover:bg-[#08283F]/10"
-              }`}>
-              {s === "all" ? "All" : (STATUS_LABELS[s] || s.replace(/_/g, " "))}
-            </button>
-          ))}
-        </div>
-      </div>
+        <div className="flex flex-wrap justify-between items-center gap-3"><p className="text-xs text-[#687B8E]">{loading ? "Updating results..." : count + " matching credentials"}{submission !== "all" && " ? Pending workflow records only"}</p><button type="button" className="cd-btn-secondary" onClick={() => { setSearch(""); setFilter("all"); setSubmission("all"); setDocuments("all"); setOrdering("-created_at"); setInstitutionOverride(""); setPage(1); }}>Clear filters</button></div>
+      </section>
 
       {error && <div className="dash-error">{error}</div>}
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-[#E4E1D6] overflow-hidden w-full">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[680px]">
+      <div className={tableStyles.frame}>
+        <div className={tableStyles.heading}><h3>Credential records</h3><span>{count} matching records &middot; {certs.length} on this page</span></div>
+        <div className={tableStyles.scroll}>
+          <table className={tableStyles.fixedIdentity}>
             <thead>
               <tr>
-                {["Certificate ID", "Student", "Degree", "Year", ...(isSuperAdmin ? ["Institution"] : []), "Status", "Date", "Tx Hash", ""].map(h => (
+                {["Certificate ID", "Student", "Degree", "Year", ...(isSuperAdmin ? ["Institution"] : []), "Status", "Date", "Tx Hash", "Actions"].map(h => (
                   <th key={h} className="dash-th">{h}</th>
                 ))}
               </tr>
@@ -171,8 +152,8 @@ function CertificatesContent() {
               )}
               {!loading && certs.map(cert => (
                 <tr key={cert.id} className="hover:bg-[#F8F7F2] transition-colors">
-                  <td className="dash-td font-mono text-sm font-semibold text-[#08283F]">{cert.certificate_id}</td>
-                  <td className="dash-td">
+                  <td data-label="Certificate ID" className={`dash-td font-mono font-semibold text-[#08283F] ${tableStyles.identifier}`}>{cert.certificate_id}</td>
+                  <td data-label="Student" className="dash-td">
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 rounded-full bg-[#08283F]/10 flex items-center justify-center text-[#08283F] text-xs font-bold shrink-0">
                         {cert.student_name?.split(" ").map(n => n[0]).join("").slice(0, 2) ?? "?"}
@@ -180,21 +161,21 @@ function CertificatesContent() {
                       <span className="text-[#08283F] text-sm font-medium whitespace-nowrap">{cert.student_name}</span>
                     </div>
                   </td>
-                  <td className="dash-td text-[#4A5A68] text-sm max-w-[180px] truncate">{cert.degree_title}</td>
-                  <td className="dash-td text-[#4A5A68] text-sm">{cert.graduation_year}</td>
+                  <td data-label="Degree" className="dash-td text-[#4A5A68] text-sm min-w-[160px]">{cert.degree_title}</td>
+                  <td data-label="Year" className="dash-td text-[#4A5A68] text-sm">{cert.graduation_year}</td>
                   {isSuperAdmin && (
-                    <td className="dash-td text-[#4A5A68] text-sm max-w-[160px] truncate">{cert.institution_name}</td>
+                    <td data-label="Institution" className="dash-td text-[#4A5A68] text-sm">{cert.institution_name}</td>
                   )}
-                  <td className="dash-td"><StatusBadge status={cert.status} /></td>
-                  <td className="dash-td text-[#4A5A68] text-sm whitespace-nowrap">
+                  <td data-label="Status" className="dash-td"><StatusBadge status={cert.status} /></td>
+                  <td data-label="Created" className="dash-td text-[#4A5A68] text-sm whitespace-nowrap">
                     {cert.created_at ? new Date(cert.created_at).toLocaleDateString() : "—"}
                   </td>
-                  <td className="dash-td font-mono text-[#4A5A68] text-xs">
+                  <td data-label="Transaction" className="dash-td font-mono text-[#4A5A68] text-xs" title={cert.tx_hash}>
                     {cert.tx_hash ? `${cert.tx_hash.slice(0, 10)}…` : "—"}
                   </td>
-                  <td className="dash-td">
-                    <div className="flex items-center gap-2">
-                      <ActionButton
+                  <td data-label="Actions" className="dash-td">
+                    <div className={tableStyles.actions}>
+                      {cert.status === "issued" && <ActionButton
                         href={verificationPath(cert.certificate_id)}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -202,7 +183,8 @@ function CertificatesContent() {
                         title="Open the public verification page for this certificate"
                       >
                         Verify <ExternalLink size={11} />
-                      </ActionButton>
+                      </ActionButton>}
+                      {cert.status?.startsWith("pending") && <Link href={((role === ROLES.VC && cert.status === "pending_vc") || (role === ROLES.CHANCELLOR && cert.status === "pending_chancellor")) && cert.tx_hash ? "/dashboard/approvals" : "/dashboard/certificates/" + cert.id} className="cd-btn-secondary" title="Review or track the credential signature process">Signatures</Link>}
                       <button
                         onClick={() => { setViewing(true); router.push(`/dashboard/certificates/${cert.id}`); }}
                         className="text-[#B98A28] text-xs font-semibold hover:underline"
@@ -240,7 +222,7 @@ function CertificatesContent() {
             </tbody>
           </table>
         </div>
-        <div className="px-5 py-3 border-t border-[#E4E1D6] flex items-center justify-between">
+        <div className={tableStyles.pagination}>
           <p className="text-[#4A5A68] text-sm">Page {page} of {totalPages || 1} · {count} total</p>
           <div className="flex gap-2">
             <NavigationButton direction="back" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="dash-pagination-btn">Previous</NavigationButton>

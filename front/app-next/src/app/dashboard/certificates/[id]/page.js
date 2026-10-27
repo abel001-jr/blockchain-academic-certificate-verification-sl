@@ -5,11 +5,13 @@ import { ActionButton } from "@/components/ui/AnimatedControls";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Wallet, FileText, ExternalLink, ShieldCheck, Send, RefreshCw, UserPlus, Sparkles, Pencil } from "lucide-react";
+import { ArrowLeft, Loader2, Wallet, FileText, ShieldCheck, Send, RefreshCw, UserPlus, Sparkles, Pencil } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth, ROLES, isInstitutionHead } from "@/lib/useAuth";
 import StatusBadge from "@/components/dashboard/StatusBadge";
 import CertificatePreview from "@/components/dashboard/CertificatePreview";
+import CredentialDocumentPreview from "@/components/dashboard/CredentialDocumentPreview";
+import OfficerCredentialApproval from "@/components/dashboard/OfficerCredentialApproval";
 import {
   finalizeUploadedCredentialOnChain,
   finalizeWithSealedDocumentOnChain,
@@ -37,75 +39,20 @@ function flowTypeLabel(flowType) {
 function CertificateVisual({ cert }) {
   const isUpload = UPLOAD_FLOW_TYPES.has(cert.flow_type);
 
-  // Upload flow: show the actual uploaded PDF via IPFS
+  // Documents must be authorized, decrypted and verified by the API.
   if (isUpload) {
-    const pdfUrl = cert.ipfs_url_pdf;
-    const transcriptUrl = cert.ipfs_url_transcript;
-
-    if (!pdfUrl) {
+    if (!cert.ipfs_cid_pdf || !cert.doc_hash) {
       return (
         <div className="flex flex-col items-center justify-center gap-3 bg-[#F8F7F2] border border-[#E4E1D6] rounded-xl py-14 text-center">
           <FileText size={32} className="text-[#B9C6D2]" />
-          <p className="text-[#4A5A68] text-sm">PDF not yet pinned to IPFS.</p>
+          <p className="text-[#4A5A68] text-sm">The certificate has not been prepared for preview yet. Continue the upload to prepare it.</p>
         </div>
       );
     }
-
     return (
       <div className="flex flex-col gap-4">
-        {/* Certificate PDF */}
-        <div className="border border-[#E4E1D6] rounded-xl overflow-hidden">
-          {/* Header bar */}
-          <div className="flex items-center justify-between px-4 py-3 bg-[#F8F7F2] border-b border-[#E4E1D6]">
-            <div className="flex items-center gap-2">
-              <FileText size={15} className="text-[#B98A28]" />
-              <span className="text-[#08283F] text-sm font-semibold">Uploaded Certificate PDF</span>
-            </div>
-            <a
-              href={pdfUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-[#B98A28] text-xs font-semibold hover:underline"
-            >
-              <ExternalLink size={13} /> Open on IPFS
-            </a>
-          </div>
-          {/* Inline PDF viewer */}
-          <iframe
-            src={pdfUrl}
-            title="Certificate PDF"
-            className="w-full"
-            style={{ height: "600px" }}
-          />
-        </div>
-
-        {/* Transcript PDF - if present */}
-        {transcriptUrl && (
-          <div className="border border-[#E4E1D6] rounded-xl overflow-hidden">
-            {/* Header bar */}
-            <div className="flex items-center justify-between px-4 py-3 bg-[#F8F7F2] border-b border-[#E4E1D6]">
-              <div className="flex items-center gap-2">
-                <FileText size={15} className="text-[#2F6F4E]" />
-                <span className="text-[#08283F] text-sm font-semibold">Uploaded Transcript PDF</span>
-              </div>
-              <a
-                href={transcriptUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-[#2F6F4E] text-xs font-semibold hover:underline"
-              >
-                <ExternalLink size={13} /> Open on IPFS
-              </a>
-            </div>
-            {/* Inline PDF viewer */}
-            <iframe
-              src={transcriptUrl}
-              title="Transcript PDF"
-              className="w-full"
-              style={{ height: "600px" }}
-            />
-          </div>
-        )}
+        <CredentialDocumentPreview id={cert.id} kind="certificate" />
+        {cert.ipfs_cid_transcript && <CredentialDocumentPreview id={cert.id} kind="transcript" />}
       </div>
     );
   }
@@ -121,6 +68,13 @@ function CertificateVisual({ cert }) {
   );
 }
 
+function CredentialDetailContent({ cert, role, onApproved, children }) {
+  if (role === ROLES.VC || role === ROLES.CHANCELLOR) {
+    return <OfficerCredentialApproval cert={cert} role={role} onApproved={onApproved}>{children}</OfficerCredentialApproval>;
+  }
+  return <><CertificateVisual cert={cert} />{children}</>;
+}
+
 export default function CertificateDetailPage() {
   const { id } = useParams();
   const router  = useRouter();
@@ -132,6 +86,7 @@ export default function CertificateDetailPage() {
   const [finalizing, setFinalizing] = useState(false); // finalize overlay
   const [success,  setSuccess]  = useState("");
   const [resending, setResending] = useState(false);
+  const [studentInvite, setStudentInvite] = useState(null);
   const [linkEmail, setLinkEmail] = useState("");
   const [linking,   setLinking]   = useState(false);
   const [emailDraft, setEmailDraft] = useState("");
@@ -139,6 +94,7 @@ export default function CertificateDetailPage() {
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailNotice, setEmailNotice] = useState("");
   const [anchorConfirmationOpen, setAnchorConfirmationOpen] = useState(false);
+  const [missingChainRecord, setMissingChainRecord] = useState(false);
 
   const [transcriptFile, setTranscriptFile] = useState(null);
   const [transcriptUploading, setTranscriptUploading] = useState(false);
@@ -163,8 +119,19 @@ export default function CertificateDetailPage() {
   }, [id]);
 
   useEffect(() => {
-    if (!authLoading) load();
+    let active = true;
+    if (!authLoading) queueMicrotask(() => { if (active) load(); });
+    return () => { active = false; };
   }, [authLoading, load]);
+
+  useEffect(() => {
+    if (role !== ROLES.REGISTRAR || !cert?.tx_hash || cert.status !== "pending_vc") return;
+    let active = true;
+    api.get(`/certificates/${cert.id}/chain-status/`).then(data => {
+      if (active) setMissingChainRecord(data.exists === false);
+    }).catch(() => { if (active) setMissingChainRecord(false); });
+    return () => { active = false; };
+  }, [role, cert]);
 
   // Correcting the address is registrar/super-admin work, and only while the
   // credential is still un-hashed (the API enforces both and returns 409/403).
@@ -250,25 +217,9 @@ export default function CertificateDetailPage() {
     if (!cert || cert.status !== "issued") return;
     setResending(true); setError(""); setSuccess("");
     try {
-      const data = await api.post(`/certificates/${id}/resend-invite/`, {});
-      // Always open the wa.me link so the registrar can share manually —
-      // same pattern as the officer invite share button.
-      if (data.wa_url) {
-        window.open(data.wa_url, "_blank", "noopener,noreferrer");
-      }
-      if (data.twilio_sent) {
-        setSuccess("WhatsApp sent directly to the student via Twilio.");
-      } else if (data.wa_url) {
-        setSuccess("WhatsApp opened — send the pre-filled message to the student.");
-      } else {
-        setSuccess("Invite token created. Share the claim link with the student manually.");
-      }
-      if (data.claim_url) {
-        // Also show the raw link in case they prefer to copy it
-        setSuccess(prev =>
-          `${prev}\nClaim link: ${data.claim_url}`
-        );
-      }
+      const data = await api.post(`/certificates/${id}/resend-invite/`, {manual_only: true});
+      setStudentInvite({...data, certificateId: id});
+      setSuccess("Student invite prepared. Choose how to share it below. A newly prepared invite replaces the previous invite link.");
     } catch (e) {
       setError(e?.detail || JSON.stringify(e));
     } finally {
@@ -289,7 +240,7 @@ export default function CertificateDetailPage() {
     }
     if (!confirm(
       `Submit ${cert.certificate_id} to the blockchain via MetaMask?\n\n` +
-      `This certificate has no recorded submit transaction. It will return to VC review, ` +
+      `This will submit the existing document hashes and return the credential to VC review. ` +
       `and both officers must approve it on-chain before finalization.`
     )) return;
 
@@ -464,7 +415,7 @@ export default function CertificateDetailPage() {
           </div>
 
           {/* ── Certificate visual — uploaded PDF or designed preview ── */}
-          <CertificateVisual cert={cert} />
+          <CredentialDetailContent key={`${role}-${cert.id}-${cert.cert_hash}-${cert.doc_hash}-${cert.transcript_hash}`} cert={cert} role={role} onApproved={load}>
 
           {isInstitutionHead(role) && !cert.ipfs_url_transcript && !cert.tx_hash && !["issued", "revoked"].includes(cert.status) && (
             <div className="rounded-xl border border-[#D8BF84] bg-[#FFF8E7] p-4">
@@ -535,16 +486,24 @@ export default function CertificateDetailPage() {
           <div className="bg-white rounded-xl border border-[#E4E1D6] divide-y divide-[#E4E1D6]">
             {[
               ["Flow type",           flowTypeLabel(cert.flow_type), false],
-              ["Data hash",           cert.cert_hash || "—",                   true],
-              ["Document hash",       cert.doc_hash  || "—",                   true],
-              ...(cert.transcript_hash ? [["Transcript hash", cert.transcript_hash, true]] : []),
-              ["Submit tx",           cert.tx_hash   || "—",                   true],
             ].map(([label, value, mono]) => (
               <div key={label} className="flex items-start gap-4 px-5 py-3">
                 <p className="text-[#8A929C] text-sm w-36 shrink-0 pt-0.5">{label}</p>
                 <p className={`text-[#08283F] text-sm break-all ${mono ? "font-mono text-xs" : "font-medium"}`}>{value}</p>
               </div>
             ))}
+
+            <details className="group px-4 py-3">
+              <summary className="cursor-pointer text-xs font-semibold text-[#4A5A68]">Hashes and storage references <span className="font-normal">(expand technical details)</span></summary>
+              <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+                {[
+                  ["Data hash", cert.cert_hash], ["Certificate hash", cert.doc_hash],
+                  ["Transcript hash", cert.transcript_hash], ["Submission transaction hash", cert.tx_hash],
+                  ["Certificate storage CID", cert.ipfs_cid_pdf], ["Transcript storage CID", cert.ipfs_cid_transcript],
+                  ["Metadata storage CID", cert.ipfs_cid_json],
+                ].filter(([, value]) => value).map(([label, value]) => <div key={label} className="min-w-0 rounded-lg bg-[#F8F7F2] p-2"><dt className="text-[10px] font-semibold text-[#687B8E]">{label}</dt><dd className="mt-1 break-all font-mono text-[10px] leading-4 text-[#08283F]">{value}</dd></div>)}
+              </dl>
+            </details>
 
             {/* Student email — editable while the credential is still un-hashed */}
             <div className="px-5 py-3">
@@ -614,35 +573,6 @@ export default function CertificateDetailPage() {
                 </div>
               </div>
             </div>
-
-            {/* IPFS links */}
-            {cert.ipfs_url_pdf && (
-              <div className="flex items-center gap-4 px-5 py-3">
-                <p className="text-[#8A929C] text-sm w-36 shrink-0">PDF on IPFS</p>
-                <a href={cert.ipfs_url_pdf} target="_blank" rel="noreferrer"
-                  className="flex items-center gap-1.5 text-[#B98A28] text-sm font-semibold hover:underline">
-                  <ExternalLink size={13} /> Open PDF
-                </a>
-              </div>
-            )}
-            {cert.ipfs_url_transcript && (
-              <div className="flex items-center gap-4 px-5 py-3">
-                <p className="text-[#8A929C] text-sm w-36 shrink-0">Transcript on IPFS</p>
-                <a href={cert.ipfs_url_transcript} target="_blank" rel="noreferrer"
-                  className="flex items-center gap-1.5 text-[#2F6F4E] text-sm font-semibold hover:underline">
-                  <ExternalLink size={13} /> Open Transcript
-                </a>
-              </div>
-            )}
-            {cert.ipfs_url_json && (
-              <div className="flex items-center gap-4 px-5 py-3">
-                <p className="text-[#8A929C] text-sm w-36 shrink-0">Metadata on IPFS</p>
-                <a href={cert.ipfs_url_json} target="_blank" rel="noreferrer"
-                  className="flex items-center gap-1.5 text-[#4A5A68] text-sm hover:underline">
-                  <ExternalLink size={13} /> Open JSON
-                </a>
-              </div>
-            )}
 
             {/* Approval info — system flow only */}
             {!isUploadFlow && (
@@ -730,15 +660,6 @@ export default function CertificateDetailPage() {
             </div>
           )}
 
-          {(role === ROLES.VC || role === ROLES.CHANCELLOR) &&
-            (cert.status === "pending_vc" || cert.status === "pending_chancellor") && (
-            <Link href="/dashboard/approvals"
-              className="cd-btn-primary self-start"
-              style={{ background: "#B98A28" }}>
-              Go to Approvals to sign on-chain
-            </Link>
-          )}
-
           {/* System-designed finalize */}
           {isInstitutionHead(role) && cert.status === "pending_finalize" && !isUploadFlow && (
             <div className="flex flex-col gap-2">
@@ -766,7 +687,7 @@ export default function CertificateDetailPage() {
 
           {/* Recover older certificates whose submit transaction is missing */}
           {isInstitutionHead(role) &&
-           !cert.tx_hash &&
+           (!cert.tx_hash || (missingChainRecord && cert.status === "pending_vc")) &&
            ["pending_vc", "pending_chancellor", "pending_finalize"].includes(cert.status) &&
            cert.cert_hash && (
             <div className="flex flex-col gap-2 border border-[#F0D080] rounded-xl px-4 py-4 bg-[#FFF8E7]">
@@ -774,7 +695,7 @@ export default function CertificateDetailPage() {
                 <RefreshCw size={14} /> Missing on-chain submission
               </p>
               <p className="text-[#4A5A68] text-xs leading-relaxed">
-                The approval queue has no submit transaction for <code className="font-mono">{cert.certificate_id}</code>.
+                The configured blockchain has no submitted record available for <code className="font-mono">{cert.certificate_id}</code>.
                 Submit it now; the certificate will return to VC review and both officers must approve it on-chain before finalization.
               </p>
               <button
@@ -784,7 +705,7 @@ export default function CertificateDetailPage() {
               >
                 {busy
                   ? <><Loader2 size={14} className="animate-spin" /> Submitting…</>
-                  : <><RefreshCw size={14} /> Submit to blockchain</>
+                  : <><RefreshCw size={14} /> {missingChainRecord ? "Submit to blockchain again" : "Submit to blockchain"}</>
                 }
               </button>
             </div>
@@ -808,19 +729,34 @@ export default function CertificateDetailPage() {
               {isInstitutionHead(role) && (
                 <div className="flex flex-col gap-1.5">
                   <p className="text-[#4A5A68] text-xs">
-                    Share the certificate invite with the student via WhatsApp.
-                    Opens WhatsApp with the message pre-filled — just press Send.
+                    Prepare a private student claim link, then send it through WhatsApp, email or your device share menu, or copy it. Share only with the intended student.
                   </p>
                   <button
-                    onClick={handleResendInvite}
+                    onClick={() => handleResendInvite()}
                     disabled={resending}
                     className="self-start flex items-center gap-2 bg-[#25D366] text-white px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
                   >
                     {resending
                       ? <><Loader2 size={14} className="animate-spin" /> Opening…</>
-                      : <><Send size={14} /> Share invite on WhatsApp</>
+                      : <><Send size={14} /> Prepare student invite</>
                     }
                   </button>
+                  {studentInvite?.certificateId === id && <div className="mt-2 space-y-3 rounded-lg border border-[#E4E1D6] p-4">
+                    <p className="text-xs text-[#4A5A68]">Use the same invite across sharing options. {studentInvite.invite_expires_at && `Expires: ${new Date(studentInvite.invite_expires_at).toLocaleString()}`}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {studentInvite.wa_url && <a href={studentInvite.wa_url} target="_blank" rel="noopener noreferrer" className="cd-btn-secondary">WhatsApp</a>}
+                      <a href={`mailto:${encodeURIComponent(cert.student_email || "")}?subject=${encodeURIComponent("Your credential is ready")}&body=${encodeURIComponent(studentInvite.wa_body || studentInvite.claim_url)}`} className="cd-btn-secondary">Email student</a>
+                      <button type="button" className="cd-btn-secondary" onClick={async () => {
+                        try { await navigator.clipboard.writeText(studentInvite.claim_url); setSuccess("Student invite link copied."); }
+                        catch { setError("Clipboard unavailable. Select and copy the invite link below."); }
+                      }}>Copy invite link</button>
+                      {typeof navigator !== "undefined" && typeof navigator.share === "function" && <button type="button" className="cd-btn-secondary" onClick={async () => {
+                        try { await navigator.share({title: "Your credential is ready", text: (studentInvite.wa_body || "Claim your credential using this private student invitation.").replace(studentInvite.claim_url, "").trim(), url: studentInvite.claim_url}); }
+                        catch (error) { if (error.name !== "AbortError") setError("Sharing could not open. Choose email, WhatsApp or copy the link."); }
+                      }}>More apps</button>}
+                    </div>
+                    <input readOnly aria-label="Private student invite link" value={studentInvite.claim_url || ""} onFocus={event => event.target.select()} className="cd-input w-full text-xs" />
+                  </div>}
                 </div>
               )}
             </>
@@ -867,6 +803,7 @@ export default function CertificateDetailPage() {
               </form>
             </div>
           )}
+          </CredentialDetailContent>
         </div>
       )}
       <CertLoaderOverlay variant="finalize" open={finalizing} />

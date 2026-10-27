@@ -10,6 +10,8 @@ PyMuPDF==1.28.2
 # Python wrapper for the separately installed Tesseract OCR executable.
 pytesseract==0.3.13
 requests==2.32.3
+# requests 2.32.3 requires chardet <6 when installed (also used by ReportLab).
+chardet==5.2.0
 cryptography==50.0.1
 eth-account==0.13.4
 # Required by `manage.py sync_chain_events`, the only consumer. Pinned to 7.0.0

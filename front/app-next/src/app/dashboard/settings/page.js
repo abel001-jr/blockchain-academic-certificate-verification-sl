@@ -1,31 +1,41 @@
 "use client";
 import { ActionButton } from "@/components/ui/AnimatedControls";
 import { useEffect, useState } from "react";
-import { Loader2, Check, Eye, EyeOff } from "lucide-react";
+import { Loader2, Check, Eye, EyeOff, UserRound, Building2, Settings2, ChevronRight } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth, ROLES } from "@/lib/useAuth";
+import styles from "./SettingsPage.module.css";
 import ProfilePanel from "@/components/dashboard/ProfilePanel";
 import AcademicStructurePanel   from "@/components/dashboard/AcademicStructurePanel";
 import CertificateBrandingPanel from "@/components/dashboard/CertificateBrandingPanel";
 import OfficerSignaturePanel    from "@/components/dashboard/OfficerSignaturePanel";
 import ChainConfigPanel         from "@/components/dashboard/ChainConfigPanel";
 import SystemBrandingPanel from "@/components/dashboard/SystemBrandingPanel";
+import InstitutionIdentityPanel from "@/components/dashboard/InstitutionIdentityPanel";
 import InstitutionEmailSettingsPanel from "@/components/dashboard/InstitutionEmailSettingsPanel";
 import NotificationSettingsPanel from "@/components/dashboard/NotificationSettingsPanel";
 
 export default function SettingsPage() {
   const { user, role, loading: authLoading } = useAuth();
+  const institutionAdmin = role === ROLES.INSTITUTIONAL_ADMIN;
   const registrar = role === ROLES.REGISTRAR;
   const systemAdmin = role === ROLES.INSTITUTIONAL_ADMIN || role === ROLES.SUPER_ADMIN;
   const isOfficer = role === ROLES.VC || role === ROLES.CHANCELLOR;
 
-  const TABS = [...(registrar
-    ? ["Academic Structure", "Institution Email", "Certificate Branding", "Signature", "Profile", "Password"]
-    : isOfficer
-      ? ["Profile", "Signature", "Password"]
-      : systemAdmin ? ["Profile", "System Branding", "Password", "Blockchain"] : ["Profile", "Password"]), "Notifications"];
-
-  const [tab,     setTab]     = useState(registrar ? "Academic Structure" : "Profile");
+  const groups = [
+    { id: "personal", title: "Personal", description: "Your account, security and preferences", icon: UserRound,
+      tabs: ["Profile", ...(registrar || isOfficer ? ["Signature"] : []), "Password", "Notifications"] },
+    ...(registrar ? [{ id: "institution", title: "Institution", description: "Academic structure and credential setup", icon: Building2,
+      tabs: ["Academic Structure", "Certificate Branding", "Institution Identity"] }] : []),
+    ...(institutionAdmin ? [{ id: "institution-email", title: "Institution", description: "Institution email settings", icon: Building2, tabs: ["Institution Email", "Institution Identity"] }] : []),
+    ...(isOfficer ? [{ id: "institution-identity", title: "Institution", description: "Official identity references", icon: Building2, tabs: ["Institution Identity"] }] : []),
+    ...(systemAdmin ? [{ id: "system", title: "System", description: "Dashboard appearance and blockchain setup", icon: Settings2,
+      tabs: ["System Branding", "Blockchain"] }] : []),
+  ];
+  const [tab, setTab] = useState("Profile");
+  const availableTabs = groups.flatMap(group => group.tabs);
+  const activeTab = availableTabs.includes(tab) ? tab : "Profile";
+  const activeGroup = groups.find(group => group.tabs.includes(activeTab));
   const [saving,  setSaving]  = useState(false);
   const [success, setSuccess] = useState("");
   const [error,   setError]   = useState("");
@@ -35,17 +45,17 @@ export default function SettingsPage() {
   useEffect(() => {
     const openNotifications = () => setTab("Notifications");
     window.addEventListener("credence:notification-settings", openNotifications);
-    if (systemAdmin && new URLSearchParams(window.location.search).get("tab") === "System Branding") {
-      Promise.resolve().then(() => setTab("System Branding"));
-    }
-    if (new URLSearchParams(window.location.search).get("tab") === "Notifications") {
-      Promise.resolve().then(() => setTab("Notifications"));
-    }
-    if (registrar && new URLSearchParams(window.location.search).get("tab") === "Certificate Branding") {
-      Promise.resolve().then(() => setTab("Certificate Branding"));
+    const requestedTab = new URLSearchParams(window.location.search).get("tab");
+    const permittedTabs = ["Profile", "Password", "Notifications",
+      ...(registrar ? ["Signature", "Academic Structure", "Certificate Branding", "Institution Identity"] : []),
+      ...(institutionAdmin ? ["Institution Email", "Institution Identity"] : []),
+      ...(isOfficer ? ["Signature", "Institution Identity"] : []),
+      ...(systemAdmin ? ["System Branding", "Blockchain"] : [])];
+    if (permittedTabs.includes(requestedTab)) {
+      Promise.resolve().then(() => setTab(requestedTab));
     }
     return () => window.removeEventListener("credence:notification-settings", openNotifications);
-  }, [registrar, systemAdmin]);
+  }, [registrar, systemAdmin, isOfficer, institutionAdmin]);
 
   async function changePassword(e) {
     e.preventDefault();
@@ -72,45 +82,49 @@ export default function SettingsPage() {
     <div className="flex flex-col gap-8 w-full">
       <div>
         <h2 className="text-[#08283F] font-bold text-3xl">Settings</h2>
-        <p className="text-[#4A5A68] text-base mt-1.5">Manage catalog, certificate branding, and account</p>
+        <p className="text-[#4A5A68] text-base mt-1.5">Manage your personal preferences and the setup available to your role.</p>
       </div>
 
-      {/* Tab bar — full width */}
-      <div className="flex flex-wrap border-b border-[#E4E1D6] gap-1">
-        {TABS.map(t => (
-          <button key={t}
-            onClick={() => { setTab(t); setSuccess(""); setError(""); }}
-            className={`px-5 py-3.5 text-base font-medium transition-all border-b-2 -mb-px ${
-              tab === t
-                ? "text-[#08283F] border-[#08283F] font-semibold"
-                : "text-[#4A5A68] border-transparent hover:text-[#08283F]"
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab content — no outer card, full-width panels */}
-      <div>
-        {tab === "Notifications" && <NotificationSettingsPanel />}
-        {tab === "System Branding" && systemAdmin && <SystemBrandingPanel />}
-        {tab === "Institution Email" && registrar && <InstitutionEmailSettingsPanel />}
+      <div className={styles.layout}>
+        <nav className={styles.navigation} aria-label="Settings categories">
+          {groups.map(({ id, title, description, icon: Icon, tabs }) => (
+            <section key={id} className={styles.group} aria-labelledby={`settings-${id}`}>
+              <div className={styles.groupHeading}>
+                <Icon size={19} aria-hidden="true" />
+                <div><h3 id={`settings-${id}`}>{title}</h3><p>{description}</p></div>
+              </div>
+              <div className={styles.links}>
+                {tabs.map(item => <button key={item} type="button"
+                  aria-current={activeTab === item ? "page" : undefined}
+                  aria-controls="settings-content"
+                  onClick={() => { setTab(item); setSuccess(""); setError(""); }}>
+                  {item}<ChevronRight size={15} aria-hidden="true" />
+                </button>)}
+              </div>
+            </section>
+          ))}
+        </nav>
+        <section id="settings-content" className={styles.content} aria-label={`${activeGroup.title} settings: ${activeTab}`}>
+          <p className={styles.breadcrumb}>{activeGroup.title} <span aria-hidden="true">/</span> {activeTab}</p>
+        {activeTab === "Notifications" && <NotificationSettingsPanel />}
+        {activeTab === "System Branding" && systemAdmin && <SystemBrandingPanel />}
+        {activeTab === "Institution Identity" && (institutionAdmin || registrar || isOfficer) && <InstitutionIdentityPanel readOnly={!institutionAdmin} />}
+        {activeTab === "Institution Email" && institutionAdmin && <InstitutionEmailSettingsPanel />}
 
         {/* ── Academic Structure ── */}
-        {tab === "Academic Structure" && registrar && <AcademicStructurePanel />}
+        {activeTab === "Academic Structure" && registrar && <AcademicStructurePanel />}
 
         {/* ── Certificate Branding ── */}
-        {tab === "Certificate Branding" && registrar && <CertificateBrandingPanel />}
+        {activeTab === "Certificate Branding" && registrar && <CertificateBrandingPanel />}
 
         {/* ── Signature ── */}
-        {tab === "Signature" && (isOfficer || role === ROLES.REGISTRAR) && <OfficerSignaturePanel defaultName={user?.full_name || ""} />}
+        {activeTab === "Signature" && (isOfficer || role === ROLES.REGISTRAR) && <OfficerSignaturePanel defaultName={user?.full_name || ""} />}
 
         {/* ── Profile ── */}
-        {tab === "Profile" && user && <ProfilePanel key={user.id} user={user} />}
+        {activeTab === "Profile" && user && <ProfilePanel key={user.id} user={user} />}
 
         {/* ── Password ── */}
-        {tab === "Password" && (
+        {activeTab === "Password" && (
           <div className="flex flex-col gap-6">
             <div>
               <h3 className="text-[#08283F] font-semibold text-xl">Change Password</h3>
@@ -159,7 +173,8 @@ export default function SettingsPage() {
         )}
 
         {/* ── Blockchain ── */}
-        {tab === "Blockchain" && systemAdmin && <ChainConfigPanel />}
+        {activeTab === "Blockchain" && systemAdmin && <ChainConfigPanel />}
+        </section>
       </div>
     </div>
   );

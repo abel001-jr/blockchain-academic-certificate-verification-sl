@@ -1,8 +1,9 @@
 "use client";
+import { subscribeDashboardRefresh } from "@/lib/dashboardRefresh.mjs";
 import styles from "./RoleDashboard.module.css";
 import { ActionButton } from "@/components/ui/AnimatedControls";
 import StatusDistribution from "./StatusDistribution";
-import SignerCharts from "./SignerCharts";
+import SignerCharts, { SignatureQueueCard } from "./SignerCharts";
 import WelcomeCard from "./WelcomeCard";
 
 import Link from "next/link";
@@ -56,18 +57,14 @@ export default function OfficerDashboard({ role }) {
     }
     async function loadActivity() {
       try {
-        const [approvedData, allData] = await Promise.all([
-          loadDashboardRecords(`/audit-logs/?action=${approvalAction}&ordering=-timestamp`),
-          loadDashboardRecords("/audit-logs/?ordering=-timestamp"),
-        ]);
+        const approvedData = await loadDashboardRecords(`/audit-logs/?action=${approvalAction}&ordering=-timestamp`);
         setApproved(approvedData.results ?? approvedData);
         setApprovalTotal(typeof approvedData.count === "number" ? approvedData.count : (approvedData.results ?? approvedData).length);
-        setActivity(allData);
+        setActivity(approvedData.results ?? approvedData);
       } catch {}
       finally { setActivityLoading(false); }
     }
-    load();
-    loadActivity();
+    return subscribeDashboardRefresh(() => Promise.all([load(), loadActivity()]), { intervalMs: 0 });
   }, [approvalAction, statusFilter]);
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 size={28} className="animate-spin text-[color:var(--cd-primary)]" /></div>;
@@ -103,12 +100,12 @@ export default function OfficerDashboard({ role }) {
         <div className="cd-workflow-status rounded-lg bg-white p-3"><ApprovalBars pending={pendingCount} approved={approvedThisMonth} /><div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-xs text-[#4A5A68]"><span>Current stage: <strong>{isVc ? "Registrar to VC" : "VC to Chancellor"}</strong></span><span>Next: <strong>{isVc ? "Chancellor review" : "Registrar finalizes"}</strong></span></div></div>
       </section>
       </WelcomeCard>
-      <SignerCharts pending={pending} approvals={approved} loading={activityLoading} />
+      <SignerCharts pending={pending} approvals={approved} loading={activityLoading} activityCard={<ActivityFeed title="Recent approval activity" entries={activity} loading={activityLoading} empty="No approval activity recorded yet." viewAllHref="/dashboard/approval-activity" />} />
 
 
 
 
-      <section className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]"><article className={`${pendingCount > 0 ? styles.pendingAttention : ""} cd-scroll-card overflow-hidden rounded-xl border border-[var(--cd-line)] bg-white shadow-[0_7px_24px_rgba(20,43,65,.045)]`}><div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--cd-line)] px-5 py-4"><div><h3 className="font-serif text-lg font-bold text-[color:var(--cd-primary)]">Pending signatures</h3><p className="text-[11px] text-[#687B8E]">The queue is ordered for your next decision</p></div><ActionButton href="/dashboard/approvals" className="cred-btn cred-btn-primary">Review pending <ArrowRight size={14} aria-hidden="true" /></ActionButton></div><div className="cd-scroll-card-body divide-y divide-[var(--cd-line)]" tabIndex={0} role="region" aria-label="Credentials awaiting signature">{pending.map((cert) => <Link href="/dashboard/approvals" key={cert.id} className={`${styles.pendingRow} flex items-center justify-between gap-4 px-5 py-3.5 transition hover:bg-[var(--cd-tint)]`}><div className="flex min-w-0 items-center gap-3"><ScrollText size={15} className="shrink-0 text-[color:var(--cd-primary)]" /><div className="min-w-0"><p className="truncate text-sm font-semibold text-[color:var(--cd-primary)]">{cert.student_name}</p><p className="truncate text-xs text-[#687B8E]">{cert.degree_title}</p></div></div><span className="flex shrink-0 items-center gap-2"><StatusBadge status={cert.status} /><ArrowRight size={15} aria-hidden="true" /></span></Link>)}{!pending.length && <p className="px-5 py-10 text-center text-sm text-[#687B8E]">Nothing waiting for your signature.</p>}</div></article><ActivityFeed title="Recent approval activity" entries={activity} loading={activityLoading} empty="No approval activity recorded yet." /></section>
+      <section className={styles.activityGrid}><SignatureQueueCard pending={pending} /><article className={`${pendingCount > 0 ? styles.pendingAttention : ""} cd-scroll-card overflow-hidden rounded-xl border border-[var(--cd-line)] bg-white shadow-[0_7px_24px_rgba(20,43,65,.045)]`}><div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--cd-line)] px-5 py-4"><div><h3 className="font-serif text-lg font-bold text-[color:var(--cd-primary)]">Credentials awaiting signature</h3><p className="text-[11px] text-[#687B8E]">The queue is ordered for your next decision</p></div><ActionButton href="/dashboard/approvals" className="cred-btn cred-btn-primary">Review pending <ArrowRight size={14} aria-hidden="true" /></ActionButton></div><div className="cd-scroll-card-body divide-y divide-[var(--cd-line)]" tabIndex={0} role="region" aria-label="Credentials awaiting signature">{pending.map((cert) => <Link href="/dashboard/approvals" key={cert.id} className={`${styles.pendingRow} flex items-center justify-between gap-4 px-5 py-3.5 transition hover:bg-[var(--cd-tint)]`}><div className="flex min-w-0 items-center gap-3"><ScrollText size={15} className="shrink-0 text-[color:var(--cd-primary)]" /><div className="min-w-0"><p className="truncate text-sm font-semibold text-[color:var(--cd-primary)]">{cert.student_name}</p><p className="truncate text-xs text-[#687B8E]">{cert.degree_title}</p></div></div><span className="flex shrink-0 items-center gap-2"><StatusBadge status={cert.status} /><ArrowRight size={15} aria-hidden="true" /></span></Link>)}{!pending.length && <p className="px-5 py-10 text-center text-sm text-[#687B8E]">Nothing waiting for your signature.</p>}</div></article></section>
     </div>
   );
 }

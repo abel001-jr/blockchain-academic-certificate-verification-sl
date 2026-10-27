@@ -15,21 +15,42 @@ const QrScanner = dynamic(() => import("@/components/QrScanner"), { ssr: false }
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api";
 
 const OUTCOMES = {
+  unavailable: { icon: AlertTriangle, color: "text-[#A9721F]", bg: "bg-[#F5EBDB] border-[#A9721F]/20", label: "Verification unavailable" },
   valid:            { icon: CheckCircle2,  color: "text-[#2F6F4E]", bg: "bg-[#E7F1EB] border-[#2F6F4E]/20", label: "Valid" },
   revoked:          { icon: XCircle,       color: "text-[#A23B34]", bg: "bg-[#F5E5E3] border-[#A23B34]/20", label: "Revoked" },
-  tampered:         { icon: AlertTriangle, color: "text-[#A9721F]", bg: "bg-[#F5EBDB] border-[#A9721F]/20", label: "Tampered" },
+  tampered:         { icon: AlertTriangle, color: "text-[#A9721F]", bg: "bg-[#F5EBDB] border-[#A9721F]/20", label: "Integrity mismatch" },
   not_verified:     { icon: AlertTriangle, color: "text-[#A9721F]", bg: "bg-[#F5EBDB] border-[#A9721F]/20", label: "Not yet issued" },
   not_found:        { icon: HelpCircle,    color: "text-[#4A5A68]", bg: "bg-[#EAF2FB] border-[#CFE1F2]",    label: "Not Found" },
   captcha_required: { icon: AlertTriangle, color: "text-[#A9721F]", bg: "bg-[#F5EBDB] border-[#A9721F]/20", label: "Please complete the CAPTCHA and try again" },
 };
+
+function VerificationEvidence({ result }) {
+  if (!result?.checks) return result?.message ? <p className="mt-3 text-sm">{result.message}</p> : null;
+  const labels = { blockchain: "Blockchain record", data: "Structured credential data", certificate: "Certificate PDF", transcript: "Transcript PDF" };
+  const states = { matched: "Matches", mismatch: "Does not match", unavailable: "Unavailable - retry", not_checked: "Not checked", not_applicable: "Not applicable", not_found: "No on-chain record" };
+  return <div className="my-4 space-y-3 text-sm">
+    <p>{result.message}</p>
+    <div className="grid gap-3 sm:grid-cols-2">{Object.entries(result.checks).map(([key, check]) => <section key={key} className="min-w-0 rounded-xl border border-[#E4E1D6] bg-[#F8F7F2] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2"><h4 className="font-semibold text-[#08283F]">{labels[key] || key}</h4><span className={`rounded-full px-2 py-1 text-xs font-semibold ${check.status === "matched" ? "bg-[#E7F1EB] text-[#2F6F4E]" : check.status === "mismatch" ? "bg-[#F5E5E3] text-[#A23B34]" : "bg-[#EAF2FB] text-[#4A5A68]"}`}>{states[check.status] || check.status}</span></div>
+      {check.source && <p className="mt-2 text-xs font-medium text-[#687B8E]">Source: {check.source === "uploaded_file" ? "Your uploaded original PDF" : check.source === "ipfs" ? "Stored institution document" : check.source}</p>}
+      {check.explanation && <p className="mt-2 text-xs leading-relaxed text-[#4A5A68]">{check.explanation}</p>}
+      {check.status !== "matched" && check.next_step && <p className="mt-3 border-t border-[#E4E1D6] pt-2 text-xs leading-relaxed"><strong>Next step:</strong> {check.next_step}</p>}
+    </section>)}</div>
+    {result.recommendation && <section className="rounded-xl border border-[#CFE1F2] bg-[#EAF2FB] p-4"><h4 className="font-semibold">How to interpret this report</h4><p className="mt-2 text-sm leading-relaxed">{result.recommendation}</p></section>}
+    {result.verified_at && <p className="text-xs text-[#4A5A68]">Checked at {new Date(result.verified_at).toLocaleString()}. Status reflects this check; it can change after issuance or revocation updates.</p>}
+
+    {result.blockchain?.block_number !== undefined && <p className="break-all text-xs text-[#4A5A68]">Network {result.blockchain.chain_id} | Block {result.blockchain.block_number} | Contract {result.blockchain.contract_address}</p>}
+    {result.verification_scope === "public" && <p className="text-xs">An ID or QR lookup alone does not check the file in your possession. Upload your original PDF for a file comparison. Fetching stored documents and viewing private details requires student-authorized access.</p>}
+  </div>;
+}
 
 // ─── Result detail grid ───────────────────────────────────────────────────────
 
 /**
  * Build the "certificate details" grid.
  *
- * The public scope intentionally returns only four fields; the full scope
- * (share code or granted consent) adds degree, grade and hashes. Rendering
+ * Public results include programme, department and graduation year; full scope
+ * (share code or granted consent) adds grade and hashes. Rendering
  * the full label list unconditionally produced empty cells, so only the
  * fields actually present are shown.
  */
@@ -39,7 +60,7 @@ function detailRows(c) {
     ["Certificate ID",  c.certificate_id],
     ["Student",         c.student_name],
     ["Institution",     c.institution_name],
-    ["Degree",          c.degree_title],
+    ["Programme",       c.degree_title],
     ["Department",      c.department],
     ["Graduation Year", c.graduation_year],
     ["Grade",           c.grade],
@@ -96,10 +117,16 @@ function ConsentRequestFlow({ certId, onApproved, initialRequestId = null }) {
   useEffect(() => {
     if (phase !== "pending" || !requestId) return;
 
+    let polling = false;
+    let active = true;
+    const controller = new AbortController();
     async function poll() {
+      if (polling || !active) return;
+      polling = true;
       try {
-        const res = await fetch(`${API_BASE}/verify/consent/${requestId}/`);
+        const res = await fetch(`${API_BASE}/verify/consent/${requestId}/`, { signal: controller.signal });
         const data = await res.json();
+        if (!active) return;
         if (data.status === "approved") {
           clearInterval(pollRef.current);
           setPhase("approved");
@@ -113,13 +140,15 @@ function ConsentRequestFlow({ certId, onApproved, initialRequestId = null }) {
           setPhase("expired");
         }
       } catch {
-        // network hiccup — keep polling
+        // A failed request can be retried by the next polling tick.
+      } finally {
+        polling = false;
       }
     }
 
     poll(); // immediate first check
     pollRef.current = setInterval(poll, POLL_INTERVAL_MS);
-    return () => clearInterval(pollRef.current);
+    return () => { active = false; controller.abort(); clearInterval(pollRef.current); };
   }, [phase, requestId, onApproved]);
 
   async function handleSubmit(e) {
@@ -280,9 +309,15 @@ export default function CertificateVerifyPanel({
   autoVerify = false,
   initialConsentId = "",   // if set, skip verify form and go straight to consent polling
   initialShareCode = "",   // ?code=<raw> — unlocks the full (share-scoped) payload
+  employerAccess = false,
 }) {
   const [certId,        setCertId]        = useState(initialId);
   const [result,        setResult]        = useState(null);
+  const [validatedAccess, setValidatedAccess] = useState(null);
+  const [accessError, setAccessError] = useState("");
+  const [verificationFiles, setVerificationFiles] = useState({});
+  const [downloadError, setDownloadError] = useState("");
+  const [downloading, setDownloading] = useState(false);
   const [loading,       setLoading]       = useState(false);
   const [scanning,      setScanning]      = useState(false);
   const [consentResult, setConsentResult] = useState(null);
@@ -291,13 +326,65 @@ export default function CertificateVerifyPanel({
   const [directConsentId, setDirectConsentId] = useState(initialConsentId || null);
   const { captchaNode, execute: runCaptcha } = useCaptcha();
 
+  function updateShareAccess(value) {
+    setValidatedAccess(null); setAccessError("");
+    const entered = value.trim();
+    if (/^https?:\/\//i.test(entered)) {
+      const linkedId = parseCertificateIdFromScan(entered);
+      if (linkedId !== entered) setCertId(linkedId);
+      setShareCode(parseShareCodeFromScan(entered));
+    } else setShareCode(entered);
+    setResult(null);
+    setConsentResult(null);
+  }
+
+  async function fetchCredentialFiles() {
+    if (!result?.certificate?.certificate_id || !shareCode) return;
+    setDownloading(true); setDownloadError("");
+    try {
+      const response = await fetch(`${API_BASE}/verify/${encodeURIComponent(result.certificate.certificate_id)}/documents/?code=${encodeURIComponent(shareCode)}`, {cache: "no-store"});
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || "Credential files could not be fetched.");
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url; link.download = `${result.certificate.certificate_id}-documents.zip`;
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) { setDownloadError(error.message); }
+    finally { setDownloading(false); }
+  }
+
+  async function validateEmployerAccess(rawScan = "") {
+    const raw = rawScan || certId;
+    const id = parseCertificateIdFromScan(raw);
+    const code = parseShareCodeFromScan(raw) || shareCode;
+    if (!id || !code) { setAccessError("Paste the full student share link, or enter its credential ID and share code."); return; }
+    setCertId(id); setShareCode(code); setLoading(true); setAccessError(""); setValidatedAccess(null); setResult(null);
+    try {
+      const response = await fetch(`${API_BASE}/verify/${encodeURIComponent(id)}/access/`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({code}), cache: "no-store"});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Access validation failed.");
+      setValidatedAccess({...data, code});
+    } catch (error) { setAccessError(error.message); }
+    finally { setLoading(false); }
+  }
+
   async function verify(id, rawScan = "") {
-    const scanned = parseShareCodeFromScan(rawScan);
+    const scanned = parseShareCodeFromScan(rawScan || id || certId);
     if (scanned) setShareCode(scanned);
     const codeToSend = scanned || shareCode;
 
     const parsed = parseCertificateIdFromScan(id || certId);
-    if (!parsed) return;
+    if (!parsed) {
+      setResult({ verification_outcome: "unavailable", message: "Enter a credential ID, paste the student's full share link, or scan a QR code." });
+      return;
+    }
+    if (employerAccess && (!validatedAccess || validatedAccess.certificate_id !== parsed || validatedAccess.code !== codeToSend)) {
+      await validateEmployerAccess(rawScan || id || certId); return;
+    }
+    if (employerAccess && !verificationFiles.certificate) { setAccessError("Upload the original certificate PDF before verifying. Transcript is optional."); return; }
     setCertId(parsed);
     setLoading(true);
     setResult(null);
@@ -310,23 +397,34 @@ export default function CertificateVerifyPanel({
       if (captchaToken) headers["X-Captcha-Token"] = captchaToken;
 
       const qs = codeToSend ? `?code=${encodeURIComponent(codeToSend)}` : "";
-      const res  = await fetch(`${API_BASE}/verify/${encodeURIComponent(parsed)}/${qs}`, { headers });
+      const files = Object.entries(verificationFiles).filter(([, file]) => file);
+      const body = files.length ? new FormData() : null;
+      if (body) {
+        delete headers["Content-Type"];
+        files.forEach(([kind, file]) => body.append(kind, file));
+      }
+      const res = await fetch(`${API_BASE}/verify/${encodeURIComponent(parsed)}/${employerAccess ? "verify-documents/" : ""}${qs}`, { headers, method: body ? "POST" : "GET", ...(body ? { body } : {}) });
       const data = await res.json();
 
       if (res.status === 403 && data.captcha_required) {
         setResult({ found: false, verification_outcome: "captcha_required" });
+      } else if (!res.ok && data.verification_outcome !== "not_found") {
+        setResult({ verification_outcome: "unavailable", message: data.detail || "Verification could not complete. Retry shortly." });
       } else {
         setResult(data);
+        if (employerAccess && data.access_consumed) setValidatedAccess(null);
       }
     } catch {
-      setResult({ found: false, verification_outcome: "not_found" });
+      setResult({ found: false, verification_outcome: "unavailable", message: "The verification service could not be reached. Retry shortly." });
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    if (autoVerify && initialId) verify(initialId);
+    let active = true;
+    if (autoVerify && initialId) queueMicrotask(() => { if (active) verify(initialId); });
+    return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoVerify, initialId, initialShareCode]);
 
@@ -335,8 +433,9 @@ export default function CertificateVerifyPanel({
     setConsentResult(certPayload);
     // Inject as a valid result so the cert detail grid renders
     setResult({
+      ...certPayload,
       found: true,
-      verification_outcome: certPayload.verification_outcome ?? "valid",
+      verification_outcome: certPayload.verification_outcome ?? "unavailable",
       status: certPayload.status,
       certificate: certPayload.certificate ?? certPayload,
     });
@@ -370,6 +469,8 @@ export default function CertificateVerifyPanel({
               <outcome.icon size={20} className={`${outcome.color} shrink-0`} />
               <p className={`font-bold text-base ${outcome.color}`}>{outcome.label}</p>
             </div>
+            {result.access_consumed && <p className="mb-3 text-sm font-medium">This single-use access has now been consumed. Keep this report open; a new verification requires a new student link.</p>}
+          <VerificationEvidence result={result} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {detailRows(result.certificate).map(([label, value]) => (
                 <div key={label} className="bg-[#F8F7F2] rounded-lg px-3 py-2.5 border border-[#E4E1D6]">
@@ -396,7 +497,7 @@ export default function CertificateVerifyPanel({
         <div className="flex flex-col sm:flex-row gap-2.5">
           <input
             value={certId}
-            onChange={(e) => setCertId(e.target.value)}
+            onChange={(e) => { setCertId(e.target.value); setValidatedAccess(null); setAccessError(""); setResult(null); }}
             onKeyDown={(e) => e.key === "Enter" && verify()}
             placeholder="e.g. CR-2026-CUSL-A3F92C01"
             className={isDark
@@ -416,7 +517,7 @@ export default function CertificateVerifyPanel({
             <ActionButton
               tone={isDark ? "inverse" : undefined}
               type="button"
-              onClick={() => verify()}
+              onClick={() => employerAccess ? validateEmployerAccess() : verify()}
               disabled={loading}
               className={isDark
                 ? "bg-[#F8F7F2] text-[#08283F] rounded px-6 font-semibold text-[1rem] whitespace-nowrap disabled:opacity-60"
@@ -427,14 +528,18 @@ export default function CertificateVerifyPanel({
           </div>
         </div>
 
+        {employerAccess && <label className="mt-4 block text-sm font-medium">Student-provided share link or code
+          <input type="text" value={shareCode} onChange={event => updateShareAccess(event.target.value)} autoComplete="off" spellCheck={false} placeholder="Paste the full student share link or code" className="cd-input mt-2 w-full" />
+          <span className="mt-1 block text-xs text-[#4A5A68]">Required for private details and stored files. An ID-only check remains public; request student consent after lookup.</span>
+        </label>}
         {shareCode && (
           <div className="flex items-center gap-2 mt-3 text-xs">
             <BadgeCheck size={13} className="text-[#2F6F4E] shrink-0" />
-            <span className="text-[#2F6F4E] font-medium">Share code applied</span>
-            <span className="text-[#8A929C] truncate">full credential details unlocked</span>
+            <span className="text-[#2F6F4E] font-medium">{result?.verification_scope === "full" ? "Student access confirmed" : "Share code entered"}</span>
+            <span className="text-[#8A929C]">{result?.verification_scope === "full" ? "Authorized result below" : "Select Verify to validate access"}</span>
             <button
               type="button"
-              onClick={() => setShareCode("")}
+              onClick={() => { setShareCode(""); setValidatedAccess(null); setResult(null); }}
               className="ml-auto text-[#8A929C] hover:text-[#A23B34] underline shrink-0"
             >
               Remove
@@ -443,6 +548,10 @@ export default function CertificateVerifyPanel({
         )}
       </div>
 
+      {(employerAccess ? Boolean(validatedAccess) : Boolean(shareCode)) && <fieldset className="space-y-3 rounded-xl border border-[#E4E1D6] p-4"><legend className="text-sm font-semibold">2. Upload original documents</legend><p className="text-xs">Certificate PDF is required; transcript is optional. Maximum 20 MB each. Files are compared in memory and not saved. Use the original issued PDFs: scans or re-saved copies have different hashes. An omitted transcript is marked Not checked.</p>{[["certificate", "Certificate PDF (required)"], ["transcript", "Transcript PDF (optional)"]].map(([kind, label]) => <label key={kind} className="block text-sm">{label}<input className="mt-1 block w-full text-xs" type="file" accept="application/pdf,.pdf" disabled={loading} onChange={event => { setVerificationFiles(previous => ({ ...previous, [kind]: event.target.files?.[0] || null })); setResult(null); }} /></label>)}</fieldset>}
+      {employerAccess && accessError && <p role="alert" className="text-sm text-red-700">{accessError}</p>}
+      {employerAccess && validatedAccess && <p role="status" className="text-sm text-[#2F6F4E]">Access validated without consuming it. Expires {new Date(validatedAccess.expires_at).toLocaleString()}. Upload your files, then verify once.</p>}
+      {employerAccess && <ActionButton type="button" onClick={() => verify()} disabled={loading || !validatedAccess || !verificationFiles.certificate} className="cd-btn-primary w-full justify-center disabled:opacity-60">{loading ? "Verifying credential…" : "Verify documents"}</ActionButton>}
       {/* Verification result */}
       {result && outcome && (
         <div className={isDark ? "bg-[#F8F7F2] text-[#1B2734] rounded-md p-8" : "dash-card p-5"}>
@@ -450,9 +559,14 @@ export default function CertificateVerifyPanel({
             <outcome.icon size={20} className={`${outcome.color} shrink-0`} />
             <div>
               <p className={`font-bold text-base ${outcome.color}`}>{outcome.label}</p>
-              <p className="text-[#4A5A68] text-xs">Verification outcome</p>
+              <p className="text-[#4A5A68] text-xs">{result.verification_scope === "full" ? "Student-authorized verification" : "Public verification ? private access has not been granted"}</p>
             </div>
           </div>
+
+          {result.access_consumed && <p className="mb-3 text-sm font-medium">This single-use access has now been consumed. Keep this report open; a new verification requires a new student link.</p>}
+          <VerificationEvidence result={result} />
+          {employerAccess && !result.access_consumed && result.verification_scope === "full" && shareCode && result.verification_outcome === "valid" && <button type="button" disabled={downloading} onClick={fetchCredentialFiles} className="cd-btn-secondary mb-4">{downloading ? "Fetching credential files?" : "Fetch issued certificate and transcript"}</button>}
+          {downloadError && <p role="alert" className="mb-3 text-sm text-red-700">{downloadError}</p>}
 
           {result.found && result.certificate && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">

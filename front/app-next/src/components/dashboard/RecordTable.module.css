@@ -1,0 +1,60 @@
+.frame { border: 1px solid var(--cd-line, #E4E1D6); border-radius: 16px; background: white; overflow: hidden; }
+.frame table { border-collapse: separate; border-spacing: 0; width: 100%; }
+.frame thead th { padding: 14px 18px; background: var(--cd-tint, #F2EFE7); color: #4A5A68; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; border-bottom: 1px solid var(--cd-line, #E4E1D6); }
+.frame tbody td { padding: 16px 18px; vertical-align: top; line-height: 1.55; border-bottom: 1px solid var(--cd-line, #E4E1D6); }
+.frame tbody tr:last-child td { border-bottom: 0; }
+.frame tbody tr:nth-child(even) { background: #FCFBF8; }
+.frame tbody tr:hover, .frame tbody tr:focus-within { background: #F2EFE7; }
+.frame tbody td:first-child { border-left: 3px solid transparent; }
+.frame tbody tr:hover td:first-child, .frame tbody tr:focus-within td:first-child { border-left-color: #780110; }
+.heading { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; align-items: center; padding: 18px 20px; border-bottom: 1px solid var(--cd-line); }
+.heading h3 { font-weight: 600; color: #08283F; font-size: 16px; }
+.heading span { color: #687B8E; font-size: 12px; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 180px; }
+.actions > button { min-height: 36px; padding: 7px 10px; border: 1px solid var(--cd-line); border-radius: 8px; color: #08283F; background: white; }
+.actions > button:hover { border-color: #780110; }
+.identifier { max-width: 190px; overflow-wrap: anywhere; font-size: 12px; }
+.scroll { overflow-x: auto; scrollbar-gutter: stable; }
+.scroll table { min-width: 1050px; }
+.pagination { padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--cd-line); }
+@media(max-width:639px) {
+  .frame thead th { padding: 12px; }
+  .frame tbody td { padding: 12px; }
+  .scroll table { min-width: 0; }
+  .scroll thead { display: none; }
+  .scroll tbody, .scroll tr, .scroll td { display: block; width: 100%; }
+  .scroll tbody tr { padding: 10px 16px; border-bottom: 1px solid var(--cd-line); }
+  .scroll tbody td { padding: 8px 0; border: 0; }
+  .scroll td[data-label]::before { content: attr(data-label); display: block; color: #687B8E; font-size: 11px; font-weight: 600; margin-bottom: 4px; }
+  .identifier { max-width: 100%; }
+}
+
+@media(min-width:640px) {
+  .fixedIdentity { table-layout: fixed; min-width: 1400px !important; }
+  .fixedIdentity th:nth-child(1), .fixedIdentity td:nth-child(1) { width: 210px; position: sticky; left: 0; z-index: 2; background: white; }
+  .fixedIdentity th:nth-child(2), .fixedIdentity td:nth-child(2) { width: 220px; position: sticky; left: 210px; z-index: 2; background: white; box-shadow: 5px 0 8px -5px #08283F40; }
+  .fixedIdentity thead th:nth-child(-n+2) { z-index: 3; background: var(--cd-tint); }
+  .fixedIdentity tr:nth-child(even) td:nth-child(-n+2) { background: #FCFBF8; }
+  .fixedIdentity tr:hover td:nth-child(-n+2) { background: #F2EFE7; }
+}
+
+/* Compact record actions: reserve their space instead of stretching controls. */
+.actions { gap: 8px; min-width: 0; align-items: center; justify-content: flex-start; }
+.actions > :is(a,button) { width: auto !important; min-width: 0 !important; min-height: 36px !important; max-width: 100%; padding: 8px 12px !important; font-size: 12px !important; line-height: 1.2 !important; white-space: nowrap; flex: 0 0 auto; box-sizing: border-box; }
+.actions > :is(a,button) svg { width: 14px; height: 14px; flex-shrink: 0; }
+.actions > a { text-decoration: none; }
+.actions > :is(a,button):focus-visible { outline: 2px solid #780110; outline-offset: 3px; }
+.actions > :is(a,button) { transition: transform .16s ease, background-color .16s ease, border-color .16s ease, box-shadow .16s ease; }
+.actions > :is(a,button):not(:disabled):hover { transform: translateY(-2px); border-color: #780110; box-shadow: 0 3px 8px #08283F14; }
+.actions > button:not(:disabled):hover,
+.actions > a:global(.cd-btn-secondary):hover { background-color: #F2EFE7; color: #780110; }
+.actions > :is(a,button):not(:disabled):active { transform: translateY(0); box-shadow: none; }
+@media (prefers-reduced-motion: reduce) {
+  .actions > :is(a,button) { transition: none; }
+  .actions > :is(a,button):not(:disabled):hover { transform: none; }
+}
+@media(min-width:640px) {
+  .fixedIdentity th:last-child, .fixedIdentity td:last-child { width: 260px; }
+  .fixedIdentity td:last-child { padding-right: 20px; }
+  .fixedIdentity th:nth-child(3), .fixedIdentity td:nth-child(3) { width: 240px; }
+}

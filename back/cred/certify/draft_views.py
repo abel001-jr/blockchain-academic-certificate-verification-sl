@@ -35,6 +35,8 @@ review gate, so a file that changed in local storage is caught at submit time
 rather than being assumed to be what was reviewed.
 """
 
+import base64
+
 from django.core.files.base import ContentFile
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -55,6 +57,9 @@ from .document_intake import prepare_document
 MAX_DRAFT_DOCUMENT_BYTES = 20 * 1024 * 1024
 
 
+from .signature_readiness import require_signatures
+
+
 class CertificateDocumentPrepareView(APIView):
     """Prepare scan pages for preview; no storage, pinning, or review decision."""
     permission_classes = [IsRegistrar]
@@ -62,6 +67,7 @@ class CertificateDocumentPrepareView(APIView):
 
     def post(self, request, pk):
         cert = get_object_or_404(Certificate, pk=pk, institution=request.user.institution)
+        require_signatures(request.user)
         problem = _editable_draft(cert)
         if problem:
             return Response({"detail": problem}, status=400)
@@ -134,6 +140,7 @@ class CertificateDraftDocumentSaveView(APIView):
 
     def post(self, request, pk):
         cert = get_object_or_404(Certificate, pk=pk, institution=request.user.institution)
+        require_signatures(request.user)
 
         problem = _editable_draft(cert)
         if problem:
@@ -239,10 +246,18 @@ class CertificateDraftDocumentView(APIView):
         except DocumentEncryptionError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
 
-        response = HttpResponse(document, content_type="application/pdf")
-        response["Content-Disposition"] = (
-            f'inline; filename="{cert.certificate_id}-{kind}-draft.pdf"'
-        )
+        if request.query_params.get("transport") == "json":
+            # Background restoration must not look like a PDF download to
+            # browser download managers. Rebuild the File in the client.
+            response = Response({
+                "content_base64": base64.b64encode(document).decode("ascii"),
+                "filename": f"{cert.certificate_id}-{kind}-draft.pdf",
+            })
+        else:
+            response = HttpResponse(document, content_type="application/pdf")
+            response["Content-Disposition"] = (
+                f'inline; filename="{cert.certificate_id}-{kind}-draft.pdf"'
+            )
         # An unsubmitted credential is still being worked on, and this is a
         # decrypted copy of it. Nothing may cache it.
         response["Cache-Control"] = "private, no-store"

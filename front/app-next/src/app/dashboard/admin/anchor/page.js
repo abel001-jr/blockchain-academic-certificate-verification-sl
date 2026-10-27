@@ -24,6 +24,8 @@ import { ActionButton } from "@/components/ui/AnimatedControls";
 import { useState, useEffect, useCallback } from "react";
 import { Loader2, Link2, CheckCircle2, Wallet, AlertTriangle, RefreshCw } from "lucide-react";
 import { api }     from "@/lib/api";
+import { connectSingleWallet } from "@/lib/walletConnection.mjs";
+import { ensureWalletChain } from "@/lib/walletNetwork";
 import { useAuth, ROLES } from "@/lib/useAuth";
 
 const REGISTRY_ABI = [
@@ -83,18 +85,21 @@ export default function AnchorPage() {
    * as "not registered", or the page would send registerIssuer for institutions
    * that are already active and the transaction would revert on `already active`.
    */
-  const checkOnChain = useCallback(async (list) => {
-    if (!window.ethereum || !registryAddr || list.length === 0) return null;
+  const checkOnChain = useCallback(async (list, currentConfig) => {
+    if (!currentConfig?.rpc_url || !currentConfig?.issuer_registry_address || list.length === 0) return null;
     const { ethers } = await import("ethers");
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    const contract = new ethers.Contract(registryAddr, REGISTRY_ABI, provider);
+    const provider = new ethers.JsonRpcProvider(currentConfig.rpc_url);
+    try {
+    if ((await provider.getNetwork()).chainId !== BigInt(currentConfig.chain_id)) throw new Error("The configured RPC is on another network.");
+    const contract = new ethers.Contract(currentConfig.issuer_registry_address, REGISTRY_ABI, provider);
     const result = {};
     for (const inst of list) {
       if (!inst.wallet_address) continue;
       result[inst.id] = await contract.isActiveIssuer(inst.wallet_address);
     }
     return result;
-  }, [registryAddr]);
+    } finally { provider.destroy(); }
+  }, []);
 
   const refreshOwnerAndAccount = useCallback(async () => {
     if (!window.ethereum || !registryAddr) return;
@@ -109,11 +114,19 @@ export default function AnchorPage() {
     }
     try {
       const accounts = await window.ethereum.request({ method: "eth_accounts" });
-      setConnected((accounts[0] || "").toLowerCase());
+      setConnected(accounts.length === 1 ? accounts[0].toLowerCase() : "");
     } catch {
       setConnected("");
     }
   }, [registryAddr]);
+
+  useEffect(() => {
+    const provider = window.ethereum;
+    if (!provider) return;
+    const changed = accounts => { setConnected(accounts.length === 1 ? accounts[0].toLowerCase() : ""); setSuccess(null); };
+    provider.on?.("accountsChanged", changed);
+    return () => provider.removeListener?.("accountsChanged", changed);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -122,12 +135,18 @@ export default function AnchorPage() {
       const cfg  = await api.get("/chain-config/");
       // Every institution with a wallet is loaded, not just the unanchored ones.
       // The chain decides who still needs registering.
-      const data = await api.get("/institutions/");
-      const list = (data.results ?? data).filter(i => i.wallet_address);
+      const records = [];
+      let page = 1, more = true;
+      while (more) {
+        const data = await api.get(`/institutions/?page_size=100&page=${page++}`);
+        records.push(...(data.results ?? data));
+        more = !!data.next;
+      }
+      const list = records.filter(i => i.wallet_address);
       setConfig(cfg);
       setInsts(list);
       try {
-        setOnChain((await checkOnChain(list)) ?? {});
+        setOnChain((await checkOnChain(list, cfg)) ?? {});
       } catch (e) {
         setOnChain({});
         setError(
@@ -168,8 +187,7 @@ export default function AnchorPage() {
     setWalletBusy(true);
     try {
       if (!window.ethereum) throw new Error("MetaMask not found.");
-      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-      const addr = (accounts[0] || "").toLowerCase();
+      const addr = await connectSingleWallet(window.ethereum);
       setConnected(addr);
 
       const chainHex = await window.ethereum.request({ method: "eth_chainId" });
@@ -207,11 +225,12 @@ export default function AnchorPage() {
       }
 
       const { ethers } = await import("ethers");
+      await ensureWalletChain(window.ethereum, config);
       const provider = new ethers.BrowserProvider(window.ethereum);
-      await provider.send("eth_requestAccounts", []);
+      const selectedAccount = await connectSingleWallet(window.ethereum);
       const network = await provider.getNetwork();
       setWalletChainId(Number(network.chainId));
-      const signer = await provider.getSigner();
+      const signer = await provider.getSigner(selectedAccount);
       const signerAddr = (await signer.getAddress()).toLowerCase();
       setConnected(signerAddr);
 
@@ -357,7 +376,7 @@ export default function AnchorPage() {
             className="shrink-0 flex items-center gap-2 bg-[#022448] text-white px-5 py-2.5 rounded-[12px] text-sm font-semibold hover:opacity-90 disabled:opacity-50"
           >
             {walletBusy ? <Loader2 size={15} className="animate-spin" /> : <Wallet size={15} />}
-            {connected ? "Reconnect / Refresh" : "Connect Owner Wallet"}
+            {connected ? "Refresh connection" : "Connect Owner Wallet"}
           </ActionButton>
         </div>
       </div>

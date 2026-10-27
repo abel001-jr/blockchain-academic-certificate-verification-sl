@@ -200,9 +200,10 @@ class ReviewApplicationView(APIView):
             password=secrets.token_urlsafe(16),  # wallet auth is primary
             first_name=application.admin_first_name,
             last_name=application.admin_last_name,
-            role=Role.REGISTRAR,  # institution head / anchored issuer
+            role=Role.INSTITUTIONAL_ADMIN,
             institution=institution,
             wallet_address=wallet,
+            wallet_verified=True,
         )
 
         application.status      = "approved"
@@ -328,6 +329,11 @@ class InviteRegistrarView(APIView):
     permission_classes = [IsInstitutionSetupAdmin]
 
     def post(self, request):
+        domain = getattr(request.user.institution, "email_domain", "").strip().lower()
+        if not domain:
+            return Response({"detail": "Configure the institution email domain in Settings before adding officers."}, status=400)
+        if request.data.get("email", "").strip().lower().rpartition("@")[2] != domain:
+            return Response({"detail": f"Use the institution's @{domain} domain."}, status=400)
         data = request.data
         email      = data.get("email", "").strip()
         first_name = data.get("first_name", "").strip()

@@ -1,4 +1,5 @@
 "use client";
+import { subscribeDashboardRefresh } from "@/lib/dashboardRefresh.mjs";
 import DeleteButton from "@/components/ui/DeleteButton";
 import NavigationButton from "@/components/ui/NavigationButton";
 
@@ -20,6 +21,7 @@ import {
   Pencil,
   ShieldCheck,
 } from "lucide-react";
+import { loadDashboardRecords } from "@/lib/dashboardRecords";
 import { api } from "@/lib/api";
 import { useAuth, ROLES } from "@/lib/useAuth";
 import { verificationPath } from "@/lib/parseCertificateScan";
@@ -68,7 +70,7 @@ function FlowBadge({ flowType }) {
   );
 }
 
-function CredentialRow({ credential, canIssue, onRemove }) {
+function CredentialRow({ credential, canIssue, onRemove, role }) {
   const hasTranscript = credential.has_transcript;
   const canResume = canIssue && credential.status === "draft" && [
     "system_designed",
@@ -81,36 +83,18 @@ function CredentialRow({ credential, canIssue, onRemove }) {
 
   return (
     <div className={`${styles.credentialRow} group flex items-start justify-between gap-4 border-b border-[#E4E0D5] px-6 py-4 transition hover:bg-[#FCFBF8]`}>
-      {/* Student Info */}
-      <div className="flex min-w-0 flex-1 items-start gap-4">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#08283F]/5">
-          <ScrollText size={20} className="text-[#08283F]" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="truncate font-semibold text-[#142B41]">
-              {credential.student_name}
-            </h3>
-          </div>
-          <p className="mt-1 truncate text-sm text-[#687B8E]">
-            {credential.degree_title}
-          </p>
-          <div className="mt-2 flex items-center gap-3 text-xs text-[#9AA8B4]">
-            <span className="font-mono">{credential.certificate_id}</span>
-            <span>•</span>
-            <span>{credential.graduation_year}</span>
-            {credential.grade && (
-              <>
-                <span>•</span>
-                <span>{credential.grade}</span>
-              </>
-            )}
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <FlowBadge flowType={credential.flow_type} />
-            <StatusBadge status={credential.status} />
-            {hasTranscript && <span className="inline-flex items-center gap-1 rounded-full bg-[#2F6F4E]/10 px-2 py-0.5 text-xs font-medium text-[#2F6F4E]"><FileText size={11} />With Transcript</span>}
-          </div>
+      <div className={styles.credentialIdentity}>
+        <h3 className="font-semibold text-[#142B41]">{credential.student_name}</h3>
+        <p className="mt-2 font-mono text-xs text-[#687B8E] break-all">{credential.certificate_id}</p>
+      </div>
+      <div className={styles.credentialData} tabIndex={0} role="region" aria-label={"Scrollable details for " + credential.student_name}>
+        <div className={styles.credentialDataContent}>
+          <div><span className="text-xs text-[#687B8E]">Award</span><p className="mt-1 text-sm text-[#142B41]">{credential.degree_title}</p></div>
+          <div><span className="text-xs text-[#687B8E]">Year</span><p className="mt-1 text-sm">{credential.graduation_year}</p></div>
+          {credential.grade && <div><span className="text-xs text-[#687B8E]">Classification</span><p className="mt-1 text-sm">{credential.grade}</p></div>}
+          <FlowBadge flowType={credential.flow_type} />
+          <StatusBadge status={credential.status} />
+          {hasTranscript && <span className="inline-flex items-center gap-1 rounded-full bg-[#2F6F4E]/10 px-2 py-1 text-xs text-[#2F6F4E]"><FileText size={11} />With transcript</span>}
         </div>
       </div>
 
@@ -136,7 +120,8 @@ function CredentialRow({ credential, canIssue, onRemove }) {
             title="Download credential document"
           >Download</DownloadButton>
         )}
-        {credential.certificate_id && (
+        {credential.status?.startsWith("pending") && <Link href={(["vc", "chancellor"].includes(role) && credential.status === (role === "vc" ? "pending_vc" : "pending_chancellor")) ? "/dashboard/approvals" : "/dashboard/certificates/" + credential.id} title="Review credential signature process" aria-label="Review credential signature process" className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-[var(--cd-line)] text-[#08283F]"><Pencil size={16} /></Link>}
+        {credential.status === "issued" && credential.certificate_id && (
           <Link
             href={verificationPath(credential.certificate_id)}
             target="_blank"
@@ -159,6 +144,7 @@ export default function CredentialsPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [documentFilter, setDocumentFilter] = useState("all");
   const [institution, setInstitution] = useState("");
   const [institutions, setInstitutions] = useState([]);
   const [removing, setRemoving] = useState(null);
@@ -184,7 +170,7 @@ export default function CredentialsPage() {
       try {
         let url = "/certificates/?page_size=100";
         if (isSuperAdmin && institution) url += `&institution=${encodeURIComponent(institution)}`;
-        const response = await api.get(url);
+        const response = await loadDashboardRecords(url);
         setCredentials(Array.isArray(response) ? response : response.results ?? []);
       } catch (error) {
         console.error("Failed to load credentials:", error);
@@ -192,7 +178,7 @@ export default function CredentialsPage() {
         setLoading(false);
       }
     }
-    loadCredentials();
+    return subscribeDashboardRefresh(loadCredentials, { intervalMs: 0 });
   }, [institution, isSuperAdmin]);
 
   useEffect(() => {
@@ -210,7 +196,9 @@ export default function CredentialsPage() {
     
     const matchesStatus = statusFilter === "all" || cred.status === statusFilter;
 
-    return matchesSearch && matchesStatus;
+    const hasTranscript = Boolean(cred.has_transcript || cred.transcript_hash || cred.ipfs_cid_transcript);
+    const matchesDocuments = documentFilter === "all" || (documentFilter === "paired" ? hasTranscript : !hasTranscript);
+    return matchesSearch && matchesStatus && matchesDocuments;
   });
 
   const stats = {
@@ -231,31 +219,10 @@ export default function CredentialsPage() {
   return (
     <div className={`${styles.page} w-full pb-4`}>
       {removing && <FloatingDetailDialog title="Remove credential draft?" onClose={() => { if (!removalBusy) setRemoving(null); }}><p className="mb-4">Remove {removing.certificate_id} for {removing.student_name} and its saved documents? This cannot be undone.</p>{removalError && <p role="alert" className="mb-4 text-red-700">{removalError}</p>}<div className="flex gap-3"><button type="button" className="cd-btn-secondary" disabled={removalBusy} onClick={() => setRemoving(null)}>Cancel</button><DeleteButton type="button" disabled={removalBusy}  onClick={removeDraft}>{removalBusy ? "Removing..." : "Remove draft"}</DeleteButton></div></FloatingDetailDialog>}
-      {/* Header */}
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-serif text-4xl font-bold tracking-tight text-[#142B41]">
-            Credentials
-          </h1>
-          <p className="mt-2 text-sm text-[#687B8E]">
-            Manage student credentials (certificates + transcripts as unified records)
-          </p>
-        </div>
-        {canIssue && (
-          <ActionButton
-            href="/dashboard/credentials/new"
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#C59A3A] px-5 text-sm font-bold text-white transition hover:brightness-110"
-          >
-            <Plus size={18} />
-            Issue Credential
-          </ActionButton>
-        )}
-        {!canIssue && !loading && (
-          <p className="text-sm text-[#687B8E] self-center">
-            Read-only view — issuing credentials is restricted to registrars.
-          </p>
-        )}
-      </div>
+      <header className={styles.credentialHero}>
+        <div><span>Credential workspace</span><h1>Credentials</h1><p>Manage certificates and transcripts together, from preparation through signatures and issuance.</p></div>
+        {canIssue && <ActionButton href="/dashboard/credentials/new" tone="inverse"><Plus size={18} /> Issue credential</ActionButton>}
+      </header>
 
       {/* Stats */}
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -297,50 +264,21 @@ export default function CredentialsPage() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row">
-        <div className="relative flex-1">
-          <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9AA8B4]" />
-          <input
-            type="text"
-            placeholder="Search by student name, ID, or degree..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-11 w-full rounded-lg border border-[#E4E0D5] bg-white pl-10 pr-4 text-sm text-[#142B41] placeholder-[#9AA8B4] focus:border-[#C59A3A] focus:outline-none focus:ring-2 focus:ring-[#C59A3A]/20"
-          />
+      <section className={styles.credentialFilters} aria-label="Credential filters">
+        <div className="relative"><Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#687B8E]" /><input type="search" aria-label="Search credentials" placeholder="Search student, credential ID or award" className="cd-input pl-10" value={searchQuery} onChange={event => setSearchQuery(event.target.value)} /></div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <label>Credential stage<select className="cd-input mt-1" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="all">All stages</option><optgroup label="Preparation"><option value="draft">Draft</option></optgroup><optgroup label="Signature process"><option value="pending_vc">Awaiting Vice-Chancellor signature</option><option value="pending_chancellor">Awaiting Chancellor signature</option><option value="pending_finalize">Awaiting finalization</option></optgroup><optgroup label="Issued records"><option value="issued">Issued</option><option value="revoked">Revoked</option></optgroup></select></label>
+          <label>Document support<select className="cd-input mt-1" value={documentFilter} onChange={event => setDocumentFilter(event.target.value)}><option value="all">All document sets</option><option value="paired">Certificate with transcript</option><option value="missing">Transcript not attached</option></select></label>
+          {isSuperAdmin && <label>Institution<select className="cd-input mt-1" value={institution} onChange={event => setInstitution(event.target.value)}><option value="">All institutions</option>{institutions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
         </div>
-        <select data-dropdown="compact"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="h-11 rounded-lg border border-[#E4E0D5] bg-white px-4 text-sm text-[#142B41] focus:border-[#C59A3A] focus:outline-none focus:ring-2 focus:ring-[#C59A3A]/20"
-        >
-          <option value="all">All Status</option>
-          <option value="draft">Draft</option>
-          <option value="pending_vc">Pending VC</option>
-          <option value="pending_chancellor">Pending Chancellor</option>
-          <option value="pending_finalize">Pending Finalize</option>
-          <option value="issued">Issued</option>
-          <option value="revoked">Revoked</option>
-        </select>
-        {isSuperAdmin && (
-          <select data-dropdown="compact"
-            value={institution}
-            onChange={(e) => setInstitution(e.target.value)}
-            className="h-11 rounded-lg border border-[#E4E0D5] bg-white px-4 text-sm text-[#142B41] focus:border-[#C59A3A] focus:outline-none focus:ring-2 focus:ring-[#C59A3A]/20"
-          >
-            <option value="">All institutions</option>
-            {institutions.map((inst) => (
-              <option key={inst.id} value={inst.id}>{inst.name}</option>
-            ))}
-          </select>
-        )}
-      </div>
+        <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-[#687B8E]">{filteredCredentials.length} matching credentials</p><button type="button" className="cd-btn-secondary" onClick={() => { setSearchQuery(""); setStatusFilter("all"); setDocumentFilter("all"); setInstitution(""); }}>Clear filters</button></div>
+      </section>
 
       {/* Credentials List */}
       <div className="overflow-hidden rounded-xl border border-[#E4E0D5] bg-white">
         {filteredCredentials.length > 0 ? (
           filteredCredentials.map((credential) => (
-            <CredentialRow key={credential.id} credential={credential} canIssue={canIssue} onRemove={item => { setRemoving(item); setRemovalError(""); }} />
+            <CredentialRow key={credential.id} credential={credential} role={role} canIssue={canIssue} onRemove={item => { setRemoving(item); setRemovalError(""); }} />
           ))
         ) : (
           <div className="flex min-h-[300px] flex-col items-center justify-center p-8 text-center">

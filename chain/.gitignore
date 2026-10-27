@@ -29,3 +29,9 @@
 
 # Snapshot cheatcodes output
 /snapshots
+
+# Persistent local development blockchain (keep a separate backup).
+/.local-chain/
+/ignition/deployments/anvil-persistent-31337/
+/anvil-output.log
+/anvil-error.log

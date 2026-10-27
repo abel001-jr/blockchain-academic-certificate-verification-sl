@@ -1,3 +1,8 @@
+import { useToast } from "../components/ToastProvider";
+import { apiErrorMessage, claimErrorMessage } from "../utils/apiError";
+import PageIntro from "../components/PageIntro";
+import FormField from "../components/FormField";
+import { colors as T, createStyles, fonts, cardShadow } from "../theme";
 import AnimatedButton from "../components/AnimatedButton";
 /**
  * StudentWelcomeScreen
@@ -15,7 +20,7 @@ import AnimatedButton from "../components/AnimatedButton";
  * Deep-link (credence://student-invite?token=...) bypasses this screen
  * entirely — handled in App.js before navigation even starts.
  */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -29,67 +34,63 @@ import {
 } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import * as Google from "expo-auth-session/providers/google";
-import { makeRedirectUri } from "expo-auth-session";
+import Constants from "expo-constants";
 import { loginWithGoogle, claimInviteToken, getMe } from "../services/auth";
 
 WebBrowser.maybeCompleteAuthSession();
 
 const GOOGLE_CLIENT_ID =
-  "335667631038-vouui7i0uqde3v04jcs2lb1l9sk9h0pr.apps.googleusercontent.com";
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+  "google-not-configured";
 
-const T = {
-  navy:    "#08283F",
-  gold:    "#B98A28",
-  cream:   "#F8F7F2",
-  border:  "#E4E1D6",
-  muted:   "#4A5A68",
-  faint:   "#8A929C",
-  surface: "#fff",
-  green:   "#2E7D32",
-  greenBg: "#E7F1EB",
-  red:     "#A23B34",
-  redBg:   "#F5E5E3",
-};
 
-export default function StudentWelcomeScreen({ navigation, onLoginSuccess, initialError = "" }) {
+export default function StudentWelcomeScreen({ navigation, route, onLoginSuccess, initialError = "" }) {
+  const { showToast } = useToast();
+  const processedGoogle = useRef(null);
+  const scrollRef = useRef(null);
+  const claimLock = useRef(false);
+  const claimY = useRef(0);
   const [token,      setToken]      = useState("");
   const [claiming,   setClaiming]   = useState(false);
   const [gBusy,      setGBusy]      = useState(false);
   const [error,      setError]      = useState(initialError);
-  const [claimedMsg, setClaimedMsg] = useState("");
+
+  useEffect(() => { setError(initialError); }, [initialError]);
+  useEffect(() => { if (error) showToast(error, { title: "Student access" }); }, [error, showToast]);
 
   // ── Google OAuth ──────────────────────────────────────────────────────────
-  const redirectUri = makeRedirectUri({ scheme: "credence" });
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     clientId:     GOOGLE_CLIENT_ID,
-    redirectUri,
+    webClientId: GOOGLE_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || "google-not-configured",
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || "google-not-configured",
     scopes:       ["openid", "profile", "email"],
-    responseType: "id_token",
+    // Ask which account to use even when Google's browser session is still active.
+    selectAccount: true,
   });
 
   const handleIdToken = useCallback(async (idToken) => {
     setGBusy(true);
     setError("");
     try {
-      await loginWithGoogle(idToken);
-      const user = await getMe();
+      const data = await loginWithGoogle(idToken);
+      const user = data.user ?? (await getMe());
+      showToast("You are signed in to your student account.", { title: "Signed in", tone: "success" });
       onLoginSuccess(user);
     } catch (err) {
-      setError(
-        err?.response?.data?.detail ||
-        "Google sign-in failed. Try using your invite link instead."
-      );
+      setError(apiErrorMessage(err, "Google sign-in failed. Try your invitation instead."));
       setGBusy(false);
     }
-  }, [onLoginSuccess]);
+  }, [onLoginSuccess, showToast]);
 
   useEffect(() => {
-    if (!response) return;
+    if (!response || processedGoogle.current === response) return;
+    processedGoogle.current = response;
     if (response.type === "success") {
       const idToken = response.params?.id_token;
       if (idToken) handleIdToken(idToken);
-      else setError("Google did not return a token. Please try again.");
+      else { setError("Google did not return a token. Please try again."); setGBusy(false); }
     } else if (response.type === "error") {
       setError(response.error?.message || "Google sign-in failed.");
     }
@@ -97,54 +98,48 @@ export default function StudentWelcomeScreen({ navigation, onLoginSuccess, initi
   }, [response, handleIdToken]);
 
   async function handleGooglePress() {
+    if (claimLock.current || gBusy) return;
     setError("");
+    if (Platform.OS === "web" && !process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID) {
+      setError("Google sign-in needs configuration. Use your invitation to continue.");
+      return;
+    }
+    if (Platform.OS !== "web" && Constants.executionEnvironment === "storeClient") {
+      setError("Google sign-in requires the Credence development build. Expo Go can still open your invitation.");
+      return;
+    }
+    const nativeClientId = Platform.OS === "android"
+      ? process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID
+      : process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+    if (Platform.OS !== "web" && !nativeClientId) {
+      setError("Google sign-in needs configuration for this device. Use your invite link to continue.");
+      return;
+    }
     setGBusy(true);
-    await promptAsync();
+    try {
+      await promptAsync();
+    } catch (err) {
+      setError(err?.message || "Unable to open Google sign-in.");
+      setGBusy(false);
+    }
   }
 
   // ── Invite token claim ────────────────────────────────────────────────────
   async function handleClaimToken() {
-    const raw = token.trim();
-    if (!raw) {
-      setError("Paste your invite token first.");
-      return;
-    }
-
-    // Accept the full URL or just the raw token.
-    // Simple regex — works in React Native without URL() polyfill.
-    const urlMatch = raw.match(/[?&]token=([^&\s]+)/);
-    const extracted = urlMatch ? decodeURIComponent(urlMatch[1]) : raw;
-
+    if (claimLock.current || gBusy) return;
+    claimLock.current = true;
     setClaiming(true);
     setError("");
-    setClaimedMsg("");
     try {
-      const data = await claimInviteToken(extracted);
+      const data = await claimInviteToken(token);
       const user = data.user ?? (await getMe());
-      setClaimedMsg(
-        `✓ Certificate access granted${user?.first_name ? ` — welcome, ${user.first_name}!` : "."}`
-      );
-      // Brief pause so the student sees the success message, then enter dashboard
-      setTimeout(() => onLoginSuccess(user), 1400);
+      showToast("Your credential is now linked to your student account. Complete your profile and link Google.", { title: "Credential claimed", tone: "success" });
+      // The authenticated navigator opens the student dashboard.
+      onLoginSuccess(user);
     } catch (err) {
-      const detail = err?.response?.data?.detail || "";
-      if (!err?.response) {
-        // Network error — wrong API address, server not running, etc.
-        setError(
-          "Cannot reach the server. Make sure the Intelligent Academic Credentialing backend is running and try again."
-        );
-      } else if (detail.toLowerCase().includes("expired")) {
-        setError(
-          "This invite link has expired (24-hour window). Ask your institution to resend it."
-        );
-      } else if (detail.toLowerCase().includes("already been used")) {
-        setError(
-          "This link has already been used. Sign in with Google to access your account."
-        );
-      } else {
-        setError(detail || "Invalid invite link. Check you copied the full token.");
-      }
+      setError(claimErrorMessage(err));
     } finally {
+      claimLock.current = false;
       setClaiming(false);
     }
   }
@@ -157,27 +152,23 @@ export default function StudentWelcomeScreen({ navigation, onLoginSuccess, initi
       style={{ flex: 1, backgroundColor: T.cream }}
     >
       <ScrollView
+        ref={scrollRef}
+        onContentSizeChange={() => { if (route?.params?.intent === "claim") scrollRef.current?.scrollTo({ y: claimY.current, animated: false }); }}
         contentContainerStyle={s.scroll}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         {/* ── Error / success ── */}
-        {error ? (
-          <View style={s.errorBox}>
-            <Text style={s.errorText}>{error}</Text>
-          </View>
-        ) : null}
-        {claimedMsg ? (
-          <View style={s.successBox}>
-            <Text style={s.successText}>{claimedMsg}</Text>
-          </View>
-        ) : null}
+        <PageIntro eyebrow="STUDENT ACCESS" title="Your achievements.
+One place to keep them." description="Claim your institution invitation or sign in to your credential collection." dark serif />
+        <View style={s.accessSteps}><Text style={s.accessStep}>01  Claim invitation</Text><Text style={s.accessStep}>02  Link Google</Text><Text style={s.accessStep}>03  Keep & share</Text></View>
+
 
         {/* ── Path 1: Google (returning students) ── */}
         <View style={s.card}>
           <Text style={s.cardLabel}>Returning student</Text>
           <Text style={s.cardSub}>
-            Already claimed your certificate? Sign in with Google to open your portal.
+            Already claimed your certificate? Sign in with the Google account linked in your student profile.
           </Text>
           <TouchableOpacity
             style={[s.googleBtn, (busy || !request) && s.disabled]}
@@ -205,8 +196,8 @@ export default function StudentWelcomeScreen({ navigation, onLoginSuccess, initi
         </View>
 
         {/* ── Path 2: Invite token (first-time students) ── */}
-        <View style={s.card}>
-          <Text style={s.cardLabel}>First time? Use your invite link</Text>
+        <View style={s.card} onLayout={event => { claimY.current = event.nativeEvent.layout.y; }}>
+          <Text style={s.cardLabel}>Claim your credential</Text>
           <Text style={s.cardSub}>
             Your WhatsApp message contains a link ending with{"\n"}
             <Text style={s.example}>…student-invite?token=HSt-CquA-2AF…</Text>
@@ -214,7 +205,8 @@ export default function StudentWelcomeScreen({ navigation, onLoginSuccess, initi
             <Text style={s.example}>token=</Text>
           </Text>
 
-          <TextInput
+          <FormField
+            label="Invitation link or token"
             style={[s.tokenInput, claiming && s.disabled]}
             placeholder="Paste invite link or token here"
             placeholderTextColor={T.faint}
@@ -224,20 +216,10 @@ export default function StudentWelcomeScreen({ navigation, onLoginSuccess, initi
             autoCorrect={false}
             multiline
             numberOfLines={2}
-            editable={!claiming}
+            editable={!busy}
           />
 
-          <TouchableOpacity
-            style={[s.btnGold, claiming && s.disabled]}
-            onPress={handleClaimToken}
-            disabled={claiming}
-            activeOpacity={0.85}
-          >
-            {claiming
-              ? <ActivityIndicator color="#fff" size="small" />
-              : <Text style={s.btnGoldText}>Claim my certificate →</Text>
-            }
-          </TouchableOpacity>
+          <AnimatedButton label="Claim my credential" onPress={handleClaimToken} busy={claiming} disabled={gBusy} />
         </View>
 
         {/* ── Verify without signing in ── */}
@@ -247,8 +229,10 @@ export default function StudentWelcomeScreen({ navigation, onLoginSuccess, initi
   );
 }
 
-const s = StyleSheet.create({
-  scroll: { paddingHorizontal: 22, paddingVertical: 20, paddingBottom: 48 },
+const s = createStyles({
+  scroll: { paddingHorizontal: 20, paddingVertical: 16, paddingBottom: 48, gap: 16, width: "100%", maxWidth: 720, alignSelf: "center" },
+  accessSteps: { flexDirection: "row", flexWrap: "wrap", gap: 12, paddingVertical: 4 },
+  accessStep: { color: T.muted, fontSize: 10, fontWeight: "500" },
 
   // Alerts
   errorBox:   { backgroundColor: T.redBg,   borderRadius: 10, padding: 13, marginBottom: 14 },
@@ -257,55 +241,24 @@ const s = StyleSheet.create({
   successText:{ color: T.green, fontSize: 13, lineHeight: 19, fontWeight: "600" },
 
   // Card
-  card: {
-    backgroundColor: T.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: T.border,
-    padding: 20,
-    marginBottom: 6,
-    gap: 12,
-    ...Platform.select({
-      native: { shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 10, elevation: 2 },
-      web:    { boxShadow: "0 2px 12px rgba(8,40,63,0.05)" },
-    }),
-  },
-  cardLabel: { fontSize: 13, fontWeight: "700", color: T.navy },
-  cardSub:   { fontSize: 13, color: T.muted, lineHeight: 19 },
+  card: { backgroundColor: T.surface, borderRadius: 12, borderWidth: 1, borderColor: T.border, padding: 20, gap: 14, ...cardShadow },
+  cardLabel: { fontSize: 18, fontWeight: "600", color: T.navy },
+  cardSub: { fontSize: 13, color: T.muted, lineHeight: 22 },
   example:   { fontFamily: "monospace", fontSize: 11, color: T.faint },
 
   // Google button
-  googleBtn: {
-    height: 50,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: T.border,
-    backgroundColor: T.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  googleBtn: { minHeight: 50, borderRadius: 10, borderWidth: 1, borderColor: T.border, backgroundColor: T.surface, alignItems: "center", justifyContent: "center" },
   googleBtnInner: { flexDirection: "row", alignItems: "center", gap: 10 },
   gIcon:          { fontSize: 17, fontWeight: "800", color: "#4285F4", width: 20, textAlign: "center" },
   googleBtnText:  { fontSize: 15, fontWeight: "600", color: T.navy },
 
   // Divider
-  divider:     { flexDirection: "row", alignItems: "center", marginVertical: 10, gap: 10 },
+  divider: { flexDirection: "row", alignItems: "center", gap: 14 },
   dividerLine: { flex: 1, height: 1, backgroundColor: T.border },
   dividerText: { fontSize: 12, color: T.faint },
 
   // Token input
-  tokenInput: {
-    borderWidth: 1,
-    borderColor: T.border,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 13,
-    color: T.navy,
-    backgroundColor: T.cream,
-    textAlignVertical: "top",
-    minHeight: 64,
-  },
+  tokenInput: { minHeight: 88, textAlignVertical: "top" },
 
   // Gold claim button
   btnGold: {

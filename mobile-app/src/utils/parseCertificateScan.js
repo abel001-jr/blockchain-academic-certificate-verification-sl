@@ -28,3 +28,12 @@ export function parseCertificateIdFromScan(raw) {
 
   return value;
 }
+
+export function parseVerificationInput(raw) {
+  const value = String(raw ?? "").trim();
+  const certificateId = parseCertificateIdFromScan(value);
+  const match = value.match(/[?&]code=([^&#\s]*)/);
+  let code = "";
+  try { code = match ? decodeURIComponent(match[1]) : ""; } catch { /* Ignore malformed codes. */ }
+  return { certificateId, code };
+}

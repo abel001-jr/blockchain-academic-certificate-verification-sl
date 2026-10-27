@@ -55,6 +55,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
 
     student_id    = models.CharField(max_length=50, blank=True, default="")
+    google_subject = models.CharField(max_length=255, unique=True, null=True, blank=True, editable=False)
+    google_email = models.EmailField(blank=True, default="", editable=False)
+    google_linked_at = models.DateTimeField(null=True, blank=True, editable=False)
+
+    @property
+    def google_linked(self):
+        return bool(self.google_subject)
+
     profile_photo = models.ImageField(upload_to="profiles/", blank=True, null=True)
     wallet_address = models.CharField(max_length=42, blank=True, default="")
     phone_number  = models.CharField(
@@ -176,10 +184,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         """Human-readable onboarding status for registrar UI."""
         if not self.is_officer:
             return None
-        if self.on_chain_authorized and self.wallet_verified:
-            return "authorized"
-        if self.wallet_verified and not self.on_chain_authorized:
-            return "pending_authorization"
-        if self.must_change_password or not self.wallet_verified:
-            return "awaiting_setup"
-        return "pending_authorization"
+        if not self.wallet_verified:
+            return "wallet_pending"
+        if self.must_change_password:
+            return "password_pending"
+        return "setup_complete"

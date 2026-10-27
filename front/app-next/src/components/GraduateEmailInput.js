@@ -1,25 +1,42 @@
 "use client";
-import { useEffect, useId, useRef, useState } from "react";
-export default function GraduateEmailInput({ value, onChange, domain, studentName = "", nameParts }) {
-  const input = useRef(null);
-  const [notice, setNotice] = useState("");
+import { useId, useState } from "react";
+
+export default function GraduateEmailInput({ value, onChange, domain }) {
   const id = useId();
+  const [selectedType, setSelectedType] = useState(null);
   const normalizedDomain = domain?.trim().toLowerCase().replace(/^[.@]+/, "");
-  const matchesDomain = normalizedDomain && value.toLowerCase().endsWith(`@${normalizedDomain}`);
-  const local = matchesDomain ? value.slice(0, value.lastIndexOf("@")) : value;
-  const error = normalizedDomain && value && (!matchesDomain || !local || /[\s@]/.test(local)) ? `Use the institution's @${normalizedDomain} domain. Other domains are not allowed.` : "";
-  useEffect(() => { input.current?.setCustomValidity(error); }, [error]);
-  const clean = name => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z]/g, "");
-  const words = studentName.trim().split(/\s+/).filter(Boolean);
-  const surname = nameParts ? nameParts.surname : (words.length > 1 ? words.pop() : "");
-  const given = nameParts ? [nameParts.first, ...nameParts.other.trim().split(/\s+/)] : words;
-  const suggested = surname && given[0] ? given.filter(Boolean).map(name => clean(name).charAt(0)).join("") + clean(surname) : "";
-  return <div><div className="flex items-center rounded-xl border border-[var(--cd-line)] bg-[var(--cd-tint)] focus-within:ring-2 focus-within:ring-[var(--cd-primary)]"><input ref={input} type={normalizedDomain ? "text" : "email"} style={{background: "transparent", border: 0, boxShadow: "none"}} className="cd-input min-w-0 flex-1" required maxLength={254} value={local} onChange={e => {
-    const entered = e.target.value;
-    if (normalizedDomain && /[^a-zA-Z0-9._+\-]/.test(entered)) { setNotice("Enter only the email username, using letters, numbers, dots, underscores, plus or hyphens. The @domain is already provided."); return; }
-    setNotice(""); onChange(entered && normalizedDomain && !entered.includes("@") ? `${entered}@${normalizedDomain}` : entered);
-  }} placeholder={normalizedDomain ? "graduate email name" : "graduate@example.edu.sl"} aria-label="Graduate email" aria-invalid={Boolean(error)} aria-describedby={id} />{normalizedDomain && <span className="shrink-0 pr-4 text-sm font-semibold text-[var(--cd-primary)]">@{normalizedDomain}</span>}</div>
-    {normalizedDomain && suggested && !value && <button type="button" className="mt-2 text-xs text-[#08283F] underline" onClick={() => onChange(`${suggested}@${normalizedDomain}`)}>Use {suggested}@{normalizedDomain}</button>}
-    <p id={id} role={error || notice ? "alert" : undefined} className={`mt-1 text-xs ${error || notice ? "text-red-700" : "text-[#687B8E]"}`}>{notice || error || (normalizedDomain ? `Enter the graduate's email name. Only @${normalizedDomain} addresses are accepted.` : "Confirm the graduate's actual email address.")}</p>
+  const suffix = normalizedDomain ? `@${normalizedDomain}` : "";
+  const matchesSchool = Boolean(suffix && value?.toLowerCase().endsWith(suffix));
+  const emailType = selectedType || (matchesSchool ? "school" : "personal");
+  const school = emailType === "school";
+  const username = matchesSchool ? value.slice(0, -suffix.length) : value || "";
+
+  return <div>
+    <label htmlFor={`${id}-type`} className="sr-only">Student email type</label>
+    <select id={`${id}-type`} className="cd-input mb-2 w-full" value={emailType}
+      onChange={event => { setSelectedType(event.target.value); onChange(""); }}>
+      <option value="personal">Personal email</option>
+      <option value="school" disabled={!normalizedDomain}>School email{!normalizedDomain ? " (domain not configured)" : ""}</option>
+    </select>
+    <div className="flex min-w-0 items-center gap-2">
+      <input key={emailType} type={school ? "text" : "email"} className="cd-input min-w-0 w-full" required
+        maxLength={school ? Math.min(64, 254 - suffix.length) : 254}
+        pattern={school ? "[^\\s@]+" : undefined}
+        value={school ? username : value}
+        onChange={event => {
+          const text = event.target.value.trim();
+          const local = school && text.toLowerCase().endsWith(suffix) ? text.slice(0, -suffix.length) : text;
+          onChange(school ? (local ? `${local}${suffix}` : "") : text);
+        }}
+        placeholder={school ? "Student email username" : "student@example.com"}
+        aria-label={school ? "School email username" : "Personal student email"}
+        aria-describedby={id} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+      {school && <span className="shrink-0 text-sm text-[#4A5A68]">{suffix}</span>}
+    </div>
+    <p id={id} className="mt-1 text-xs text-[#687B8E]">
+      {school ? `Enter the username only; ${suffix} is added automatically.` : "Enter the student's full personal email address."}
+      {" "}The claim invitation goes to this address.
+      {!normalizedDomain && " To enable school email, ask the institution admin to configure the email domain in Settings."}
+    </p>
   </div>;
 }

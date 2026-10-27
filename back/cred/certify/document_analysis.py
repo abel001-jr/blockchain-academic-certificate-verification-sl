@@ -8,7 +8,7 @@ be reviewed by the Registrar.
 from io import BytesIO
 from django.conf import settings
 
-import fitz
+import pymupdf as fitz
 from PIL import Image, ImageOps
 import pytesseract
 from pytesseract import Output
@@ -34,9 +34,15 @@ def analyze_pdf(file_bytes: bytes, *, language: str = "eng", force_ocr: bool = F
         raise DocumentAnalysisError("The uploaded file is not a readable PDF.") from exc
 
     if document.page_count == 0:
+        document.close()
         raise DocumentAnalysisError("The PDF contains no pages.")
     if document.page_count > MAX_PAGES:
+        document.close()
         raise DocumentAnalysisError(f"PDFs may contain no more than {MAX_PAGES} pages.")
+
+    if document.is_encrypted:
+        document.close()
+        raise DocumentAnalysisError("Use an unencrypted PDF for document reading.")
 
     pages = []
     try:

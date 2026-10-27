@@ -110,6 +110,34 @@ class UserListCreateView(generics.ListCreateAPIView):
                 | Q(first_name__icontains=search)
                 | Q(last_name__icontains=search)
             )
+        active = self.request.query_params.get("is_active")
+        if active in ("true", "false"):
+            qs = qs.filter(is_active=active == "true")
+        setup_status = self.request.query_params.get("setup_status")
+        officers = (Role.REGISTRAR, Role.VC, Role.CHANCELLOR)
+        if setup_status == "setup_complete":
+            qs = qs.filter(role__in=officers, wallet_verified=True, must_change_password=False)
+        elif setup_status == "authorized":
+            qs = qs.filter(role__in=officers, on_chain_authorized=True)
+        elif setup_status == "pending_authorization":
+            qs = qs.filter(role__in=officers, on_chain_authorized=False, wallet_verified=True, must_change_password=False)
+        elif setup_status == "wallet_pending":
+            qs = qs.filter(role__in=officers, wallet_verified=False)
+        elif setup_status == "password_pending":
+            qs = qs.filter(role__in=officers, wallet_verified=True, must_change_password=True)
+        elif setup_status == "not_authorized":
+            qs = qs.filter(role__in=officers, on_chain_authorized=False)
+        institution_id = self.request.query_params.get("institution")
+        if institution_id:
+            from uuid import UUID
+            try:
+                UUID(institution_id)
+            except ValueError:
+                raise ValidationError({"institution": "Select a valid institution."})
+            qs = qs.filter(institution_id=institution_id)
+        from django.db.models import Case, When, Value, IntegerField
+        hierarchy = [Role.SUPER_ADMIN, Role.INSTITUTIONAL_ADMIN, Role.CHANCELLOR, Role.VC, Role.REGISTRAR, Role.STUDENT]
+        qs = qs.annotate(role_rank=Case(*[When(role=value, then=Value(index)) for index, value in enumerate(hierarchy)], default=Value(99), output_field=IntegerField())).order_by("role_rank", "first_name", "last_name", "id")
         if user.role == Role.SUPER_ADMIN:
             return qs
         return qs.filter(institution=user.institution)
@@ -242,7 +270,7 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
 class ResendOfficerInviteView(APIView):
     """
     POST /api/users/<uuid>/resend-invite/
-    Regenerate temp password and email (or return it) while setup incomplete.
+    Regenerate temporary credentials for an officer not yet authorized on-chain.
     """
     permission_classes = [IsInstitutionSetupAdmin]
 
@@ -260,17 +288,6 @@ class ResendOfficerInviteView(APIView):
                 {"detail": "Officer is already authorized — invite no longer applies."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if officer.wallet_verified and not officer.must_change_password:
-            return Response(
-                {
-                    "detail": (
-                        "Officer already finished setup. Wait for on-chain authorization "
-                        "or contact support to reset."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
         temp_password = secrets.token_urlsafe(12)
         officer.set_password(temp_password)
         officer.must_change_password = True

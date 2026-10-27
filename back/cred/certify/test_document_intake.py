@@ -1,6 +1,6 @@
 from io import BytesIO
 
-import fitz
+import pymupdf as fitz
 from PIL import Image
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase

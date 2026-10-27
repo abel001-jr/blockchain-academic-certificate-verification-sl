@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { Building2, Loader2, CheckCircle2, XCircle, Plus, Eye, Pencil, X } from "lucide-react";
+import AuthCountrySelect from "@/components/AuthCountrySelect";
+import AuthField from "@/components/AuthField";
 import { api } from "@/lib/api";
 import { useAuth, ROLES } from "@/lib/useAuth";
 
@@ -43,7 +45,9 @@ export default function AllInstitutionsPage() {
 
   useEffect(() => {
     if (authLoading || role !== ROLES.SUPER_ADMIN) return;
-    loadInstitutions();
+    let active = true;
+    Promise.resolve().then(() => { if (active) loadInstitutions(); });
+    return () => { active = false; };
   }, [authLoading, role, loadInstitutions]);
 
   async function handleSubmit(e) {
@@ -255,39 +259,22 @@ export default function AllInstitutionsPage() {
               value={form.short_name}
               onChange={e => setForm({ ...form, short_name: e.target.value })}
             />
-            <input
-              required
-              placeholder="Country"
-              className="cd-input"
-              value={form.country}
-              onChange={e => setForm({ ...form, country: e.target.value })}
-            />
-            <input
-              type="email"
-              placeholder="Email (optional)"
-              className="cd-input"
-              value={form.email}
-              onChange={e => setForm({ ...form, email: e.target.value })}
-            />
+            <AuthCountrySelect value={form.country} onChange={country => setForm(previous => ({ ...previous, country }))} />
+            <AuthField label="Institution email (optional)" example="registrar@institution.edu" type="email" autoComplete="email" maxLength={254} value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
             <input
               placeholder="Phone (optional)"
               className="cd-input"
               value={form.phone}
               onChange={e => setForm({ ...form, phone: e.target.value })}
             />
-            <input
-              placeholder="Website (optional)"
-              className="cd-input sm:col-span-2"
-              value={form.website}
-              onChange={e => setForm({ ...form, website: e.target.value })}
-            />
-            <textarea
-              placeholder="Address (optional)"
-              className="cd-input sm:col-span-2"
-              rows={2}
-              value={form.address}
-              onChange={e => setForm({ ...form, address: e.target.value })}
-            />
+            <div className="sm:col-span-2">
+              <AuthField label="Website (optional)" example="https://institution.edu" type="url" autoComplete="url" maxLength={200} value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} />
+              <p className="mt-1 text-xs text-[#687B8E]">Use the institution&apos;s official website, including https://.</p>
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="institution-address" className="cd-label">Institution address (optional)</label>
+              <textarea id="institution-address" autoComplete="street-address" placeholder="Street, city and district" className="cd-input" rows={3} maxLength={2000} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
+            </div>
             <input
               placeholder="Wallet Address (optional)"
               className="cd-input sm:col-span-2 font-mono text-sm"

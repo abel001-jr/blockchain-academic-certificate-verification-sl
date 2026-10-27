@@ -1,4 +1,5 @@
 "use client";
+import { connectWallet } from "@/lib/walletActions";
 import { useState, useEffect, useCallback } from "react";
 import { CheckCircle2, XCircle, Loader2, Building2, ChevronDown, ChevronUp, Anchor } from "lucide-react";
 import { api }     from "@/lib/api";
@@ -32,6 +33,7 @@ export default function PendingApplicationsPage() {
     try {
       const data = await api.get("/admin/institutions/pending/");
       setApps(data.results ?? data);
+      window.dispatchEvent(new Event("credence:applications-updated"));
     } catch {
       setError("Failed to load applications.");
     } finally {
@@ -41,8 +43,13 @@ export default function PendingApplicationsPage() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (role === ROLES.SUPER_ADMIN) load();
-    else setLoading(false);
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      if (role === ROLES.SUPER_ADMIN) void load();
+      else setLoading(false);
+    });
+    return () => { active = false; };
   }, [authLoading, role, load]);
 
   async function handleReject(id, reason) {
@@ -79,6 +86,7 @@ export default function PendingApplicationsPage() {
       }
       if (!window.ethereum) throw new Error("MetaMask not found. Use Account 0 (deployer) as Super Admin.");
 
+      const selectedAccount = await connectWallet();
       const review = await api.post(`/admin/institutions/${app.id}/review/`, {
         action: "approve",
         institution_id: institutionId,
@@ -89,8 +97,7 @@ export default function PendingApplicationsPage() {
 
       const { ethers } = await import("ethers");
       const provider = new ethers.BrowserProvider(window.ethereum);
-      await provider.send("eth_requestAccounts", []);
-      const signer = await provider.getSigner();
+      const signer = await provider.getSigner(selectedAccount);
 
       const registryAddr = process.env.NEXT_PUBLIC_ISSUER_REGISTRY_ADDRESS;
       if (!registryAddr) throw new Error("NEXT_PUBLIC_ISSUER_REGISTRY_ADDRESS not set.");

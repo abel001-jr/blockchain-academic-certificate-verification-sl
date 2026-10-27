@@ -27,6 +27,11 @@
 .applicationSteps [aria-current] span { background: var(--color-paper); color: var(--color-navy); }
 .applicationBody { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px; background: #fff; }
 .applicationFields { max-width: 740px; margin: 0 auto; }
+.institutionGrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px 20px; align-items: start; }
+.institutionGrid > div { min-width: 0; }
+.fullWidthField { grid-column: 1 / -1; }
+.institutionGrid p { font-size: 12px; line-height: 1.5; margin-top: 6px; }
+@media (max-width: 639px) { .institutionGrid { grid-template-columns: minmax(0, 1fr); gap: 16px; } }
 .applicationFields :global(.cd-input) { padding: 9px 12px; font-size: 14px; }
 .applicationFields :global(.cd-label) { font-size: 13px; margin-bottom: 4px; }
 .applicationFields :global(.gap-4) { gap: 12px; }

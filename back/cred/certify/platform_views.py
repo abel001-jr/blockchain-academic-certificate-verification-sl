@@ -99,6 +99,13 @@ class PlatformStatsView(APIView):
     permission_classes = [IsSuperAdmin]
 
     def get(self, request):
+        try:
+            credential_months = int(request.query_params.get("credential_months", 6))
+            verification_months = int(request.query_params.get("verification_months", 6))
+        except (ValueError, TypeError):
+            return Response({"detail": "Choose a supported chart period."}, status=400)
+        if credential_months not in {3, 6, 9, 12, 24} or verification_months not in {3, 6, 9, 12}:
+            return Response({"detail": "Credentials support 3, 6, 9, 12 or 24 months; verification supports up to 12 months."}, status=400)
         institutions = Institution.objects.all()
         certificates = Certificate.objects.all()
         applications = InstitutionApplication.objects.filter(status="pending")
@@ -133,14 +140,14 @@ class PlatformStatsView(APIView):
         verifications = AuditLog.objects.filter(action="certificate.verified")
         trend_rows = (
             verifications
-            .filter(timestamp__gte=_month_start(5))
+            .filter(timestamp__gte=_month_start(verification_months - 1))
             .annotate(month=TruncMonth("timestamp"))
             .values("month")
             .annotate(count=Count("id"))
             .order_by()
         )
         trend_counts = {(r["month"].year, r["month"].month): r["count"] for r in trend_rows}
-        trend = _month_buckets(trend_counts)
+        trend = _month_buckets(trend_counts, months=verification_months)
 
         # ── Most recent certificates across every institution ────────────────
         recent = list(
@@ -155,7 +162,13 @@ class PlatformStatsView(APIView):
         claimed = issued.filter(invite_tokens__used=True, invite_tokens__claimed_at__isnull=False).distinct()
         wallet_users = User.objects.filter(is_active=True, role__in=[Role.SUPER_ADMIN, Role.INSTITUTIONAL_ADMIN, Role.REGISTRAR, Role.VC, Role.CHANCELLOR])
 
+        chart_records = certificates.filter(created_at__gte=_month_start(credential_months - 1))
+        chart_institutions = [{"institution_id": row["institution_id"], "name": row["institution__name"] or "Unspecified",
+            "short_name": row["institution__short_name"] or "", "total": row["count"]}
+            for row in chart_records.values("institution_id", "institution__name", "institution__short_name").annotate(count=Count("id")).order_by("-count")[:8]]
         return Response({
+            "chart_periods": {"credentials": credential_months, "verifications": verification_months},
+            "credential_chart": {"total": chart_records.count(), "by_status": _status_breakdown(chart_records), "by_institution": chart_institutions},
             "completion": {
                 "claims": {"count": claimed.count(), "total": global_status["issued"]},
                 "wallets": {"count": wallet_users.exclude(wallet_address="").count(), "total": wallet_users.count()},

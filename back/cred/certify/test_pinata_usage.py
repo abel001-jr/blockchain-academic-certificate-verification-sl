@@ -2,9 +2,10 @@ from unittest.mock import Mock, patch
 
 import requests
 from django.core.cache import cache
-from django.test import SimpleTestCase, override_settings
+from django.test import TestCase, override_settings
 
-from .pinata_usage import get_pinata_storage_usage
+from .pinata_usage import get_pinata_storage_usage, sync_pinata_storage_usage
+from .models import PinataStorageSnapshot
 
 
 @override_settings(
@@ -12,13 +13,14 @@ from .pinata_usage import get_pinata_storage_usage
     PINATA_STORAGE_QUOTA_BYTES=1000000000,
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
 )
-class PinataUsageTests(SimpleTestCase):
+class PinataUsageTests(TestCase):
     def setUp(self):
         cache.clear()
 
     @patch("certify.pinata_usage.requests.get")
     def test_actual_usage_is_cached(self, get):
         get.return_value = Mock(json=Mock(return_value={"pin_size_total": 12345}))
+        sync_pinata_storage_usage()
         self.assertEqual(get_pinata_storage_usage()["count"], 12345)
         self.assertEqual(get_pinata_storage_usage()["total"], 1000000000)
         get.assert_called_once_with(
@@ -29,13 +31,15 @@ class PinataUsageTests(SimpleTestCase):
     @patch("certify.pinata_usage.requests.get")
     def test_failure_is_not_reported_as_zero(self, get):
         get.side_effect = requests.Timeout()
+        sync_pinata_storage_usage()
         self.assertIsNone(get_pinata_storage_usage()["count"])
 
     @patch("certify.pinata_usage.requests.get")
     def test_invalid_totals_are_unavailable(self, get):
         for size in [None, -1, True, "123", 1.5]:
-            cache.clear()
+            PinataStorageSnapshot.objects.all().delete()
             get.return_value = Mock(json=Mock(return_value={"pin_size_total": size}))
+            sync_pinata_storage_usage()
             self.assertIsNone(get_pinata_storage_usage()["count"])
 
     @override_settings(PINATA_JWT="")
@@ -48,6 +52,7 @@ class PinataUsageTests(SimpleTestCase):
     @patch("certify.pinata_usage.requests.get")
     def test_api_key_auth_and_zero_usage(self, get):
         get.return_value = Mock(json=Mock(return_value={"pin_size_total": 0}))
+        sync_pinata_storage_usage()
         self.assertEqual(get_pinata_storage_usage()["count"], 0)
         self.assertEqual(get.call_args.kwargs["headers"], {
             "pinata_api_key": "key", "pinata_secret_api_key": "secret",

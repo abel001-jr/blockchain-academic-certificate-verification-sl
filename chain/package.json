@@ -4,12 +4,17 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "compile":      "hardhat compile",
-    "test":         "hardhat test",
-    "node":         "hardhat node",
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "node": "hardhat node",
     "deploy:local": "hardhat ignition deploy ignition/modules/Credence.ts --network localhost",
     "deploy:fresh": "rm -rf ignition/deployments/chain-31337 && hardhat ignition deploy ignition/modules/Credence.ts --network localhost",
-    "deploy:sepolia": "hardhat ignition deploy ignition/modules/Credence.ts --network sepolia"
+    "deploy:sepolia": "hardhat ignition deploy ignition/modules/Credence.ts --network sepolia",
+    "node:hardhat": "hardhat node",
+    "node:anvil": "node scripts/start-anvil.mjs",
+    "node:persistent": "node scripts/start-anvil.mjs",
+    "deploy:anvil": "hardhat ignition deploy ignition/modules/Credence.ts --network localhost --deployment-id anvil-persistent-31337",
+    "test:persistence": "node --test --test-isolation=none scripts/anvil-state.test.mjs scripts/anvil-persistence.test.mjs"
   },
   "keywords": [],
   "author": "",

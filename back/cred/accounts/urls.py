@@ -17,17 +17,21 @@ from .officer_setup import (
     OfficerSetupWalletChallengeView,
     OfficerSetupWalletVerifyView,
     OfficerSetupPasswordView,
+    OfficerSetupCompleteView,
 )
 from .signature_views import OfficerSignatureView
 from .student_invite_views import StudentInviteClaimView
-from .google_auth_views import GoogleAuthView
+from .google_auth_views import GoogleAuthView, GoogleAccountLinkView
 
 urlpatterns = [
+    path("auth/officer-setup/complete/", OfficerSetupCompleteView.as_view(), name="officer-setup-complete"),
     # Auth
     path("auth/login/",                   CredenceTokenObtainView.as_view(),  name="token-obtain"),
     path("auth/refresh/",                 TokenRefreshView.as_view(),         name="token-refresh"),
     path("auth/google/",                  GoogleAuthView.as_view(),           name="google-auth"),
     path("auth/student-invite/claim/",    StudentInviteClaimView.as_view(),   name="student-invite-claim"),
+
+    path("auth/google/link/", GoogleAccountLinkView.as_view(), name="google-account-link"),
 
     # Profile
     path("auth/me/",             MeView.as_view(),                  name="me"),

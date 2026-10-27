@@ -203,6 +203,7 @@ def _expected_from_upload(cert: Certificate, override: dict) -> dict[str, str]:
 # ── Serializers ──────────────────────────────────────────────────────────────
 
 class DocumentAnalyzeSerializer(serializers.Serializer):
+    reading_mode = serializers.ChoiceField(choices=("local", "deep"), default="local")
     document_file = serializers.FileField()
     document_kind = serializers.ChoiceField(
         choices=DocumentReviewKind.choices, default=DocumentReviewKind.CERTIFICATE,
@@ -249,6 +250,9 @@ class DocumentReviewResolveSerializer(serializers.Serializer):
 
 # ── Views ────────────────────────────────────────────────────────────────────
 
+from .signature_readiness import require_signatures
+
+
 class DocumentAnalyzeView(APIView):
     """POST /api/certificates/<id>/analyze-document/
 
@@ -266,6 +270,7 @@ class DocumentAnalyzeView(APIView):
 
     def post(self, request, pk):
         cert = get_object_or_404(Certificate, pk=pk, institution=request.user.institution)
+        require_signatures(request.user)
 
         s = DocumentAnalyzeSerializer(data=request.data)
         s.is_valid(raise_exception=True)
@@ -289,7 +294,7 @@ class DocumentAnalyzeView(APIView):
 
         pdf_bytes = document_file.read()
         try:
-            analysis, extracted, layers = extract_with_layers(pdf_bytes)
+            analysis, extracted, layers = extract_with_layers(pdf_bytes, reading_mode=s.validated_data["reading_mode"])
         except DocumentAnalysisError as exc:
             # Surfaced verbatim: it distinguishes "not a PDF", "no pages", "too
             # many pages" and "install Tesseract", all of which the Registrar
@@ -306,8 +311,10 @@ class DocumentAnalyzeView(APIView):
         comparisons = compare_fields(expectations, extracted, pages=analysis["pages"])
         result      = summarize(comparisons)
         result["layers"] = layers
+        result["reading_mode"] = s.validated_data["reading_mode"]
         result["recognition"] = analysis.get("recognition", {})
-        result["institution_identity"] = institutional_identity(pdf_bytes, cert)
+        result["institution_identity"] = institutional_identity(pdf_bytes, cert, document_kind=kind,
+                                                               use_external_ai=s.validated_data["reading_mode"] == "deep")
 
         review, created = DocumentReview.objects.update_or_create(
             certificate=cert,
@@ -359,7 +366,7 @@ class DocumentReviewImagesView(APIView):
         cert = get_object_or_404(Certificate, pk=pk, institution=request.user.institution)
         review = get_object_or_404(DocumentReview, certificate=cert, document_kind=kind)
         existing = (review.summary or {}).get("institution_identity", {})
-        if any(item.get("document_image") for item in existing.get("items", [])):
+        if existing.get("version") == 8 and any(item.get("document_image") for item in existing.get("items", [])):
             return Response({"review": _serialize_review(review)})
         uploaded = request.FILES.get("document_file")
         try:
@@ -379,7 +386,8 @@ class DocumentReviewImagesView(APIView):
                     document = fetch_verified_document(cid, cert.certificate_id, kind, review.document_sha256)
             if document_sha256(document).lower() != review.document_sha256.lower():
                 return Response({"detail": "This file differs from the inspected document. Re-read it before reviewing its images."}, status=409)
-            identity = institutional_identity(document, cert)
+            identity = institutional_identity(document, cert, document_kind=kind,
+                                              use_external_ai=(review.summary or {}).get("reading_mode") == "deep")
         except (OSError, ValueError, DocumentEncryptionError):
             return Response({"detail": "Could not retrieve images from the inspected file."}, status=409)
         review.summary = {**(review.summary or {}), "institution_identity": identity}
@@ -542,3 +550,85 @@ def _serialize_review(review: DocumentReview) -> dict:
         "reviewed_by":     review.reviewed_by.email if review.reviewed_by_id else None,
         "reviewed_at":     review.reviewed_at,
     }
+
+
+class OfficerCredentialDocumentView(APIView):
+    """Institution-scoped, authenticated paired-document review."""
+    from accounts.permissions import IsFullSession, IsRegistrarOrAbove
+    from .throttles import OfficerDocumentPreviewThrottle
+    permission_classes = [IsFullSession, IsRegistrarOrAbove]
+    throttle_classes = [OfficerDocumentPreviewThrottle]
+
+    def get(self, request, pk, kind):
+        from django.http import HttpResponse
+        from .encrypted_documents import fetch_verified_document, DocumentEncryptionError, decrypt_document, document_sha256
+        if kind not in ("certificate", "transcript"):
+            return Response({"detail": "Unknown document kind."}, status=400)
+        queryset = Certificate.objects.all()
+        if request.user.role != "super_admin":
+            queryset = queryset.filter(institution=request.user.institution)
+        cert = get_object_or_404(queryset, pk=pk)
+        if kind == "transcript":
+            cid, expected_hash, encryption_kind = cert.ipfs_cid_transcript, cert.transcript_hash, "transcript"
+        else:
+            cid, expected_hash = cert.ipfs_cid_pdf, cert.doc_hash
+            encryption_kind = "certificate-review" if cert.flow_type == "system_designed" else "certificate"
+        if not cid or not expected_hash:
+            return Response({"detail": "This credential document has not been prepared for review."}, status=404)
+        stored = cert.transcript_file if kind == "transcript" else cert.document_file
+        source = request.query_params.get("source", "gateway")
+        if source not in ("gateway", "stored"):
+            return Response({"detail": "Unknown document source."}, status=400)
+        try:
+            display_source = "stored" if source == "stored" else "ipfs"
+            if source == "stored":
+                if not stored or not stored.name:
+                    return Response({"detail": "No saved document copy is available. Retry the primary view later."}, status=404)
+                with stored.open("rb") as saved:
+                    document = decrypt_document(saved.read(), cert.certificate_id, encryption_kind)
+                if document_sha256(document).lower().removeprefix("0x") != expected_hash.lower().removeprefix("0x"):
+                    raise DocumentEncryptionError("The saved copy does not match the document submitted for approval. It cannot be used for review.")
+            elif kind == "certificate" and request.query_params.get("progress") == "true" and cert.template_revision_id and cert.status in ("pending_vc", "pending_chancellor", "pending_finalize"):
+                display_source = "generated"
+                from institutions.template_rendering import render_uploaded_template
+                from django.conf import settings
+                document = render_uploaded_template(cert, cert.template_revision, include_attestations=True, allow_partial_signatures=True, verification_base_url=settings.FRONTEND_URL)
+            else:
+                document = fetch_verified_document(cid, cert.certificate_id, encryption_kind, expected_hash,
+                                                   fast=bool(stored and stored.name))
+        except DocumentEncryptionError as exc:
+            return Response({"detail": str(exc)}, status=409)
+        except (OSError, RuntimeError) as exc:
+            rate_limited = "rate limited" in str(exc)
+            authorization_failed = "HTTP 401" in str(exc) or "HTTP 403" in str(exc)
+            if authorization_failed:
+                message = "The document gateway denied access. Ask the system administrator to check the gateway configuration; do not enter or share storage passwords. Try the saved copy if available."
+                code = "document_gateway_authorization"
+            elif rate_limited:
+                message = "Document storage is temporarily rate limited. Use the saved copy for review or retry shortly."
+                code = "document_rate_limited"
+            else:
+                message = "The document could not be loaded. Try the saved copy or retry shortly."
+                code = "document_unavailable"
+            return Response({"detail": message, "code": code,
+                             "fallback_available": source == "gateway" and bool(stored and stored.name)}, status=502)
+        if request.query_params.get("page"):
+            import base64
+            import pymupdf
+            try:
+                number = int(request.query_params["page"])
+                with pymupdf.open(stream=document, filetype="pdf") as pdf:
+                    if not 1 <= number <= len(pdf):
+                        return Response({"detail": "Page is outside this document."}, status=400)
+                    page = pdf[number - 1]
+                    scale = min(1.5, 1600 / max(page.rect.width, page.rect.height))
+                    image = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False)
+                    response = Response({"page": number, "page_count": len(pdf), "source": source, "display_source": display_source, "image": "data:image/png;base64," + base64.b64encode(image.tobytes("png")).decode("ascii")})
+                    response["Cache-Control"] = "private, no-store"
+                    return response
+            except (ValueError, RuntimeError):
+                return Response({"detail": "The stored document could not be rendered as a PDF."}, status=409)
+        response = HttpResponse(document, content_type="application/pdf")
+        response["Cache-Control"] = "private, no-store"
+        response["Content-Disposition"] = f'inline; filename="{kind}.pdf"'
+        return response

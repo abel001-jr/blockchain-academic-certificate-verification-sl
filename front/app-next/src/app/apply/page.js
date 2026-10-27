@@ -1,15 +1,18 @@
 "use client";
+import { connectSingleWallet, disconnectWalletAccounts, readWalletAccounts, singleWalletAccount } from "@/lib/walletConnection.mjs";
 import NavigationButton from "@/components/ui/NavigationButton";
 
 import { ActionButton } from "@/components/ui/AnimatedControls";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Building2, CheckCircle2, Loader2, ArrowLeft, Wallet } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { AuthTransitionLink, AuthTransitionSurface } from "@/components/AuthRouteTransition";
 import styles from "../login/LoginSwitch.module.css";
 import AuthField from "@/components/AuthField";
+import AuthEmailField from "@/components/AuthEmailField";
+import { emailValidationMessage } from "@/lib/applicationEmail.mjs";
 import AuthCountrySelect from "@/components/AuthCountrySelect";
 import AuthPhoneField from "@/components/AuthPhoneField";
 import WalletStatusDialog from "@/components/WalletStatusDialog";
@@ -17,12 +20,14 @@ import { requireEthereum as getMetaMaskProvider } from "@/lib/walletActions";
 
 const API = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api";
 const STEPS = ["Institution Details", "Admin Contact", "Review & Submit"];
+const SL_REGISTRATION_AUTHORITY = "Tertiary Education Commission (TEC)";
 
 export default function ApplyPage() {
   const [step,       setStep]       = useState(0);
   const [loading,    setLoading]    = useState(false);
   const [done,       setDone]       = useState(false);
   const [error,      setError]      = useState("");
+  const walletRequestLock = useRef(false);
   const [walletBusy, setWalletBusy] = useState(false);
   const [walletStatus, setWalletStatus] = useState(null);
 
@@ -30,7 +35,7 @@ export default function ApplyPage() {
     institution_name:    "",
     accreditation_body:  "",
     registration_number: "",
-    country:             "Sierra Leone",
+    country:             "",
     contact_email:       "",
     contact_phone:       "",
     admin_first_name:    "",
@@ -49,18 +54,21 @@ export default function ApplyPage() {
   }, []);
 
   async function switchWalletAccount() {
+    if (walletRequestLock.current) return;
+    walletRequestLock.current = true;
     setWalletStatus(null); setError("");
     setWalletBusy(true);
     try {
       const ethereum = getMetaMaskProvider();
-      await ethereum.request({ method: "wallet_requestPermissions", params: [{ eth_accounts: {} }] });
+      await disconnectWalletAccounts(ethereum);
+      window.dispatchEvent(new Event("credence:wallet-connection-changed"));
       setWalletVerified(false); setForm(previous => ({ ...previous, wallet_address: "" }));
-      await connectAndVerifyWallet();
+
     } catch (e) {
-      const message = e.code === 4001 ? "Account switch cancelled." : e.message || "Could not switch MetaMask accounts.";
+      const message = e.code === 4001 ? "Disconnection cancelled." : e.message || "Could not disconnect MetaMask accounts.";
       setError(message); setWalletStatus({ kind: "error", message });
     }
-    finally { setWalletBusy(false); }
+    finally { walletRequestLock.current = false; setWalletBusy(false); }
   }
 
   function validateStep(event) {
@@ -70,8 +78,16 @@ export default function ApplyPage() {
   }
 
   function update(field, value) {
+    if (field === "country") {
+      setForm(previous => ({ ...previous, country: value, accreditation_body: value === "Sierra Leone" ? SL_REGISTRATION_AUTHORITY : "", registration_number: "" }));
+      return;
+    }
+    if (["contact_email", "admin_email"].includes(field)) value = value.trim();
     if (["institution_name", "admin_first_name", "admin_last_name"].includes(field)) value = value.replace(/[^\p{L}\p{M} ]/gu, "");
-    if (field === "contact_phone") value = value.replace(/[^0-9]/g, "");
+    if (["institution_name", "admin_first_name", "admin_last_name", "accreditation_body"].includes(field)) {
+      value = value.replace(/(^|[\s-])(\p{L})/gu, (_, boundary, letter) => boundary + letter.toLocaleUpperCase());
+    }
+    if (field === "contact_phone") value = value.replace(/[^0-9]/g, "").replace(/^0+/, "");
     if (field === "institution_name" && walletVerified) {
       setWalletVerified(false);
       setForm(prev => ({ ...prev, institution_name: value, wallet_address: "" }));
@@ -81,6 +97,8 @@ export default function ApplyPage() {
   }
 
   async function connectAndVerifyWallet() {
+    if (walletRequestLock.current) return;
+    walletRequestLock.current = true;
     setError("");
     setWalletBusy(true);
     setWalletStatus({ kind: "checking", message: "Choose your MetaMask account. We will check whether it is already registered." });
@@ -88,9 +106,7 @@ export default function ApplyPage() {
       const ethereum = getMetaMaskProvider();
       if (!form.institution_name.trim()) throw new Error("Enter the institution name on Step 1 first.");
 
-      const accounts = await ethereum.request({ method: "eth_requestAccounts" });
-      const address = (accounts[0] || "").toLowerCase();
-      if (!address) throw new Error("No wallet account selected.");
+      const address = await connectSingleWallet(ethereum);
 
       const challengeRes = await fetch(`${API}/institutions/apply/wallet/challenge/`, {
         method: "POST",
@@ -101,6 +117,7 @@ export default function ApplyPage() {
       if (!challengeRes.ok) throw Object.assign(new Error(challenge.detail || "Challenge failed."), { code: challenge.code });
       setWalletStatus({ kind: "checking", address, message: "This account is available. Sign the free MetaMask message to verify ownership." });
 
+      if (singleWalletAccount(await readWalletAccounts(ethereum)) !== address) throw new Error("Your wallet connection changed. Connect and verify again.");
       const signature = await ethereum.request({
         method: "personal_sign",
         params: [challenge.message, address],
@@ -116,6 +133,7 @@ export default function ApplyPage() {
       const current = await ethereum.request({ method: "eth_accounts" });
       if (current?.[0]?.toLowerCase() !== address) throw new Error("MetaMask account changed. Connect and verify the selected account again.");
 
+      if (singleWalletAccount(await readWalletAccounts(ethereum)) !== address) throw new Error("Your wallet connection changed. Connect and verify again.");
       setForm(prev => ({ ...prev, wallet_address: verified.wallet_address }));
       setWalletVerified(true);
       setWalletStatus({ kind: "verified", address, message: "This account is not registered elsewhere and its ownership is verified. You can continue to review." });
@@ -125,11 +143,15 @@ export default function ApplyPage() {
       setError(e?.message || "Wallet verification failed.");
       setWalletStatus({ kind: e.code === "wallet_taken" ? "taken" : "error", message: e.code === 4001 ? "MetaMask request cancelled. Try again when ready." : e?.message || "Wallet verification failed." });
     } finally {
-      setWalletBusy(false);
+      walletRequestLock.current = false; setWalletBusy(false);
     }
   }
 
   async function handleSubmit() {
+    for (const [field, label, targetStep] of [["contact_email", "Contact email", 0], ["admin_email", "Admin email", 1]]) {
+      const message = emailValidationMessage(form[field]);
+      if (message) { setError(`${label}: ${message}`); setStep(targetStep); return; }
+    }
     if (!walletVerified || !form.wallet_address) {
       setError("Verify your MetaMask wallet on Step 2 before submitting.");
       return;
@@ -203,34 +225,40 @@ export default function ApplyPage() {
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div>
                   <h3 className="text-[#08283F] font-semibold text-base">Institution information</h3>
-                  <p className="text-[#4A5A68] text-sm mt-0.5">Official details as they appear in accreditation records.</p>
+                  <p className="text-[#4A5A68] text-sm mt-0.5">Use your institution?s official registration details.</p>
                   </div>
                   <AuthTransitionLink href="/login" className="cred-btn cred-btn-secondary shrink-0">Sign in</AuthTransitionLink>
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <AuthField pattern={"[\\p{L}\\p{M} ]*\\p{L}[\\p{L}\\p{M} ]*"} label="Institution name *" example="e.g. Central University Sierra Leone" value={form.institution_name}
+                  <AuthField pattern={"[\\p{L}\\p{M} ]*\\p{L}[\\p{L}\\p{M} ]*"} autoCapitalize="words" label="Institution name *" example="e.g. Central University Sierra Leone" value={form.institution_name}
                     onChange={e => update("institution_name", e.target.value)}
                     required />
                 </div>
+                  <div>
+                    <AuthEmailField hint="Letters and numbers before @; start with a letter." label="Contact email *" example="registrar@institution.edu" type="email" value={form.contact_email} onChange={e => update("contact_email", e.target.value)} required />
+                  </div>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <AuthField label="Accreditation body" example="e.g. TEACH-SL" value={form.accreditation_body} onChange={e => update("accreditation_body", e.target.value)} />
-                  </div>
-                  <div>
-                    <AuthField label="Registration number" example="e.g. EDU-2024-001" value={form.registration_number} onChange={e => update("registration_number", e.target.value)} />
-                  </div>
                   <div>
                     <AuthCountrySelect value={form.country} onChange={value => update("country", value)} />
                   </div>
+
                   <div>
-                    <AuthField label="Contact email *" example="registrar@institution.edu" type="email" value={form.contact_email} onChange={e => update("contact_email", e.target.value)}  required />
+                    <AuthField autoCapitalize="words" label={form.country === "Sierra Leone" ? "Accreditation body (TEC)" : "Accreditation body"} example="Official authority name" value={form.accreditation_body} disabled={!form.country} readOnly={form.country === "Sierra Leone"} onChange={e => update("accreditation_body", e.target.value)} aria-describedby="registration-authority-help" />
+                    <p id="registration-authority-help" className="text-xs text-[#536575] mt-2">{form.country === "Sierra Leone" ? "Automatically selected for Sierra Leone." : "Choose a country first; enter its official authority."}</p>
+                  </div>
+                  <div className={styles.fullWidthField}>
+                    <AuthField label={form.country === "Sierra Leone" ? "TEC registration reference" : "Registration reference"} example="Copy from the official registration document" maxLength={100} value={form.registration_number} onChange={e => update("registration_number", e.target.value)} aria-describedby="registration-number-help" />
+                    <p id="registration-number-help" className="text-xs text-[#536575] mt-2">Copy the official reference. Optional if unavailable.</p>
                   </div>
                   <div className="sm:col-span-2">
                     <AuthPhoneField callingCode={callingCode} onCodeChange={setCallingCode} number={form.contact_phone} onNumberChange={value => update("contact_phone", value)} />
                   </div>
                 </div>
+                <p className="text-xs text-[#536575]">Registration evidence is reviewed before platform access is granted.</p>
                 <NavigationButton
-                  disabled={!form.institution_name || !form.contact_email}
+                  disabled={!form.country || !form.institution_name || Boolean(emailValidationMessage(form.contact_email))}
                   onClick={e => { if (validateStep(e)) { setError(""); setStep(1); } }}
                   className="cd-btn-primary self-start disabled:opacity-40">
                   Continue →
@@ -249,19 +277,20 @@ export default function ApplyPage() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <AuthField pattern={"[\\p{L}\\p{M} ]*\\p{L}[\\p{L}\\p{M} ]*"} label="First name *" example="e.g. Mariama" value={form.admin_first_name} onChange={e => update("admin_first_name", e.target.value)}  required />
+                    <AuthField pattern={"[\\p{L}\\p{M} ]*\\p{L}[\\p{L}\\p{M} ]*"} autoCapitalize="words" label="First name *" example="e.g. Mariama" value={form.admin_first_name} onChange={e => update("admin_first_name", e.target.value)}  required />
                   </div>
                   <div>
-                    <AuthField pattern={"[\\p{L}\\p{M} ]*\\p{L}[\\p{L}\\p{M} ]*"} label="Last name *" example="e.g. Kamara" value={form.admin_last_name} onChange={e => update("admin_last_name", e.target.value)}  required />
+                    <AuthField pattern={"[\\p{L}\\p{M} ]*\\p{L}[\\p{L}\\p{M} ]*"} autoCapitalize="words" label="Last name *" example="e.g. Kamara" value={form.admin_last_name} onChange={e => update("admin_last_name", e.target.value)}  required />
                   </div>
                   <div className="sm:col-span-2">
-                    <AuthField label="Admin email *" example="admin@institution.edu" type="email" value={form.admin_email} onChange={e => update("admin_email", e.target.value)}  required />
+                    <AuthEmailField label="Admin email *" example="admin@institution.edu" type="email" value={form.admin_email} onChange={e => update("admin_email", e.target.value)}  required />
                   </div>
                 </div>
 
                 {/* Wallet */}
                 <div className="border border-[#E4E1D6] rounded-xl p-4">
                   <span className="cd-label mb-2">Admin wallet *</span>
+
                   {walletVerified ? (
                     <div className="flex items-start gap-3 bg-[#E7F1EB] rounded-xl px-4 py-3">
                       <CheckCircle2 size={17} className="shrink-0 mt-0.5 text-[#2F6F4E]" />
@@ -286,7 +315,7 @@ export default function ApplyPage() {
                 <div className="flex gap-3">
                   <NavigationButton direction="back" onClick={() => setStep(0)} className="cd-btn-secondary">← Back</NavigationButton>
                   <NavigationButton
-                    disabled={!form.admin_first_name || !form.admin_last_name || !form.admin_email || !walletVerified}
+                    disabled={!form.admin_first_name || !form.admin_last_name || Boolean(emailValidationMessage(form.admin_email)) || !walletVerified}
                     onClick={e => { if (validateStep(e)) { setError(""); setStep(2); } }}
                     className="cd-btn-primary disabled:opacity-40">
                     Review →
@@ -308,7 +337,8 @@ export default function ApplyPage() {
                     ["Country",       form.country],
                     ["Contact email", form.contact_email],
                     ["Contact phone", form.contact_phone ? `+${callingCode}${form.contact_phone}` : "Not provided"],
-                    ["Accreditation", form.accreditation_body || "—"],
+                    ["Registration / accreditation body", form.accreditation_body || "—"],
+                    [form.country === "Sierra Leone" ? "TEC registration reference" : "Registration reference", form.registration_number || "Not provided"],
                     ["Admin name",    `${form.admin_first_name} ${form.admin_last_name}`],
                     ["Admin email",   form.admin_email],
                   ].map(([label, value]) => (

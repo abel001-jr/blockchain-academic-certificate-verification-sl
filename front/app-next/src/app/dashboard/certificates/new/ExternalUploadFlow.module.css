@@ -106,3 +106,18 @@
   .documentPane { border-bottom: 0; border-right: 1px solid var(--cd-line); }
   .reviewPane { max-height: calc(clamp(360px, 65vh, 720px) + 28px); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 }
+
+@media (max-width: 639px) {
+  .topline h2 { font-size: 21px; line-height: 1.3; overflow-wrap: anywhere; }
+  .topline > div:first-child { align-items: flex-start; min-width: 0; }
+  .topline > div:first-child > div { min-width: 0; }
+  .workbench > div:first-child { padding: 12px; gap: 12px; }
+  .workbench > div:first-child > div { min-width: 0; max-width: 100%; }
+  .workbench > div:first-child > div:last-child { flex-wrap: wrap; }
+  .documentPane, .reviewPane { padding: 10px; }
+  .documentPane iframe { height: clamp(320px, 55vh, 480px) !important; }
+  .steps { gap: 4px; }
+  .step > div { padding: 8px 4px; gap: 4px; }
+  .actions { flex-direction: column; align-items: stretch; }
+  .actions > button { width: 100%; justify-content: center; }
+}

@@ -28,10 +28,13 @@ class InstitutionSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Institution
         fields = "__all__"
-        read_only_fields = ["id", "created_at", "updated_at", "is_chain_active", "anchor_tx_hash"]
+        read_only_fields = ["id", "created_at", "updated_at", "is_chain_active", "anchor_tx_hash", "reference_logo", "reference_seal", "reference_transcript_seal"]
 
 
 class InstitutionEmailSettingsSerializer(InstitutionSerializer):
+    def get_fields(self):
+        return serializers.ModelSerializer.get_fields(self)
+
     class Meta:
         model = Institution
         fields = ["email", "email_domain"]
@@ -64,6 +67,11 @@ class InstitutionApplicationSerializer(serializers.ModelSerializer):
         return self._validate_letters_name(value)
 
     def validate_contact_email(self, value):
+        local = value.rpartition("@")[0]
+        if not local or not local[0].isascii() or not local[0].isalpha():
+            raise serializers.ValidationError("Start the email username with a letter. Numbers are allowed after the first letter.")
+        if not local.isascii() or not local.isalnum():
+            raise serializers.ValidationError("Use only letters and numbers before @. Special characters are not allowed.")
         if "." not in value.rpartition("@")[2]:
             raise serializers.ValidationError("Enter a complete email address, such as you@institution.edu.")
         return value

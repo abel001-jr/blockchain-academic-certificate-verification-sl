@@ -23,3 +23,22 @@
 .credentialRow h3, .credentialRow p, .credentialRow a, .credentialRow button, .credentialRow span { font-weight: 500; }
 .credentialRow > div:last-child { align-self: flex-start; }
 @media(max-width: 640px) { .credentialRow { flex-wrap: wrap; padding: 16px; } .credentialRow > div:first-child { flex-basis: 100%; } .credentialRow > div:last-child { margin-left: 56px; } }
+
+.credentialRow { display: grid; grid-template-columns: 240px minmax(0,1fr) auto; align-items: center; }
+.credentialIdentity { min-width: 0; padding-right: 16px; border-right: 1px solid var(--cd-line); }
+.credentialIdentity h3 { overflow-wrap: anywhere; }
+.credentialData { min-width: 0; overflow-x: auto; padding: 8px 0 12px; }
+.credentialDataContent { display: flex; gap: 24px; align-items: center; width: max-content; min-width: 100%; }
+.credentialDataContent > * { flex-shrink: 0; }
+.credentialDataContent > div:first-child { min-width: 200px; max-width: 300px; }
+@media(max-width:900px) { .credentialRow { grid-template-columns: 180px minmax(0,1fr); } .credentialRow > div:last-child { grid-column: 1 / -1; margin-left: 0; } }
+@media(max-width:640px) { .credentialRow { grid-template-columns: minmax(0,1fr); } .credentialIdentity { border-right: 0; border-bottom: 1px solid var(--cd-line); padding-bottom: 12px; } }
+
+.credentialHero { margin-bottom: 24px; padding: 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; background: #08283F; border-radius: 16px; color: #F8F7F2; }
+.credentialHero > div { max-width: 620px; }
+.credentialHero > div > span { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; opacity: .75; }
+.credentialHero h1 { color: #F8F7F2 !important; font-size: 30px; font-weight: 600; margin: 6px 0; }
+.credentialHero p { font-size: 14px; line-height: 1.6; color: #F8F7F2; opacity: .8; }
+.credentialFilters { display: grid; gap: 16px; background: white; padding: 20px; border: 1px solid var(--cd-line); border-radius: 16px; margin-bottom: 20px; }
+.credentialFilters label { font-size: 12px; font-weight: 600; color: #08283F; }
+@media(max-width:639px) { .credentialHero, .credentialFilters { padding: 18px; } }

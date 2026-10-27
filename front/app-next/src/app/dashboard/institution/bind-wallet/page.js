@@ -9,6 +9,7 @@ import { useState } from "react";
 import { Wallet, Loader2, CheckCircle2, ShieldCheck } from "lucide-react";
 import { api }  from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
+import { connectWallet } from "@/lib/walletActions";
 
 export default function BindWalletPage() {
   const { user, loading: authLoading } = useAuth();
@@ -26,8 +27,7 @@ export default function BindWalletPage() {
 
     try {
       setStep("connecting");
-      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-      const addr     = accounts[0].toLowerCase();
+      const addr = await connectWallet();
       setAddress(addr);
 
       setStep("binding");

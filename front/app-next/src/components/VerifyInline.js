@@ -1,10 +1,11 @@
 "use client";
 import { ActionButton } from "@/components/ui/AnimatedControls";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import dynamic from "next/dynamic";
 import { ScanLine } from "lucide-react";
-import { parseCertificateIdFromScan } from "@/lib/parseCertificateScan";
+import { useRouter } from "next/navigation";
+import { employerVerificationPath, parseCertificateIdFromScan } from "@/lib/parseCertificateScan";
 
 const QrScanner = dynamic(() => import("@/components/QrScanner"), { ssr: false });
 
@@ -14,14 +15,20 @@ export default function VerifyInline({
   buttonLabel = "Verify",
   defaultValue = "",
   onVerify,
+  employerDetails = false,
   className = "",
 }) {
+  const router = useRouter();
+  const errorId = useId();
+  const [error, setError] = useState("");
   const [certId, setCertId] = useState(defaultValue);
   const [scanning, setScanning] = useState(false);
 
   function submit(id) {
     const value = parseCertificateIdFromScan(id ?? certId);
-    if (!value) return;
+    if (!value) { setError("Please paste the credential ID."); return; }
+    setError("");
+    if (employerDetails) { router.push(employerVerificationPath(id ?? certId)); return; }
     setCertId(value);
 
     if (onVerify) {
@@ -55,12 +62,21 @@ export default function VerifyInline({
           <input
             type="text"
             value={certId}
-            onChange={(e) => setCertId(e.target.value)}
+            onChange={(e) => { setCertId(e.target.value); setError(""); }}
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? errorId : undefined}
+            onPaste={e => {
+              const raw = e.clipboardData.getData("text").trim();
+              if (employerDetails && /^https?:\/\//i.test(raw) && parseCertificateIdFromScan(raw) !== raw) {
+                e.preventDefault(); router.push(employerVerificationPath(raw));
+              }
+            }}
             placeholder={placeholder}
             className={`w-full px-[14px] py-[13px] border border-[#E4E1D6] rounded text-[0.95rem] text-[#1B2734] outline-none focus:outline-2 focus:outline-[#08283F] focus:outline-offset-1 ${
               isDark ? "bg-white" : ""
             }`}
           />
+          {error && <p id={errorId} role="alert" className={`text-sm font-medium ${isDark ? "text-[#FFD2CC]" : "text-[#A23B34]"}`}>{error}</p>}
           <div className="flex gap-2.5">
             <button
               type="button"

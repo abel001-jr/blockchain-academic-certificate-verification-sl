@@ -57,3 +57,17 @@ export function verificationSharePath(certificateId, rawCode) {
   const base = verificationPath(certificateId);
   return rawCode ? `${base}?code=${encodeURIComponent(rawCode)}` : base;
 }
+
+/** Keep access parameters when moving a verification link to the detailed page. */
+export function employerVerificationPath(raw) {
+  const id = parseCertificateIdFromScan(raw);
+  const query = new URLSearchParams();
+  if (id) query.set("id", id);
+  const code = parseShareCodeFromScan(raw);
+  if (code) query.set("code", code);
+  try {
+    const consent = new URL(String(raw)).searchParams.get("consent");
+    if (consent) query.set("consent", consent);
+  } catch { /* Raw credential IDs have no access parameters. */ }
+  return `/employer-verification${query.size ? `?${query}` : ""}`;
+}

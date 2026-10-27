@@ -48,6 +48,18 @@ def case(fn):
 
 
 @case
+def test_transcript_full_name_and_combined_graduation_label():
+    found = extract_fields([_page([
+        "STUDENT FULL NAME Tobio Kageyama",
+        "GRADUATION YEAR / ISSUE DATE 2026 / 14 October 2026",
+    ])])
+    assert found["student_name"] == "Tobio Kageyama", found
+    assert found["graduation_year"] == "2026", found
+    mismatch = compare_field("student_name", "Shoyo Hinata", found["student_name"])
+    assert mismatch["status"] == "mismatch", mismatch
+
+
+@case
 def test_label_same_line():
     pages = [_page(["Certificate of Achievement", "Name: Ada Lovelace", "Degree: BSc Computer Science"])]
     found = extract_fields(pages)
@@ -204,7 +216,7 @@ def test_heading_is_not_mistaken_for_a_label():
         "Name: Ada Lovelace",
     ])]
     found = extract_fields(pages)
-    assert "institution" not in found, found
+    assert found["institution"] == "Northern University", found
     assert found["student_name"] == "Ada Lovelace", found
 
 
@@ -224,7 +236,7 @@ def test_generic_label_ending_the_line_is_still_honoured():
 
 
 @case
-def test_absence_of_all_labels_reads_as_not_found():
+def test_narrative_recipient_does_not_require_a_name_label():
     """A centred certificate with no labels must yield nothing, not guesses.
 
     This is the common real shape: "CERTIFICATE OF ACHIEVEMENT / this is to
@@ -241,7 +253,7 @@ def test_absence_of_all_labels_reads_as_not_found():
         "2026",
     ])]
     found = extract_fields(pages)
-    assert found == {}, found
+    assert found == {"student_name": "AMA BOATENG"}, found
 
 
 @case
@@ -261,7 +273,7 @@ def test_verbatim_fallback_verifies_an_unlabelled_document():
         "2026",
     ])]
     found = extract_fields(pages)
-    assert found == {}, found
+    assert found == {"student_name": "AMA BOATENG"}, found
 
     comparisons = compare_fields(
         {
@@ -277,6 +289,9 @@ def test_verbatim_fallback_verifies_an_unlabelled_document():
     for field in ("student_name", "degree_title", "institution", "graduation_year"):
         # Its own status, not `match`: a substring search and a parsed field must
         # never be indistinguishable in the counts or the audit trail.
+        if field == "student_name":
+            assert by_field[field]["status"] == "match", by_field[field]
+            continue
         assert by_field[field]["status"] == "verbatim_match", by_field[field]
         assert by_field[field]["evidence"] == "verbatim_text", by_field[field]
         assert by_field[field]["extracted"] is None, by_field[field]
@@ -419,7 +434,7 @@ def test_generated_certificate_yields_a_text_layer_without_ocr():
 
 
 @case
-def test_label_matching_finds_nothing_in_our_own_certificate():
+def test_narrative_reading_extracts_our_generated_certificate():
     """A known gap, pinned.
 
     Every field is correctly decided by the verbatim fallback, but nothing is
@@ -433,7 +448,11 @@ def test_label_matching_finds_nothing_in_our_own_certificate():
     from a string found somewhere else.
     """
     pages = _analyzed_sample()["pages"]
-    assert extract_fields(pages, DEFAULT_FIELDS) == {}
+    found = extract_fields(pages, DEFAULT_FIELDS)
+    assert found["student_name"] == "Amara Sesay", found
+    assert found["degree_title"] == "Bachelor of Science in Computer Science", found
+    assert found["institution"] == "CAVENDISH UNIVERSITY SIERRA LEONE", found
+    assert "graduation_year" not in found, found
 
 
 @case
@@ -451,8 +470,8 @@ def test_generated_certificate_fields_all_settle_as_verbatim_evidence():
         pages=pages,
     )
     assert {item["field"] for item in comparisons} == set(DEFAULT_FIELDS), comparisons
-    assert all(item["status"] == "verbatim_match" for item in comparisons), comparisons
-    assert [item["field"] for item in weak_evidence(comparisons)] == list(DEFAULT_FIELDS)
+    assert all(item["status"] == ("verbatim_match" if item["field"] == "graduation_year" else "match") for item in comparisons), comparisons
+    assert [item["field"] for item in weak_evidence(comparisons)] == ["graduation_year"]
 
 
 @case

@@ -1,3 +1,8 @@
+import { useToast } from "../components/ToastProvider";
+import { parseVerificationInput } from "../utils/parseCertificateScan";
+import { Camera, ImagePlus, Flashlight, FlashlightOff, ScanLine } from "lucide-react-native";
+import FormField from "../components/FormField";
+import { colors as T, createStyles, fonts, cardShadow } from "../theme";
 import AnimatedButton from "../components/AnimatedButton";
 /**
  * VerifyScreen — public certificate verification.
@@ -7,9 +12,12 @@ import AnimatedButton from "../components/AnimatedButton";
  *   • Gold-bordered QR scanner frame with corner marks
  *   • Result card matches the web ResultPanel exactly
  */
-import React, { useState } from "react";
+import { verificationUrl } from "../config";
+import { verificationFailure } from "../utils/verification";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
+  Modal,
   Text,
   TextInput,
   TouchableOpacity,
@@ -18,33 +26,15 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
-  Image,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { CameraView, useCameraPermissions } from "expo-camera";
+import { CameraView, useCameraPermissions, scanFromURLAsync } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
-import { verifyCertificate } from "../services/certificates";
+import * as DocumentPicker from "expo-document-picker";
+import { verifyCertificate, validateEmployerAccess, verifyEmployerDocuments } from "../services/certificates";
 import { parseCertificateIdFromScan } from "../utils/parseCertificateScan";
 
-const T = {
-  navy:       "#08283F",
-  gold:       "#B98A28",
-  goldLight:  "#F5EBDB",
-  cream:      "#F8F7F2",
-  border:     "#E4E1D6",
-  muted:      "#4A5A68",
-  faint:      "#8A929C",
-  surface:    "#fff",
-  green:      "#2E7D32",
-  greenLight: "#E7F1EB",
-  greenBdr:   "#A3D9B1",
-  red:        "#A23B34",
-  redLight:   "#F5E5E3",
-  redBdr:     "#E9B4B0",
-  amber:      "#B98A28",
-  amberLight: "#FFF8E7",
-  amberBdr:   "#F0D080",
-};
 
 function fmtDate(iso) {
   if (!iso) return null;
@@ -58,11 +48,17 @@ function ResultPanel({ result }) {
   const outcome = result.verification_outcome;
   const cert    = result.certificate ?? {};
 
-  if (!result.found || outcome === "not_found") {
+  if (outcome === "unavailable" || !["valid", "revoked", "not_found", "not_verified", "tampered"].includes(outcome)) {
+    return <View style={[r.card, { backgroundColor: T.amberLight, borderColor: T.amberBdr }]}><Text style={[r.title, { color: T.amber }]}>Verification unavailable</Text><Text style={r.msg}>{result.message || result.error || "Please try again."}</Text></View>;
+  }
+  if (outcome === "tampered") {
+    return <View style={[r.card, { backgroundColor: T.redLight, borderColor: T.redBdr }]}><Text style={[r.title, { color: T.red }]}>Integrity mismatch</Text><Text style={r.msg}>{result.message || "Credential contents do not match the blockchain commitment."}</Text></View>;
+  }
+  if (result.found === false || outcome === "not_found") {
     return (
       <View style={[r.card, { backgroundColor: T.redLight, borderColor: T.redBdr }]}>
         <Text style={r.icon}>✗</Text>
-        <Text style={[r.title, { color: T.red }]}>Invalid Certificate</Text>
+        <Text style={[r.title, { color: T.red }]}>Certificate not found</Text>
         <Text style={r.msg}>{result.error ?? "Verification failed. Certificate not found."}</Text>
       </View>
     );
@@ -83,7 +79,7 @@ function ResultPanel({ result }) {
       <View style={[r.card, { backgroundColor: T.amberLight, borderColor: T.amberBdr }]}>
         <Text style={r.icon}>⏳</Text>
         <Text style={[r.title, { color: T.amber }]}>Pending On-Chain</Text>
-        <Text style={r.msg}>This certificate exists but hasn't been anchored on the blockchain yet.</Text>
+        <Text style={r.msg}>This credential has no issued record on the configured blockchain.</Text>
       </View>
     );
   }
@@ -93,7 +89,7 @@ function ResultPanel({ result }) {
     <View style={[r.card, { backgroundColor: T.greenLight, borderColor: T.greenBdr }]}>
       {/* Outcome label */}
       <View style={r.outcomeBadge}>
-        <Text style={r.outcomeBadgeText}>Verified</Text>
+        <Text style={r.outcomeBadgeText}>{result.verification_scope === "full" ? "Student-authorized verification" : "Public registry verified"}</Text>
       </View>
       {/* Detail rows — mirroring web grid */}
       {[
@@ -108,18 +104,10 @@ function ResultPanel({ result }) {
       ].filter(([, v]) => Boolean(v)).map(([label, value]) => (
         <View key={label} style={r.row}>
           <Text style={r.rowLabel}>{label}</Text>
-          <Text style={r.rowValue} numberOfLines={2}>{value}</Text>
+          <Text style={r.rowValue}>{value}</Text>
         </View>
       ))}
-      {/* Three checks */}
-      <View style={r.checks}>
-        {["Institution confirmed", "Document integrity valid", "Blockchain record verified"].map(c => (
-          <View key={c} style={r.checkRow}>
-            <Text style={r.checkMark}>✓</Text>
-            <Text style={r.checkText}>{c}</Text>
-          </View>
-        ))}
-      </View>
+      <Text style={r.msg}>The blockchain record and structured data match. See the individual document checks below.</Text>
     </View>
   );
 }
@@ -128,13 +116,17 @@ function ResultPanel({ result }) {
 const CORNER = 22;
 const THICK  = 3;
 
-function ScannerView({ onScan, onCancel }) {
+function ScannerView({ onScan, onCancel, onError }) {
+  const scanned = useRef(false);
+  const [torch, setTorch] = useState(false);
   return (
     <View style={sc.root}>
       <CameraView
+        onMountError={onError}
         style={StyleSheet.absoluteFillObject}
         barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-        onBarcodeScanned={({ data }) => onScan(parseCertificateIdFromScan(data))}
+        enableTorch={torch}
+        onBarcodeScanned={({ data }) => { if (!scanned.current && data) { scanned.current = true; onScan(data); } }}
       />
       {/* dark vignette */}
       <View style={sc.vignette} />
@@ -147,6 +139,7 @@ function ScannerView({ onScan, onCancel }) {
         <View style={[sc.corner, { bottom: -1, right: -1, borderLeftWidth: 0, borderTopWidth: 0 }]} />
       </View>
       <Text style={sc.hint}>Point at an Intelligent Academic Credentialing QR code</Text>
+      <TouchableOpacity style={[sc.cancelBtn, { bottom: "20%" }]} onPress={() => setTorch(value => !value)}><Text style={sc.cancelText}>{torch ? "Turn torch off" : "Turn torch on"}</Text></TouchableOpacity>
       <TouchableOpacity style={sc.cancelBtn} onPress={onCancel}>
         <Text style={sc.cancelText}>Cancel</Text>
       </TouchableOpacity>
@@ -155,51 +148,122 @@ function ScannerView({ onScan, onCancel }) {
 }
 
 // ── Main screen ────────────────────────────────────────────────────────────
-export default function VerifyScreen() {
+export default function VerifyScreen({ route }) {
+  const { showToast } = useToast();
+  const verifyLock = useRef(false);
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning,  setScanning]  = useState(false);
   const [query,     setQuery]     = useState("");
   const [loading,   setLoading]   = useState(false);
   const [result,    setResult]    = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [employerMode, setEmployerMode] = useState(false);
+  const [employerAccess, setEmployerAccess] = useState(null);
+  const [employerFiles, setEmployerFiles] = useState({});
+  const [employerError, setEmployerError] = useState("");
+
+  const handledLink = useRef("");
+  const linkedId = route?.params?.certificateId;
+  const linkedCode = route?.params?.code;
+  useEffect(() => {
+    if (!linkedId || loading) return;
+    const key = JSON.stringify([linkedId, linkedCode]);
+    if (handledLink.current === key) return;
+    handledLink.current = key;
+    const payload = linkedCode
+      ? `credence://verify/${encodeURIComponent(linkedId)}?code=${encodeURIComponent(linkedCode)}`
+      : linkedId;
+    verify(payload);
+  }, [linkedId, linkedCode, loading]);
+
+  function openEmployerVerification() {
+    setEmployerMode(true); setEmployerAccess(null); setEmployerFiles({}); setEmployerError(""); setResult(null);
+  }
+
+  async function checkEmployerAccess(raw = query) {
+    if (verifyLock.current) return;
+    verifyLock.current = true; setLoading(true); setEmployerError(""); setEmployerAccess(null); setResult(null);
+    try { setEmployerAccess(await validateEmployerAccess(raw)); }
+    catch (error) { setEmployerError(error.response?.data?.detail || error.message || "Access validation failed."); }
+    finally { verifyLock.current = false; setLoading(false); }
+  }
+
+  async function pickVerificationPdf(kind) {
+    try {
+      const picked = await DocumentPicker.getDocumentAsync({type: "application/pdf", copyToCacheDirectory: true, multiple: false});
+      if (picked.canceled) return;
+      const file = picked.assets[0];
+      if (!file.size || file.size > 20 * 1024 * 1024) throw new Error("Choose a nonempty PDF no larger than 20 MB.");
+      setEmployerFiles(previous => ({...previous, [kind]: file}));
+      setEmployerError(""); setResult(null);
+    } catch (error) { setEmployerError(error.message || "Could not select this PDF."); }
+  }
+
+  async function submitEmployerDocuments() {
+    if (verifyLock.current || !employerAccess || !employerFiles.certificate) return;
+    verifyLock.current = true; setLoading(true); setEmployerError(""); setResult(null);
+    try {
+      const report = await verifyEmployerDocuments(employerAccess, employerFiles);
+      setResult(report);
+      if (report.access_consumed) setEmployerAccess(null);
+    } catch (error) {
+      setEmployerError(error.response?.data?.detail || error.message || "Verification failed. If the connection was lost after submission, ask the student for a new link if this one has been consumed.");
+      if (error.response?.status === 403) setEmployerAccess(null);
+    } finally { verifyLock.current = false; setLoading(false); }
+  }
 
   async function verify(raw) {
+    if (verifyLock.current) return;
+    const input = parseVerificationInput(raw ?? query);
+    if (input.code || employerMode) {
+      setEmployerMode(true); setQuery(String(raw ?? query).trim());
+      await checkEmployerAccess(raw ?? query); return;
+    }
     const id = parseCertificateIdFromScan(raw ?? query);
     if (!id.trim()) {
-      Alert.alert("Required", "Enter a certificate ID or scan a QR code.");
+      showToast("Enter a certificate ID or scan a QR code.", { title: "Credential ID required", tone: "warning" });
       return;
     }
+    verifyLock.current = true;
+    setQuery(String(raw ?? query).trim());
     setLoading(true); setResult(null);
     try {
-      const data = await verifyCertificate(id);
-      setQuery(id);
+      const data = await verifyCertificate(raw ?? query);
       setResult(data);
     } catch (err) {
-      const detail = err?.response?.data?.message ?? "Verification failed. Certificate not found.";
-      setResult({ found: false, verification_outcome: "not_found", error: detail });
+      const failure = verificationFailure(err);
+      setResult(failure);
+      showToast(failure.error, { title: failure.requires_web ? "Security check required" : "Verification unavailable", tone: "warning" });
     } finally {
+      verifyLock.current = false;
       setLoading(false);
     }
   }
 
   async function openScanner() {
+    if (verifyLock.current || uploading) return;
+    try {
     if (!permission?.granted) {
       const res = await requestPermission();
       if (!res.granted) {
-        Alert.alert("Camera access required", "Allow camera access to scan QR codes.");
+        Alert.alert("Camera access required", "You can enter a certificate ID manually or allow camera access in device settings.", [{ text: "Enter ID", style: "cancel" }, ...(Platform.OS !== "web" ? [{ text: "Open settings", onPress: () => Linking.openSettings() }] : [])]);
         return;
       }
     }
     setScanning(true);
+    } catch {
+      showToast("Could not open the camera. Upload a QR image or enter the credential ID.", { title: "Camera unavailable" });
+    }
   }
 
   async function pickImage() {
+    if (verifyLock.current || uploading) return;
     try {
       setUploading(true);
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       
       if (!permissionResult.granted) {
-        Alert.alert("Permission required", "Allow access to your photos to upload QR codes.");
+        showToast("Allow access to your photos in device settings, or enter the credential ID.", { title: "Photo access required", tone: "warning" });
         setUploading(false);
         return;
       }
@@ -216,14 +280,15 @@ export default function VerifyScreen() {
         return;
       }
 
-      const { uri } = pickerResult.assets[0];
+      const uri = pickerResult.assets?.[0]?.uri;
+      if (!uri) throw new Error("No image selected.");
       
       // Process QR code from image
       await processQRFromImage(uri);
       
     } catch (err) {
       console.error("Image picker error:", err);
-      Alert.alert("Error", "Failed to process the image. Please try again or use the camera scanner.");
+      showToast("Failed to process the image. Try another image or use the camera scanner.", { title: "Image unavailable" });
     } finally {
       setUploading(false);
     }
@@ -237,11 +302,11 @@ export default function VerifyScreen() {
         
         const img = new window.Image();
         img.crossOrigin = "anonymous";
-        img.src = uri;
         
         await new Promise((resolve, reject) => {
           img.onload = resolve;
           img.onerror = reject;
+          img.src = uri;
         });
         
         const canvas = document.createElement("canvas");
@@ -256,21 +321,14 @@ export default function VerifyScreen() {
         if (code?.data) {
           const certId = parseCertificateIdFromScan(code.data);
           setQuery(certId);
-          verify(certId);
+          await verify(code.data);
         } else {
-          Alert.alert("No QR code found", "The selected image doesn't contain a valid QR code. Try using the camera scanner instead.");
+          showToast("The selected image has no readable QR code. Try the camera or enter the credential ID.", { title: "No QR code found", tone: "warning" });
         }
       } else {
-        // Native: We'll use a workaround - ask user to use camera instead
-        // since QR detection from static images requires native modules
-        Alert.alert(
-          "Use Camera Scanner", 
-          "For best results on mobile, please use the camera scanner to scan QR codes directly.",
-          [
-            { text: "Open Camera", onPress: openScanner },
-            { text: "Cancel", style: "cancel" }
-          ]
-        );
+        const codes = await scanFromURLAsync(uri, ["qr"]);
+        if (codes[0]?.data) await verify(codes[0].data);
+        else showToast("Try another image or enter the certificate ID.", { title: "No QR code found", tone: "warning" });
       }
     } catch (error) {
       console.error("QR processing error:", error);
@@ -288,7 +346,8 @@ export default function VerifyScreen() {
   if (scanning) {
     return (
       <ScannerView
-        onScan={id => { setScanning(false); setQuery(id); verify(id); }}
+        onError={() => { setScanning(false); showToast("Could not start the camera. Upload a QR image or enter the credential ID.", { title: "Camera unavailable" }); }}
+        onScan={payload => { setScanning(false); verify(payload); }}
         onCancel={() => setScanning(false)}
       />
     );
@@ -297,42 +356,40 @@ export default function VerifyScreen() {
   return (
     <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
       {/* Dark header strip — matches web VerifySection */}
-      <View style={s.header}>
-        <Text style={s.headerEyebrow}>Employers &amp; verifiers · No login needed</Text>
-        <Text style={s.headerTitle}>Verify a Certificate</Text>
-        <Text style={s.headerSub}>
-          Scan the QR on any Intelligent Academic Credentialing credential, upload a QR image, or type the certificate ID.
-          Three independent checks returned instantly.
-        </Text>
-      </View>
-
       <ScrollView
         contentContainerStyle={s.scroll}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        <View style={{gap: 6}}><Text style={{fontSize: 24, fontWeight: "700", color: T.navy}}>Verify a credential</Text><Text style={{fontSize: 13, lineHeight: 19, color: T.muted}}>Check a credential ID or student share link. Results open in a separate panel.</Text></View>
+        <View style={s.verifyPanel}>
+        <TouchableOpacity accessibilityRole="link" disabled={loading} onPress={() => openEmployerVerification()} style={{backgroundColor: T.navy, borderRadius: 12, padding: 14, gap: 5}}>
+          <Text style={{fontSize: 14, fontWeight: "700", color: T.cream}}>Verifying as an employer? ?</Text>
+          <Text style={{fontSize: 12, lineHeight: 18, color: T.cream}}>Compare original files or use a student share link for authorized access.</Text>
+        </TouchableOpacity>
         {/* QR options - Camera and Upload */}
         <View style={s.qrOptions}>
           <TouchableOpacity 
             style={[s.qrBtn, s.qrBtnPrimary]} 
-            onPress={openScanner} 
+            onPress={openScanner}
+            disabled={loading || uploading}
             activeOpacity={0.8}
           >
-            <Text style={s.qrBtnIcon}>📷</Text>
+            <Camera size={24} color={T.cream} strokeWidth={1.6} />
             <Text style={s.qrBtnText}>Scan with Camera</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
             style={[s.qrBtn, s.qrBtnSecondary, uploading && s.qrBtnDisabled]} 
             onPress={pickImage}
-            disabled={uploading}
+            disabled={uploading || loading}
             activeOpacity={0.8}
           >
             {uploading ? (
               <ActivityIndicator color={T.navy} size="small" />
             ) : (
               <>
-                <Text style={s.qrBtnIcon}>🖼️</Text>
+                <ImagePlus size={24} color={T.navy} strokeWidth={1.6} />
                 <Text style={[s.qrBtnText, { color: T.navy }]}>Upload QR Image</Text>
               </>
             )}
@@ -347,12 +404,12 @@ export default function VerifyScreen() {
         </View>
 
         {/* Input */}
-        <TextInput
-          style={s.input}
+        <FormField
+          label="Credential ID or verification link"
           placeholder="e.g. CR-2026-CUSL-A3F92C01"
           placeholderTextColor={T.faint}
           value={query}
-          onChangeText={setQuery}
+          onChangeText={value => {setQuery(value); setEmployerAccess(null); setEmployerFiles({}); setEmployerError("");}}
           autoCapitalize="none"
           autoCorrect={false}
           returnKeyType="search"
@@ -360,18 +417,74 @@ export default function VerifyScreen() {
         />
 
         {/* Verify button */}
-        <AnimatedButton label={loading ? "Verifying�" : "Verify"} onPress={() => verify(query)} busy={loading} />
+        <AnimatedButton label={loading ? "Checking?" : employerMode ? "Validate student access" : "Verify"} onPress={() => verify(query)} busy={loading} />
 
-        {/* Result */}
-        {result && <ResultPanel result={result} />}
+        </View>
+        {employerMode && <View style={s.verifyPanel}>
+          <Text style={s.panelTitle}>Employer document verification</Text>
+          <Text style={{fontSize: 13, lineHeight: 19, color: T.muted}}>1. Paste the student?s full share link above and validate access. 2. Select PDFs. 3. Verify once to receive the report.</Text>
+          {employerAccess && <>
+            <Text style={{color: T.green, fontSize: 13}}>Access validated, not consumed. Expires {new Date(employerAccess.expires_at).toLocaleString()}.</Text>
+            {[['certificate', 'Certificate PDF (required)'], ['transcript', 'Transcript PDF (optional)']].map(([kind, label]) => <View key={kind} style={{gap: 6}}>
+              <AnimatedButton label={employerFiles[kind] ? `Replace ${label}` : `Choose ${label}`} disabled={loading} onPress={() => pickVerificationPdf(kind)} />
+              {employerFiles[kind] && <Text style={{fontSize: 12, color: T.navy}}>{employerFiles[kind].name}</Text>}
+              {kind === 'transcript' && employerFiles.transcript && <TouchableOpacity accessibilityRole="button" disabled={loading} onPress={() => setEmployerFiles(previous => ({...previous, transcript: null}))}><Text style={{color: T.red, padding: 8}}>Remove transcript</Text></TouchableOpacity>}
+            </View>)}
+            <Text style={{fontSize: 12, lineHeight: 18, color: T.muted}}>Original PDFs only, maximum 20 MB each. Scans or re-saved copies can have different hashes. An omitted transcript is not checked. Uploads are not saved on the server.</Text>
+            <AnimatedButton label={loading ? "Verifying documents?" : "Verify documents"} disabled={loading || !employerFiles.certificate} onPress={submitEmployerDocuments} />
+          </>}
+          {employerError ? <Text accessibilityRole="alert" style={{color: T.red}}>{employerError}</Text> : null}
+          <AnimatedButton label="Return to public verification" disabled={loading} onPress={() => {setEmployerMode(false); setEmployerAccess(null); setEmployerFiles({}); setQuery(""); setResult(null);}} />
+        </View>}
       </ScrollView>
+      <Modal visible={Boolean(result)} transparent animationType="fade" onRequestClose={() => setResult(null)}>
+        <View style={{flex: 1, backgroundColor: "rgba(4,19,31,.7)", justifyContent: "center", padding: 16}}>
+          <SafeAreaView accessibilityViewIsModal style={{maxHeight: "88%", width: "100%", maxWidth: 620, alignSelf: "center", backgroundColor: T.cream, borderRadius: 18, overflow: "hidden"}}>
+            <View style={{flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, borderBottomWidth: 1, borderColor: T.border}}>
+              <Text accessibilityRole="header" style={{fontSize: 18, fontWeight: "700", color: T.navy}}>Verification result</Text>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close verification result" onPress={() => setResult(null)} style={{minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center"}}><Text style={{fontSize: 22, color: T.navy}}>?</Text></TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={{padding: 14, gap: 12}} keyboardShouldPersistTaps="handled">
+        {/* Result */}
+        {result?.access_consumed && <Text style={{fontWeight: "700", color: T.navy}}>Single-use access consumed. Keep this report open; another verification requires a new link.</Text>}
+        {result && <ResultPanel result={result} />}
+        {result?.checks && <View style={r.card}>
+          <Text style={r.title}>Detailed verification checks</Text>
+          {Object.entries(result.checks).map(([kind, check]) => <View key={kind} style={{paddingVertical: 12, borderBottomWidth: 1, borderColor: T.border, gap: 6}}>
+            <Text style={{fontWeight: "700", color: T.navy}}>{({blockchain: "Blockchain record", data: "Credential data", certificate: "Certificate PDF", transcript: "Transcript PDF"})[kind] || kind}: {({matched: "Matches", mismatch: "Mismatch", not_checked: "Not checked", unavailable: "Unavailable", not_found: "Not found", not_applicable: "Not applicable"})[check.status] || check.status}</Text>
+            {check.source && <Text style={{fontSize: 12, color: T.muted}}>Source: {check.source === "uploaded_file" ? "Your uploaded PDF" : "Stored document"}</Text>}
+            {check.explanation && <Text style={{fontSize: 13, lineHeight: 19, color: T.muted}}>{check.explanation}</Text>}
+            {check.status !== "matched" && check.next_step && <Text style={{fontSize: 12, lineHeight: 18, color: T.navy}}>Next step: {check.next_step}</Text>}
+          </View>)}
+          {result.recommendation && <Text style={r.msg}>{result.recommendation}</Text>}
+          {result.verified_at && <Text style={r.msg}>Checked: {new Date(result.verified_at).toLocaleString()}</Text>}
+          {result.blockchain?.block_number !== undefined && <Text style={r.msg}>Network {result.blockchain.chain_id} | Block {result.blockchain.block_number}</Text>}
+        </View>}
+
+        {result?.verification_outcome === "unavailable" && <AnimatedButton
+          label="Continue verification on the web"
+          onPress={async () => {
+            const input = parseVerificationInput(query);
+            const url = verificationUrl(input.certificateId) + (input.code ? `?code=${encodeURIComponent(input.code)}` : "");
+            try { await Linking.openURL(url); } catch { showToast("Could not open the verification website. Try again.", { title: "Browser unavailable" }); }
+          }}
+        />}
+
+              <AnimatedButton label="Employer verification ? more access" disabled={loading} onPress={() => openEmployerVerification()} />
+              <AnimatedButton label="Close result" onPress={() => setResult(null)} />
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 // ── Main styles ────────────────────────────────────────────────────────────
-const s = StyleSheet.create({
-  safe:   { flex: 1, backgroundColor: T.navy },
+const s = createStyles({
+  verifyPanel: { backgroundColor: T.surface, borderWidth: 1, borderColor: T.border, borderRadius: 12, padding: 20, gap: 16 },
+  panelTitle: { color: T.navy, fontSize: 18, fontWeight: "600" },
+  safe:   { flex: 1, backgroundColor: T.cream },
 
   // Dark header
   header: {
@@ -385,41 +498,15 @@ const s = StyleSheet.create({
   headerSub:     { fontSize: 13, color: "#B0C8DC", lineHeight: 20 },
 
   // Scroll body (cream bg)
-  scroll: {
-    backgroundColor: T.cream,
-    paddingHorizontal: 22,
-    paddingTop: 26,
-    paddingBottom: 48,
-    flexGrow: 1,
-  },
+  scroll: { backgroundColor: T.cream, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 48, flexGrow: 1, gap: 20, width: "100%", maxWidth: 760, alignSelf: "center" },
 
   // QR options container
-  qrOptions: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 20,
-  },
+  qrOptions: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
 
   // QR buttons
-  qrBtn: {
-    flex: 1,
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    borderRadius: 12,
-    paddingVertical: 18,
-    borderWidth: 1,
-    minHeight: 100,
-  },
-  qrBtnPrimary: {
-    backgroundColor: T.navy,
-    borderColor: T.navy,
-  },
-  qrBtnSecondary: {
-    backgroundColor: T.surface,
-    borderColor: T.border,
-  },
+  qrBtn: { flex: 1, minWidth: 110, alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 10, padding: 12, borderWidth: 1, minHeight: 68 },
+  qrBtnPrimary: { backgroundColor: T.navy, borderColor: T.navy },
+  qrBtnSecondary: { backgroundColor: T.input, borderColor: T.blueLine },
   qrBtnDisabled: {
     opacity: 0.6,
   },
@@ -432,7 +519,7 @@ const s = StyleSheet.create({
   },
 
   // Divider
-  divider:     { flexDirection: "row", alignItems: "center", marginBottom: 18, gap: 8 },
+  divider: { flexDirection: "row", alignItems: "center", gap: 10, marginVertical: 2 },
   dividerLine: { flex: 1, height: 1, backgroundColor: T.border },
   dividerText: { fontSize: 11, color: T.faint },
 
@@ -461,31 +548,16 @@ const s = StyleSheet.create({
 });
 
 // ── Result card styles ─────────────────────────────────────────────────────
-const r = StyleSheet.create({
-  card: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 18,
-    alignItems: "center",
-    gap: 6,
-  },
+const r = createStyles({
+  card: { borderRadius: 12, borderWidth: 1, padding: 20, gap: 10 },
   icon:  { fontSize: 28, marginBottom: 4 },
-  title: { fontSize: 16, fontWeight: "800", textAlign: "center", marginBottom: 4 },
+  title: { fontSize: 18, fontWeight: "600", marginBottom: 6 },
   msg:   { fontSize: 13, color: T.muted, textAlign: "center", lineHeight: 19 },
-  outcomeBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: T.green,
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    marginBottom: 12,
-  },
+  outcomeBadge: { alignSelf: "flex-start", backgroundColor: T.green, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6, marginBottom: 10 },
   outcomeBadgeText: { color: "#fff", fontWeight: "800", fontSize: 13 },
-  row:      { flexDirection: "row", justifyContent: "space-between", width: "100%", paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: "rgba(0,0,0,0.06)" },
-  rowLabel: { fontSize: 12, color: T.faint, fontWeight: "600" },
-  rowValue: { fontSize: 12, color: T.navy, flex: 1, textAlign: "right" },
+  row: { gap: 8, width: "100%", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: T.border },
+  rowLabel: { fontSize: 11, color: T.muted, fontWeight: "500" },
+  rowValue: { fontSize: 14, color: T.navy, fontWeight: "600", lineHeight: 22 },
   checks:   { alignSelf: "flex-start", marginTop: 10, gap: 4 },
   checkRow: { flexDirection: "row", alignItems: "center", gap: 7 },
   checkMark:{ color: T.gold, fontWeight: "800", fontSize: 13 },
@@ -493,7 +565,7 @@ const r = StyleSheet.create({
 });
 
 // ── Scanner styles ─────────────────────────────────────────────────────────
-const sc = StyleSheet.create({
+const sc = createStyles({
   root:     { flex: 1, backgroundColor: "#000" },
   vignette: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.48)" },
   frame: {

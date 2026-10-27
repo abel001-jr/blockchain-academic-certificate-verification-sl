@@ -18,14 +18,14 @@
 .cd-themed-dashboard :is(button, a):focus-visible { outline: 2px solid var(--cd-accent); outline-offset: 3px; }
 
 /* Sidebar follows the full palette, including the previously fixed gold badges. */
-.cd-themed-dashboard .cd-theme-sidebar { background: #08283F; border-color: #12374F; color: #F8F7F2; }
+.cd-themed-dashboard .cd-theme-sidebar { background: var(--cd-primary); border-color: rgb(248 247 242 / 12%); color: #F8F7F2; }
 .cd-themed-dashboard .cd-theme-sidebar .cd-sidebar-footer { background-color: transparent; }
 .cd-themed-dashboard .cd-theme-sidebar :is(.border-b, .border-t) { border-color: rgb(248 247 242 / 12%); }
 .cd-themed-dashboard .cd-theme-sidebar .cd-sidebar-section { color: #C1CAD0; opacity: 1; }
 .cd-themed-dashboard .cd-theme-sidebar .cd-sidebar-capability { color: var(--cd-accent); }
 .cd-themed-dashboard .cd-theme-sidebar .cd-sidebar-role { color: var(--cd-primary); background-color: white; border: 1px solid var(--cd-line); }
-.cd-themed-dashboard .cd-theme-sidebar a[aria-current="page"] { color: #F8F7F2; background-color: #223E51; box-shadow: none; }
-.cd-themed-dashboard .cd-theme-sidebar a:not([aria-current="page"]):hover { color: #F8F7F2; background-color: #17364B; }
+.cd-themed-dashboard .cd-theme-sidebar a[aria-current="page"] { color: #F8F7F2; background-color: color-mix(in srgb, var(--cd-primary) 88%, #F8F7F2); box-shadow: none; }
+.cd-themed-dashboard .cd-theme-sidebar a:not([aria-current="page"]):hover { color: #F8F7F2; background-color: color-mix(in srgb, var(--cd-primary) 94%, #F8F7F2); }
 .cd-themed-dashboard .cd-theme-sidebar a[aria-current="page"] span { color: inherit; }
 .cd-themed-dashboard .cd-theme-sidebar a[aria-current="page"] span.ml-auto { color: var(--cd-primary); background-color: white; }
 

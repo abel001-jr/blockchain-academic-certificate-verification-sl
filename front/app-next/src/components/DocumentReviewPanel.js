@@ -1,4 +1,5 @@
 "use client";
+import FeedbackToast from "@/components/FeedbackToast";
 /**
  * Registrar document review for one uploaded document.
  *
@@ -59,9 +60,20 @@ const STATE_STYLE = {
   rejected:   { chip: "bg-[#FBEAE8] text-[#A23B34]", label: "Rejected" },
 };
 
-export default function DocumentReviewPanel({
-  certId, kind, file, review: initialReview = null, expectations, onChange, showOverview = true,
+const reviewFileIds = new WeakMap();
+let nextReviewFileId = 0;
+
+export default function DocumentReviewPanel(props) {
+  if (props.file && !reviewFileIds.has(props.file)) reviewFileIds.set(props.file, ++nextReviewFileId);
+  const identity = props.file ? reviewFileIds.get(props.file) : "stored";
+  return <DocumentReviewContent key={props.kind + "-" + identity} {...props} />;
+}
+
+function DocumentReviewContent({
+  certId, kind, file, review: initialReview = null, expectations, onChange, showOverview = true, disabled = false,
 }) {
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const onChangeRef = useRef(onChange);
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   const [imageError, setImageError] = useState("");
@@ -71,11 +83,26 @@ export default function DocumentReviewPanel({
   const [busy, setBusy]         = useState(false);
   const [analysing, setAnalysing] = useState(false);
   const [error, setError]       = useState("");
+  const [feedback, setFeedback] = useState(null);
   const [note, setNote]         = useState("");
   const [expanded, setExpanded] = useState(false);
+  const [readingMode, setReadingMode] = useState("local");
+  const readingOptions = file ? <label className="mt-3 block text-sm font-semibold text-[#08283F]">
+    Reading method
+    <select className="cd-input mt-1 w-full" value={readingMode} disabled={disabled || analysing || busy}
+      onChange={event => setReadingMode(event.target.value)}>
+      <option value="local">Local reading</option>
+      <option value="deep">Deep reading — external AI model</option>
+    </select>
+    <span className="mt-1 block text-xs font-normal leading-5 text-[#4A5A68]">
+      {readingMode === "deep"
+        ? "Uses Groq to interpret document text. Extracted text and logo/seal comparison images are sent to external AI. Review the findings before accepting."
+        : "Uses the existing PDF text and OCR system on this server. No document data is sent to external AI."}
+    </span>
+  </label> : null;
 
   const inspectedId = review?.id;
-  const hasDocumentImages = review?.summary?.institution_identity?.items?.some(item => item.document_image);
+  const hasDocumentImages = review?.summary?.institution_identity?.version >= 8;
   useEffect(() => {
     if (!inspectedId || hasDocumentImages) return;
     const controller = new AbortController();
@@ -98,12 +125,13 @@ export default function DocumentReviewPanel({
   };
 
   async function runAnalysis() {
-    if (!file) return;
-    setAnalysing(true); setError("");
+    if (!file || disabled) return;
+    setAnalysing(true); setError(""); setFeedback(null);
     try {
       const fd = new FormData();
       fd.append("document_file", file);
       fd.append("document_kind", kind);
+      fd.append("reading_mode", readingMode);
       // Sending the values the Registrar actually typed lets the check run
       // against what is on screen rather than a stale stored record.
       Object.entries(expectations || {}).forEach(([key, value]) => {
@@ -119,6 +147,7 @@ export default function DocumentReviewPanel({
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Could not read that document.");
       publish(data.review);
+      setFeedback({ tone: "info", message: "Document reading complete. Review the findings before recording your decision." });
       setLastReadFile(file);
       setNote("");
       setExpanded(true);
@@ -130,7 +159,8 @@ export default function DocumentReviewPanel({
   }
 
   async function resolve(action) {
-    setBusy(true); setError("");
+    if (disabled) return;
+    setBusy(true); setError(""); setFeedback(null);
     try {
       const fields = (review?.comparisons || [])
         .filter((c) => c.status === "mismatch" || c.status === "not_found")
@@ -142,9 +172,10 @@ export default function DocumentReviewPanel({
         ...(action === "override" ? { fields } : {}),
       });
       publish(res.review);
+      setFeedback({ tone: action === "approve" ? "success" : "warning", message: action === "reject" ? "Document rejected. Select a replacement before continuing." : action === "override" ? "Review saved with your reason for accepting the differences." : "Document review approved and saved." });
       setNote("");
     } catch (e) {
-      const detail = e?.response?.data?.detail || e?.message || "Could not record that decision.";
+      const detail = e?.response?.data?.detail || e?.detail || e?.message || "Could not record that decision.";
       setError(detail);
     } finally {
       setBusy(false);
@@ -180,11 +211,12 @@ export default function DocumentReviewPanel({
                 screen.
               </p>
             )}
+            {readingOptions}
             {file ? (
               <button
                 type="button"
                 onClick={runAnalysis}
-                disabled={analysing}
+                disabled={disabled || analysing}
                 className={`${styles.readButton} ${needsReading && !analysing ? styles.ready : ""} mt-3`}
               >
                 {analysing ? <Loader2 size={14} className="animate-spin" /> : <FileSearch size={14} />}
@@ -197,7 +229,8 @@ export default function DocumentReviewPanel({
             )}
           </div>
         </div>
-        {error && <p className="mt-3 text-[13px] font-semibold text-[#A23B34]">{error}</p>}
+        <FeedbackToast tone={feedback?.tone} message={feedback?.message} title="Document review update" />
+        <FeedbackToast message={error} title={`${kind === "transcript" ? "Transcript" : "Certificate"} review failed`} />
       </div>
     );
   }
@@ -249,7 +282,7 @@ export default function DocumentReviewPanel({
                 <button
                   type="button"
                   onClick={runAnalysis}
-                  disabled={analysing || busy}
+                  disabled={disabled || analysing || busy}
                   className={`${styles.readButton} ${needsReading && !analysing && !busy ? styles.ready : ""}`}
                 >
                   {analysing ? <Loader2 size={14} className="animate-spin" /> : <FileSearch size={14} />}
@@ -262,6 +295,7 @@ export default function DocumentReviewPanel({
       </div>
 
       <div className="px-5 py-4">
+        {readingOptions}
         <p className="text-[12px] text-[#4A5A68]">
           Read from {review.page_count} page{review.page_count === 1 ? "" : "s"}
           {review.ocr_used ? " with OCR assistance" : ""}
@@ -429,7 +463,7 @@ export default function DocumentReviewPanel({
               <button
                 type="button"
                 onClick={() => resolve("approve")}
-                disabled={!canApprove || busy || (allWeak && !note.trim())}
+                disabled={disabled || !canApprove || busy || (allWeak && !note.trim())}
                 title={
                   !canApprove
                     ? "Resolve the flagged fields first"
@@ -448,7 +482,7 @@ export default function DocumentReviewPanel({
               <button
                 type="button"
                 onClick={() => resolve("override")}
-                disabled={!note.trim() || busy || review.is_rejected}
+                disabled={disabled || !note.trim() || busy || review.is_rejected}
                 title={!note.trim() ? "A reason is required to accept a difference" : undefined}
                 className="inline-flex items-center gap-1.5 rounded-md border border-[#A9721F] px-3.5 py-2 text-[13px] font-semibold text-[#A9721F] disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -459,7 +493,7 @@ export default function DocumentReviewPanel({
               <button
                 type="button"
                 onClick={() => resolve("reject")}
-                disabled={!note.trim() || busy}
+                disabled={disabled || !note.trim() || busy}
                 title={!note.trim() ? "A reason is required to reject a document" : undefined}
                 className="inline-flex items-center gap-1.5 rounded-md border border-[#A23B34] px-3.5 py-2 text-[13px] font-semibold text-[#A23B34] disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -472,7 +506,8 @@ export default function DocumentReviewPanel({
           </div>
         )}
 
-        {error && <p className="mt-3 text-[13px] font-semibold text-[#A23B34]">{error}</p>}
+        <FeedbackToast tone={feedback?.tone} message={feedback?.message} title="Document review update" />
+        <FeedbackToast message={error} title={`${kind === "transcript" ? "Transcript" : "Certificate"} review failed`} />
       </div>
       </div>
     </div>

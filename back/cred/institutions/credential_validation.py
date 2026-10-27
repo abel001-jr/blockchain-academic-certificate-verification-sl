@@ -10,9 +10,12 @@ REQUIRED = {"student_name", "degree_title", "institution_name", "graduation_year
 
 def validate_graduate_email(value, institution):
     value = value.strip().lower()
-    domain = (institution.email_domain or "").strip().lower().lstrip(".@")
-    if domain and value.rsplit("@", 1)[-1] != domain:
-        raise ValueError(f"Student email must use @{domain}. Other email domains are not allowed.")
+    from django.core.exceptions import ValidationError
+    from django.core.validators import validate_email
+    try:
+        validate_email(value)
+    except ValidationError:
+        raise ValueError("Enter a valid student email address.") from None
     return value
 
 

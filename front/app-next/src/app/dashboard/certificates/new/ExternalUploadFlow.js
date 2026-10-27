@@ -1,5 +1,12 @@
 "use client";
+import FeedbackToast from "@/components/FeedbackToast";
+import { publishDashboardUpdate } from "@/lib/dashboardRefresh.mjs";
+import WalletSigningControls from "@/components/WalletSigningControls";
+import CredentialDocumentPreview from "@/components/dashboard/CredentialDocumentPreview";
+import { externalUploadResume } from "@/lib/externalUploadResume.mjs";
+import { uploadDocument } from "@/lib/api";
 import DocumentReadingOverview from "@/components/DocumentReadingOverview";
+import DocumentPdfPreview from "@/components/DocumentPdfPreview";
 import StudentNameInput from "@/components/StudentNameInput";
 import DeleteButton from "@/components/ui/DeleteButton";
 import NavigationButton from "@/components/ui/NavigationButton";
@@ -30,6 +37,7 @@ import {
   Wallet, ShieldCheck, User, FileText, RefreshCw, X,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import GraduateEmailInput from "@/components/GraduateEmailInput";
 import CredentialSignerIndicator from "@/components/CredentialSignerIndicator";
@@ -39,6 +47,7 @@ import { useAuth } from "@/lib/useAuth";
 import { submitUploadedCredentialForApprovalOnChain } from "@/lib/walletActions";
 import CertificateQrCard from "@/components/CertificateQrCard";
 import styles from "./ExternalUploadFlow.module.css";
+import { restoreDraftForm } from "@/lib/restoreDraftForm.mjs";
 
 const STEPS = [
   { label: "Student Details", icon: User },
@@ -64,7 +73,7 @@ export function authHeaders() {
 // state rather than a failure.
 export async function fetchDraftDocument(certificateId, kind) {
   const res = await fetch(
-    `${API_BASE}/certificates/${certificateId}/draft-document/?kind=${kind}`,
+    `${API_BASE}/certificates/${certificateId}/draft-document/?kind=${kind}&transport=json`,
     { headers: authHeaders() },
   );
   if (!res.ok) {
@@ -74,8 +83,9 @@ export async function fetchDraftDocument(certificateId, kind) {
     }
     return null;
   }
-  const blob = await res.blob();
-  return new File([blob], `${kind}.pdf`, { type: "application/pdf" });
+  const data = await res.json();
+  const bytes = Uint8Array.from(atob(data.content_base64), character => character.charCodeAt(0));
+  return new File([bytes], data.filename || `${kind}.pdf`, { type: "application/pdf" });
 }
 
 // One document's working area: the page itself on the left, everything read off
@@ -153,7 +163,7 @@ export function DocumentWorkbench({
         {/* Left — the document */}
         <div className={styles.documentPane}>
           {file ? (
-            <iframe
+            <DocumentPdfPreview
               src={preview}
               title={`${label} preview`}
               className="w-full rounded-lg border border-[#E4E1D6]"
@@ -192,13 +202,7 @@ export function DocumentWorkbench({
               <Loader2 size={11} className="animate-spin" /> Saving to this draft…
             </p>
           )}
-          {!saving && saveError?.kind === kind && (
-            <p className="mt-2 text-[11px] text-[#A23B34] leading-relaxed">
-              <span className="font-semibold">Not saved to this draft.</span>{" "}
-              {saveError.message} The document is still held in this browser and can
-              still be submitted — it just will not survive a refresh.
-            </p>
-          )}
+          <FeedbackToast title={`${label} not saved`} message={!saving && saveError?.kind === kind ? `${saveError.message} The document remains in this browser but will not survive a refresh. Retry saving before leaving.` : ""} />
         </div>
 
         {/* Right — read it, and what was read out of it */}
@@ -210,8 +214,12 @@ export function DocumentWorkbench({
 
 export default function ExternalUploadFlow({ onBack, flowType = "full_upload", emailDomain = "", draftId = null }) {
   const { user } = useAuth();
+  const router = useRouter();
 
+  const [feedback, setFeedback] = useState("");
   const [step,        setStep]        = useState(0);
+  const [preparedResume, setPreparedResume] = useState(false);
+  const [preparedReviewAccepted, setPreparedReviewAccepted] = useState(false);
   const [certId,      setCertId]      = useState(null);
   const [cert,        setCert]        = useState(null);
   const [anchorData,  setAnchorData]  = useState(null); // returned by upload-and-anchor
@@ -221,6 +229,7 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
   const [finalizing,  setFinalizing]  = useState(false);
   const [resumeLoading, setResumeLoading] = useState(Boolean(draftId));
   const [error,       setError]       = useState("");
+  const [uploadError, setUploadError] = useState("");
 
   // PDF file state - now supporting both certificate and transcript
   const [certPdfFile,       setCertPdfFile]       = useState(null);
@@ -296,8 +305,8 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
       setCatalogLoading(true);
       try {
         const [d, g] = await Promise.all([
-          api.get("/catalog/departments/"),
-          api.get("/catalog/grades/"),
+          api.get(`/catalog/departments/${draftId ? "?include_inactive=1" : ""}`),
+          api.get(`/catalog/grades/${draftId ? "?include_inactive=1" : ""}`),
         ]);
         if (!cancelled) {
           setDepartments(d.results ?? d);
@@ -310,7 +319,7 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [draftId]);
 
   useEffect(() => {
     if (!form.department_id) {
@@ -320,14 +329,14 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
     let cancelled = false;
     (async () => {
       try {
-        const p = await api.get(`/catalog/programs/?department=${form.department_id}`);
+        const p = await api.get(`/catalog/programs/?department=${form.department_id}${draftId ? "&include_inactive=1" : ""}`);
         if (!cancelled) setPrograms(p.results ?? p);
       } catch {
         if (!cancelled) setPrograms([]);
       }
     })();
     return () => { cancelled = true; };
-  }, [form.department_id]);
+  }, [form.department_id, draftId]);
 
   // ── Step 1: document upload ──
   //
@@ -365,6 +374,7 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
               : `The document was refused (HTTP ${res.status}).`),
         );
       }
+      publishDashboardUpdate(`/certificates/${certId}/save-draft-document/`);
       setSaveError(null);
     } catch (e) {
       // Autosave failing must not lose the in-memory file, so the error is
@@ -374,7 +384,6 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
       const message = e?.name === "TypeError"
         ? "The upload never reached the server. Check the backend is running and that this site's origin is allowed by the API's CORS settings."
         : e?.message || "The document could not be saved to this draft.";
-      setError(message);
       setSaveError({ kind, message });
     } finally {
       setSavingKind(null);
@@ -392,6 +401,19 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
     (async () => {
       try {
         const data = await api.get(`/certificates/${draftId}/`);
+        if (cancelled) return;
+        const resume = externalUploadResume(data, flowType);
+        if (resume.kind === "prepared_review") {
+          setCertId(data.id); setCert(data); setAnchorData(data);
+          setPreparedResume(true); setPreparedReviewAccepted(false); setStep(resume.step);
+          setFeedback("An existing prepared credential matches these details. Review its saved documents before continuing to signing; no duplicate draft was created.");
+          return;
+        }
+        if (resume.kind === "detail") {
+          router.replace(`/dashboard/certificates/${data.id}`);
+          return;
+        }
+        setPreparedResume(false); setPreparedReviewAccepted(false); setAnchorData(null);
         if (data.status !== "draft" || data.flow_type !== flowType) {
           throw new Error("This certificate is not an editable draft for this upload workflow.");
         }
@@ -399,17 +421,13 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
 
         setCertId(data.id);
         setCert(data);
-        // Back to the details step, populated from the record rather than from
-        // whatever was last typed, so "Back" and "reopen" agree.
-        setForm(prev => ({
-          ...prev,
-          student_name: data.student_name || "",
-          student_email: data.student_email || "",
-          graduation_year: data.graduation_year || prev.graduation_year,
-        }));
-        // Certificate.grade is a CharField snapshot of the label, not a relation, so the
-        // id has to be recovered by matching the label back into the catalog. The catalog
-        // may not have arrived yet, so the label is held here and resolved below.
+        const [departmentData, programData, gradeData] = await Promise.all([
+          api.get("/catalog/departments/?include_inactive=1"),
+          api.get("/catalog/programs/?include_inactive=1"),
+          api.get("/catalog/grades/?include_inactive=1"),
+        ]);
+        if (cancelled) return;
+        setForm(restoreDraftForm(data, departmentData.results ?? departmentData, programData.results ?? programData, gradeData.results ?? gradeData));
         restoredGradeLabel.current = data.grade || "";
 
         const reviews = data.document_reviews?.reviews || [];
@@ -458,13 +476,13 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
     })();
 
     return () => { cancelled = true; };
-  }, [draftId, flowType]);
+  }, [draftId, flowType, router]);
 
   // Throwing a draft away is irreversible, so it takes an explicit second
   // click. The record and every document saved against it are removed; the
   // audit entry outlives both.
   async function handleAbandon() {
-    setBusy(true); setError("");
+    setFeedback(""); setBusy(true); setError("");
     try {
       const res = await fetch(`${API_BASE}/certificates/${certId}/abandon/`, {
         method: "POST",
@@ -475,6 +493,7 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
         throw new Error(data.detail || "This draft could not be discarded.");
       }
       resetAll();
+      publishDashboardUpdate(`/certificates/${certId}/abandon/`);
       onBack();
     } catch (e) {
       setError(e?.message || "This draft could not be discarded.");
@@ -597,9 +616,11 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
   // ── Step 0: Create draft with flow_type from prop ──
   async function handleCreate(e) {
     e.preventDefault();
-    setBusy(true); setError("");
+    if (busy || resumeLoading) return;
+    setFeedback(""); setBusy(true); setError("");
     try {
       const payload = {
+        ...(certId || draftId ? { draft_id: certId || draftId } : {}),
         student_name:   form.student_name.trim(),
         student_email:  form.student_email.trim(),
         department_id:  form.department_id,
@@ -609,7 +630,14 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
       };
       if (form.grade_classification_id) payload.grade_classification_id = form.grade_classification_id;
       const data = await api.post("/certificates/", payload);
+      if (data.status !== "draft" && data.tx_hash) {
+        router.replace(`/dashboard/certificates/${data.id}`);
+        return;
+      }
       setCertId(data.id); setCert(data); setStep(1);
+      if (data.draft_details_changed) { setCertReview(null); setTranscriptReview(null); }
+      setFeedback(data.draft_reused ? "Continuing the existing credential draft. Saved documents have been kept." : "Student details saved to the draft.");
+      router.replace(`/dashboard/certificates/new?flow=${data.flow_type}&draft=${data.id}`, { scroll: false });
     } catch (e) {
       setError(e?.grade_classification_id?.[0] || e?.student_name?.[0] || e?.graduation_year?.[0] || e?.program_id?.[0] || e?.department_id?.[0] || e?.detail || JSON.stringify(e));
     } finally { setBusy(false); }
@@ -617,20 +645,22 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
 
   // ── Step 1: Upload PDF(s) → hash + pin → pending_finalize ──
   async function handleUpload() {
+    setUploadError("");
+    setError("");
     // For full_upload flow, require both files
     if (flowType === "full_upload") {
       if (!certPdfFile || !transcriptPdfFile) {
-        setError("Please select both certificate and transcript PDFs to upload.");
+        setUploadError("Please select both certificate and transcript PDFs to upload.");
         return;
       }
     } else {
       if (!certPdfFile) {
-        setError("Please select a PDF to upload.");
+        setUploadError("Please select a PDF to upload.");
         return;
       }
     }
     
-    setBusy(true); setError("");
+    setFeedback(""); setBusy(true); setError("");
     try {
       const fd = new FormData();
       fd.append("document_file", certPdfFile);
@@ -638,29 +668,29 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
         fd.append("transcript_file", transcriptPdfFile);
       }
 
-      // Use raw fetch with Authorization header (api helper doesn't support FormData cleanly)
-      const res = await fetch(`${API_BASE}/certificates/${certId}/upload-and-anchor/`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: fd,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+      const data = await uploadDocument(`/certificates/${certId}/upload-and-anchor/`, fd);
       setAnchorData(data);
+      setFeedback("Documents uploaded successfully. Continue with the Registrar wallet to submit for approval.");
       // The hashes are fixed now, so they can go on-chain before officers review.
       setStep(2);
     } catch (e) {
-      setError(e?.message || "Upload failed.");
+      setUploadError(e?.message || "The documents could not be uploaded. Please try again.");
     } finally { setBusy(false); }
   }
 
   // ── Step 2: MetaMask — commit the document hashes for review ──
   async function handleSign() {
     if (!anchorData) return;
-    setBusy(true); setFinalizing(true); setError("");
+    if (preparedResume && !preparedReviewAccepted) {
+      setError("Review the prepared documents and accept the review confirmation before signing.");
+      setStep(1);
+      return;
+    }
+    setFeedback(""); setBusy(true); setFinalizing(true); setError("");
     try {
       const { hash, blockNumber } =
         await submitUploadedCredentialForApprovalOnChain(anchorData);
+      setFeedback("Blockchain transaction confirmed. Confirm the submission to update the credential record.");
       setTxHash(hash); setBlockNum(blockNumber); setStep(3);
     } catch (e) {
       const msg = e?.data?.message || e?.reason || e?.shortMessage || e?.message || "";
@@ -673,21 +703,24 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
 
   // ── Step 3: Confirm blockchain submission in Django ──
   async function handleConfirm() {
-    setBusy(true); setError("");
+    setFeedback(""); setBusy(true); setError("");
     try {
       await api.post(`/certificates/${certId}/confirm-chain/`, {
         tx_hash: txHash,
         block_number: blockNum,
       });
       setStep(4);
+      setFeedback("Credential submitted for institutional approval.");
     } catch (e) {
       setError(e?.detail || JSON.stringify(e));
     } finally { setBusy(false); }
   }
 
   function resetAll() {
+    setPreparedResume(false); setPreparedReviewAccepted(false);
+    router.replace(`/dashboard/certificates/new?flow=${flowType}`, { scroll: false });
     setStep(0); setCertId(null); setCert(null); setAnchorData(null);
-    setTxHash(""); setBlockNum(null); setError("");
+    setTxHash(""); setBlockNum(null); setError(""); setFeedback("");
     setCertPdfFile(null); setCertPdfPreview("");
     setTranscriptPdfFile(null); setTranscriptPdfPreview("");
     setCertReview(null); setTranscriptReview(null);
@@ -736,6 +769,7 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
 
   return (
     <div className={`${styles.flow} flex flex-col gap-3 w-full`}>
+      <FeedbackToast message={uploadError} title="Upload failed" />
       <div className={styles.topline}>
       {/* Header */}
       <div className="flex items-center gap-3">
@@ -771,12 +805,8 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
         })}
       </div>
 
-      {error && (
-        <div className="bg-[#F5E5E3] text-[#A23B34] text-sm px-4 py-3 rounded-lg flex items-start gap-2">
-          <span className="shrink-0 mt-0.5">⚠</span>
-          <span className="break-all">{error}</span>
-        </div>
-      )}
+      <FeedbackToast message={error} tone={/cancelled|canceled|rejected the request/i.test(error) ? "info" : "error"} title={/cancelled|canceled|rejected the request/i.test(error) ? "Wallet request cancelled" : step === 0 ? "Student details need attention" : "Credential issuance failed"} />
+      <FeedbackToast tone="success" message={!error && !uploadError ? feedback : ""} title="Issuance progress saved" />
 
       <div className="bg-white rounded-xl border border-[#E4E1D6] p-4">
         {resumeLoading ? (
@@ -872,7 +902,16 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
         )}
 
         {/* ── Step 1: Upload PDF(s) ── */}
-        {step === 1 && (
+        {step === 1 && preparedResume && anchorData && (
+          <section className="flex flex-col gap-5" aria-label="Review prepared upload">
+            <div><h3 className="text-base font-semibold text-[#08283F]">Upload &amp; Review</h3><p className="mt-2 text-sm text-[#4A5A68]">This student and award already have a prepared credential. The saved documents are shown below so you can review them before signing. Prepared document hashes are fixed; continuing reuses this record.</p></div>
+            <CredentialDocumentPreview id={certId} kind="certificate" progress={false} />
+            {(anchorData.transcript_hash || anchorData.ipfs_cid_transcript) && <CredentialDocumentPreview id={certId} kind="transcript" progress={false} />}
+            <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={preparedReviewAccepted} onChange={event => setPreparedReviewAccepted(event.target.checked)} />I have reviewed the saved documents and want to continue with this credential.</label>
+            <button type="button" className="cd-btn-primary self-start disabled:opacity-50" disabled={!preparedReviewAccepted || busy} onClick={() => { setError(""); setStep(2); }}>Continue to Sign On-Chain</button>
+          </section>
+        )}
+        {step === 1 && !preparedResume && (
           <div className={`${styles.uploadStep} flex flex-col`}>
             <div className={styles.heading}>
               <span className={styles.eyebrow}>DOCUMENT REVIEW · STEP 2 OF 4</span>
@@ -936,37 +975,12 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
 
             {/* A reopened draft: say where the Registrar got to, so the restored
                 files and decisions below are not a surprise. */}
-            {restoredSummary && (
-              <div className="rounded-xl border border-[#D8E3EC] bg-[#F2F7FB] px-4 py-3">
-                <p className="text-[#08283F] text-sm font-semibold">
-                  Draft reopened — nothing was lost
-                </p>
-                <ul className="mt-1.5 text-[12px] text-[#4A5A68] space-y-0.5">
-                  <li>
-                    Student details for{" "}
-                    <span className="font-semibold text-[#08283F]">{restoredSummary.student_name}</span>{" "}
-                    are already saved.
-                  </li>
-                  {restoredSummary.hasCertificate && (
-                    <li>Certificate PDF restored — it was saved when you chose it.</li>
-                  )}
-                  {restoredSummary.hasTranscript && (
-                    <li>Transcript PDF restored — it was saved when you chose it.</li>
-                  )}
-                  {restoredSummary.decided > 0 && (
-                    <li>
-                      {restoredSummary.decided} document
-                      {restoredSummary.decided === 1 ? "" : "s"} already checked and
-                      confirmed below.
-                    </li>
-                  )}
-                </ul>
-                <p className="mt-2 text-[11px] text-[#4A5A68]">
-                  Documents are kept encrypted on this server until you choose to pin
-                  and anchor them, so you can leave and come back.
-                </p>
-              </div>
-            )}
+            <FeedbackToast tone="info" title="Draft reopened" message={restoredSummary ? [
+              `Student details for ${restoredSummary.student_name} restored.`,
+              restoredSummary.hasCertificate ? "Certificate PDF restored." : "",
+              restoredSummary.hasTranscript ? "Transcript PDF restored." : "",
+              restoredSummary.decided ? `${restoredSummary.decided} document review decisions restored.` : "",
+            ].filter(Boolean).join("\n") : ""} />
 
             <details className={styles.guidance}>
               <summary>Document requirements & scan guidance <span>PDF, JPEG or PNG · up to 20 MB per document</span></summary>
@@ -1001,6 +1015,7 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
               >
               {certPdfFile ? (
                 <DocumentReviewPanel
+                  disabled={Boolean(savingKind)}
                   showOverview={false}
                   key={`certificate-${certPdfFile.name}-${certPdfFile.size}-${certPdfFile.lastModified}`}
                   certId={certId}
@@ -1044,6 +1059,7 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
               >
                 {transcriptPdfFile ? (
                   <DocumentReviewPanel
+                    disabled={Boolean(savingKind)}
                   showOverview={false}
                     key={`transcript-${transcriptPdfFile.name}-${transcriptPdfFile.size}-${transcriptPdfFile.lastModified}`}
                     certId={certId}
@@ -1155,6 +1171,8 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
               </p>
             </div>
 
+            <WalletSigningControls signing={busy} onSign={handleSign} />
+
             {/* Summary */}
             <div className="bg-white rounded-xl border border-[#E4E1D6] divide-y divide-[#E4E1D6]">
               {[
@@ -1174,12 +1192,7 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
               ))}
             </div>
 
-            <button onClick={handleSign} disabled={busy} className="cd-btn-primary self-start disabled:opacity-60"
-              style={{ background: "#B98A28" }}>
-              {busy
-                ? <><Loader2 size={15} className="animate-spin" /> Waiting for MetaMask…</>
-                : <><Wallet size={15} /> Submit for Approval</>}
-            </button>
+
           </div>
         )}
 
@@ -1223,12 +1236,6 @@ export default function ExternalUploadFlow({ onBack, flowType = "full_upload", e
                 <ShieldCheck size={14} className="text-[#B98A28] shrink-0" />
                 <span className="font-mono text-[#08283F] text-xs break-all">{txHash}</span>
               </div>}
-              {anchorData?.ipfs_url_pdf && (
-                <a href={anchorData.ipfs_url_pdf} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 bg-[#F8F7F2] border border-[#E4E1D6] px-4 py-3 rounded-xl text-[#B98A28] text-sm font-semibold hover:underline">
-                  <FileText size={14} /> View on IPFS
-                </a>
-              )}
             </div>
             <div className="flex gap-3 mt-2">
               <Link href="/dashboard/certificates" className="cd-btn-primary">View All Certificates</Link>

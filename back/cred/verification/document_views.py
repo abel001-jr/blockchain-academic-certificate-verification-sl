@@ -61,7 +61,13 @@ class SharedCredentialDocumentsView(APIView):
         # The document served is the issued one, which for a sealed credential
         # is the sealed copy rather than the review copy officers approved.
         issued_cid = certificate.issued_pdf_cid
-        issued_hash = certificate.authoritative_doc_hash
+        from .integrity import verify_record
+        report = verify_record(certificate)
+        if report["verification_outcome"] != "valid":
+            return Response({"detail": report["message"], "checks": report["checks"]},
+                            status=502 if report["verification_outcome"] == "unavailable" else 409)
+        issued_hash = report["blockchain"]["certificate_hash"]
+        transcript_hash = report["blockchain"]["transcript_hash"]
         if not issued_cid or not issued_hash or not transcript_cid or not transcript_hash:
             return Response(
                 {"detail": "This credential is missing one or both finalized documents."},
