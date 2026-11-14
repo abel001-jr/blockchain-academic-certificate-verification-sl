@@ -59,6 +59,47 @@ class UploadedTemplateTests(TestCase):
             flow_type=FlowType.SYSTEM_DESIGNED)
         self.url = f"/api/certificate-templates/{self.revision.id}/"
 
+    def test_all_certificate_font_styles_render_and_local_fonts_are_embedded(self):
+        from .template_fonts import FONTS, LOCAL_FONTS
+        from .template_rendering import render_uploaded_template
+        for font in sorted(FONTS):
+            with self.subTest(font=font):
+                self.revision.fields = [{"key": "static_text", "page": 1, "text": "Certificate wording",
+                    "x": .1, "y": .5, "width": .8, "height": .15, "font": font, "font_size": 18}]
+                pdf = render_uploaded_template(self.cert, self.revision)
+                with fitz.open(stream=pdf, filetype="pdf") as doc:
+                    self.assertIn("Certificate wording", doc[0].get_text())
+                    if font in LOCAL_FONTS:
+                        self.assertTrue(any(info[1] == "ttf" for info in doc[0].get_fonts()))
+
+    def test_certificate_styles_use_distinct_embedded_faces(self):
+        from .template_fonts import CERTIFICATE_FONTS
+        from reportlab.pdfbase import pdfmetrics
+        names = [pdfmetrics.getFont(name).face.name for name in CERTIFICATE_FONTS]
+        self.assertEqual(len(names), len(set(names)))
+
+    def test_edit_wording_replaces_master_text_and_preserves_line_breaks(self):
+        from .template_rendering import render_uploaded_template
+        self.revision.fields = [{"key": "static_text", "page": 1, "x": .04, "y": .07,
+            "width": .85, "height": .18, "font_size": 14, "align": "left", "clear": True,
+            "text": "NEW INSTITUTION\nCertificate of achievement"}]
+        pdf = render_uploaded_template(self.cert, self.revision)
+        with fitz.open(stream=pdf, filetype="pdf") as doc:
+            text = doc[0].get_text()
+        self.assertNotIn("INSTITUTIONAL ARTWORK AND WORDING", text)
+        self.assertIn("NEW INSTITUTION\nCertificate of achievement", text)
+        self.assertIn("OLD STUDENT", text)
+
+    def test_multiline_fit_wraps_and_rejects_overflow(self):
+        from .credential_validation import clean_text, fit_template_text
+        self.assertEqual(clean_text("First\r\nSecond", "wording", 1000, multiline=True), "First\nSecond")
+        with self.assertRaises(ValueError):
+            clean_text("First\nSecond", "student_name", 200)
+        lines, size, fits = fit_template_text("Certificate of academic achievement", "Times-Roman", 14, 14, 100, 100, multiline=True)
+        self.assertTrue(fits)
+        self.assertGreater(len(lines), 1)
+        self.assertFalse(fit_template_text("First\nSecond", "Times-Roman", 14, 14, 100, 10, multiline=True)[2])
+
     def test_branding_can_be_disabled_and_enabled_again(self):
         from django.utils import timezone
         self.revision.approved_at = timezone.now()
@@ -169,6 +210,32 @@ class UploadedTemplateTests(TestCase):
         self.cert.student_name = "Name" * 100
         with self.assertRaisesRegex(ValueError, "at most|does not fit"):
             generate_certificate_pdf(self.cert, include_attestations=False)
+
+    def test_blank_upload_can_be_prepared_previewed_and_enabled_without_ocr(self):
+        from certify.document_analysis import DocumentAnalysisError
+        with fitz.open() as doc:
+            doc.new_page(width=600, height=400)
+            blank = doc.tobytes()
+        with patch("institutions.template_views.analyze_pdf", side_effect=DocumentAnalysisError("OCR unavailable")):
+            response = self.client.post("/api/certificate-templates/", {
+                "master": SimpleUploadedFile("blank.pdf", blank), "name": "Blank design", "design_mode": "blank"})
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["analysis"]["design_mode"], "blank")
+        self.assertEqual(response.data["fields"], [])
+        url = f"/api/certificate-templates/{response.data['id']}/"
+        fields = layout() + [{"key": "static_text", "page": 1, "text": "Certificate of Achievement",
+            "x": .1, "y": .1, "width": .8, "height": .1, "font_size": 20}]
+        saved = self.client.patch(url, {"fields": fields, "design_mode": "blank"}, format="json")
+        self.assertEqual(saved.status_code, 200, saved.data)
+        preview = self.client.get(url + "sample/")
+        self.assertEqual(preview.status_code, 200)
+        pdf = preview.content
+        with fitz.open(stream=pdf, filetype="pdf") as doc:
+            self.assertIn("Certificate of Achievement", doc[0].get_text())
+            self.assertIn("Sample Graduate", doc[0].get_text())
+        approved = self.client.patch(url, {"fields": fields, "approve": True}, format="json")
+        self.assertEqual(approved.status_code, 200, approved.data)
+        self.assertEqual(str(CertificateTemplate.objects.get(institution=self.institution).active_revision_id), response.data["id"])
 
     def test_upload_reads_live_text_and_keeps_private_master(self):
         response = self.client.post("/api/certificate-templates/", {"master": SimpleUploadedFile("actual.pdf", master()), "name": "Actual style"})

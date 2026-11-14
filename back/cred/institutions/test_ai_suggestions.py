@@ -181,6 +181,21 @@ class AISuggestionAccessTests(TestCase):
         self.assertFalse(revision.logo)
 
     @patch("institutions.template_views.extract_template_analysis")
+    @patch("institutions.template_vision.suggest_visual_layout")
+    def test_blank_composition_continues_when_ocr_is_unavailable(self, visual, extract):
+        from certify.document_analysis import DocumentAnalysisError
+        revision = CertificateTemplateRevision.objects.create(institution=self.inst, name="Blank", fields=[],
+            analysis={"pages": [{"page": 1, "width": 600, "height": 400, "lines": [], "items": [], "text": ""}], "design_mode": "blank"})
+        extract.side_effect = DocumentAnalysisError("OCR unavailable")
+        visual.return_value = {"items": [], "warnings": []}
+        response = self.client.post(f"/api/certificate-templates/{revision.id}/ai-suggestions/",
+            {"visual": "true", "full_design": "true", "page": "1", "fields": "[]"}, format="multipart")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["ai_status"], "completed")
+        self.assertTrue(visual.call_args.kwargs["full_design"])
+        self.assertEqual(visual.call_args.args[1]["pages"][0]["width"], 600)
+
+    @patch("institutions.template_views.extract_template_analysis")
     @patch("institutions.template_views.suggest_with_groq")
     def test_unavailable_ai_returns_local_suggestions_with_warning(self, assist, extract):
         revision = CertificateTemplateRevision.objects.create(institution=self.inst, name="Draft")

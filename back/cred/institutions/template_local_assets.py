@@ -19,6 +19,9 @@ def add_local_artwork(result, revision, analysis, fields, uploads, page_number):
             else:
                 with saved.open("rb") as source:
                     proposal = suggest_asset_size(source, key, analysis, occupied, page_number, local=True)
+            if proposal.get("placement_required"):
+                result["warnings"].append(f"{key.title()}: {proposal['note']}")
+                continue
             result["items"].append({"field": proposal["field"], "method": "layout", "source_text": "Uploaded " + key,
                 "note": proposal["note"]})
             occupied.append(proposal["field"])

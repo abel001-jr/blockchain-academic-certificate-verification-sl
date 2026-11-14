@@ -1,7 +1,7 @@
 "use client";
 import { ActionButton } from "@/components/ui/AnimatedControls";
 import { useEffect, useState } from "react";
-import { Loader2, Check, Eye, EyeOff, UserRound, Building2, Settings2, ChevronRight } from "lucide-react";
+import { Loader2, Check, Eye, EyeOff, UserRound, Building2, Settings2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth, ROLES } from "@/lib/useAuth";
 import styles from "./SettingsPage.module.css";
@@ -82,23 +82,22 @@ export default function SettingsPage() {
     <div className="flex flex-col gap-8 w-full">
       <div>
         <h2 className="text-[#08283F] font-bold text-3xl">Settings</h2>
-        <p className="text-[#4A5A68] text-base mt-1.5">Manage your personal preferences and the setup available to your role.</p>
+        <p className="text-[#4A5A68] text-base mt-1.5">Your account and institution settings, organised in one place.</p>
       </div>
 
       <div className={styles.layout}>
         <nav className={styles.navigation} aria-label="Settings categories">
-          {groups.map(({ id, title, description, icon: Icon, tabs }) => (
+          {groups.map(({ id, title, tabs }) => (
             <section key={id} className={styles.group} aria-labelledby={`settings-${id}`}>
               <div className={styles.groupHeading}>
-                <Icon size={19} aria-hidden="true" />
-                <div><h3 id={`settings-${id}`}>{title}</h3><p>{description}</p></div>
+                <h3 id={`settings-${id}`}>{title}</h3>
               </div>
               <div className={styles.links}>
                 {tabs.map(item => <button key={item} type="button"
                   aria-current={activeTab === item ? "page" : undefined}
                   aria-controls="settings-content"
                   onClick={() => { setTab(item); setSuccess(""); setError(""); }}>
-                  {item}<ChevronRight size={15} aria-hidden="true" />
+                  {item === "Password" ? "Security" : item === "Institution Identity" ? "Identity" : item}
                 </button>)}
               </div>
             </section>

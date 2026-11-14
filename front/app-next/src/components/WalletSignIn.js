@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { Wallet, Loader2, ShieldCheck } from "lucide-react";
 
 import { requireEthereum } from "@/lib/walletActions";
-import { connectSingleWallet, readWalletAccounts, singleWalletAccount } from "@/lib/walletConnection.mjs";
+import { connectSingleWallet, disconnectWalletAccounts, readWalletAccounts, singleWalletAccount } from "@/lib/walletConnection.mjs";
 import { useWalletAccounts } from "./WalletConnectionControls";
 import FeedbackToast from "./FeedbackToast";
 
@@ -20,9 +20,34 @@ export default function WalletSignIn({ onSuccess, onError, buttonLabel = "Sign i
   const [step,           setStep]           = useState("idle"); // idle | connecting | signing | verifying | done
   const [address,        setAddress]        = useState("");
   const requestLock = useRef(false);
-  const { accounts } = useWalletAccounts();
+  const { accounts, refresh } = useWalletAccounts();
+  const [disconnecting, setDisconnecting] = useState(false);
   const [error,          setError]          = useState("");
   const [pendingApproval, setPendingApproval] = useState("");
+
+  async function handleDisconnectAll() {
+    if (requestLock.current) return;
+    requestLock.current = true;
+    setDisconnecting(true);
+    setError("");
+    try {
+      await disconnectWalletAccounts(requireEthereum());
+      setAddress("");
+      setPendingApproval("");
+      setStep("idle");
+      window.dispatchEvent(new Event("credence:wallet-connection-changed"));
+    } catch (err) {
+      if (!isWalletCancellation(err)) {
+        const msg = err?.message || "Could not disconnect MetaMask accounts.";
+        setError(msg);
+        onError?.(msg);
+      }
+    } finally {
+      await refresh();
+      requestLock.current = false;
+      setDisconnecting(false);
+    }
+  }
 
   async function handleConnect() {
     if (requestLock.current) return;
@@ -152,7 +177,7 @@ export default function WalletSignIn({ onSuccess, onError, buttonLabel = "Sign i
       {/* Main action button */}
       <button
         onClick={handleConnect}
-        disabled={busy || accounts.length > 1}
+        disabled={busy || disconnecting || accounts.length > 1}
         className="cred-btn cred-btn-primary w-full disabled:opacity-60"
       >
         {busy ? (
@@ -162,6 +187,18 @@ export default function WalletSignIn({ onSuccess, onError, buttonLabel = "Sign i
         )}
         {buttonLabels[step]}
       </button>
+
+      {accounts.length > 0 && (
+        <button
+          type="button"
+          onClick={handleDisconnectAll}
+          disabled={busy || disconnecting}
+          className="cred-btn cred-btn-secondary w-full disabled:opacity-60"
+        >
+          {disconnecting && <Loader2 size={18} className="animate-spin" />}
+          {disconnecting ? "Disconnecting..." : "Disconnect all"}
+        </button>
+      )}
 
       <p className="text-[#8A929C] text-xs text-center leading-relaxed">
         MetaMask will ask you to sign a message. No transaction or gas fee is involved.

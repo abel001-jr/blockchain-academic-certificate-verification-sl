@@ -43,8 +43,44 @@ class AssetSizingTests(SimpleTestCase):
         classify.return_value = {"items": [{"width_fraction": .2}]}
         analysis = {"pages": [{"page": 1, "width": 600, "height": 800,
             "lines": [{"bbox": [0, 0, 600, 800]}]}]}
-        with self.assertRaisesMessage(ValueError, "No clear area"):
-            suggest_asset_size(artwork(), "seal", analysis, [])
+        result = suggest_asset_size(artwork(), "seal", analysis, [])
+        self.assertTrue(result["placement_required"])
+        self.assertEqual(result["width_points"], 120)
+        self.assertIn("Choose a position", result["note"])
+
+    @patch("institutions.template_asset_suggestions.request_classification")
+    def test_search_finds_gap_between_old_preset_rows(self, classify):
+        classify.return_value = {"items": [{"width_fraction": .2}]}
+        analysis = {"pages": [{"page": 1, "width": 600, "height": 800,
+            "lines": [{"bbox": [0, 0, 600, 320]}, {"bbox": [0, 390, 600, 800]}]}]}
+        result = suggest_asset_size(artwork(), "logo", analysis, [])
+        self.assertFalse(result["placement_required"])
+        field = result["field"]
+        self.assertGreaterEqual(field["y"] * 800, 324)
+        self.assertLessEqual((field["y"] + field["height"]) * 800, 386.000001)
+
+    @patch("institutions.template_asset_suggestions.request_classification")
+    def test_shrinks_to_fit_narrow_gap_without_overlapping(self, classify):
+        classify.return_value = {"items": [{"width_fraction": .2}]}
+        fields = [{"key": "static_text", "page": 1, "x": x, "y": 0, "width": 1/3 if x == 0 else .5, "height": 1}
+                  for x in [0, .5]]
+        result = suggest_asset_size(artwork(), "seal", self.analysis, fields)
+        self.assertFalse(result["placement_required"])
+        self.assertLess(result["width_points"], 120)
+        self.assertGreaterEqual(result["width_points"], 64)
+        field = result["field"]
+        self.assertGreaterEqual(field["x"] * 600, 204)
+        self.assertLessEqual((field["x"] + field["width"]) * 600, 296.000001)
+        self.assertAlmostEqual(field["width"] * 600 / (field["height"] * 800), 2)
+
+    @patch("institutions.template_asset_suggestions.request_classification")
+    def test_preserves_previous_image_center_when_free(self, classify):
+        classify.return_value = {"items": [{"width_fraction": .2}]}
+        previous = {"key": "logo", "page": 1, "x": .4, "y": .4, "width": .2, "height": .075}
+        result = suggest_asset_size(artwork(), "logo", self.analysis, [previous])
+        self.assertFalse(result["placement_required"])
+        self.assertAlmostEqual(result["field"]["x"], .4)
+        self.assertAlmostEqual(result["field"]["y"], .4)
 
 
 class AssetSizingAccessTests(TestCase):

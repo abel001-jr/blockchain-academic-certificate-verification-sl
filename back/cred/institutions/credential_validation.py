@@ -2,6 +2,7 @@
 import unicodedata
 from django.utils import timezone
 from reportlab.pdfbase.pdfmetrics import stringWidth
+from .template_fonts import supports_text
 
 LIMITS = {"student_name": 200, "degree_title": 255, "institution_name": 255,
           "department": 255, "grade": 50, "certificate_id": 50, "static_text": 1000}
@@ -19,12 +20,14 @@ def validate_graduate_email(value, institution):
     return value
 
 
-def clean_text(value, label, maximum, *, required=True):
+def clean_text(value, label, maximum, *, required=True, multiline=False):
     if not isinstance(value, str):
         raise ValueError(f"{label} must be text.")
-    if any(unicodedata.category(c).startswith("C") for c in value):
+    if multiline:
+        value = value.replace("\r\n", "\n").replace("\r", "\n")
+    if any(unicodedata.category(c).startswith("C") and not (multiline and c == "\n") for c in value):
         raise ValueError(f"{label} must not contain control or hidden formatting characters.")
-    value = " ".join(value.split())
+    value = "\n".join(" ".join(line.split()) for line in value.split("\n")).strip() if multiline else " ".join(value.split())
     if required and not value:
         raise ValueError(f"{label} is required.")
     if len(value) > maximum:
@@ -67,6 +70,31 @@ def validate_certificate_data(certificate):
         clean_text(value, key.replace("_", " ").capitalize(), maximum, required=key in REQUIRED)
 
 
+def fit_template_text(text, font, size, minimum, width, height, *, multiline=False):
+    """Share wrapping and shrink-to-fit rules between preflight and rendering."""
+    def lines_at(points):
+        if not multiline:
+            return [text]
+        lines = []
+        for paragraph in text.split("\n"):
+            line = ""
+            for word in paragraph.split():
+                candidate = f"{line} {word}" if line else word
+                if line and stringWidth(candidate, font, points) > width:
+                    lines.append(line)
+                    line = word
+                else:
+                    line = candidate
+            lines.append(line)
+        return lines
+    while True:
+        lines = lines_at(size)
+        fits = max((stringWidth(line, font, size) for line in lines), default=0) <= width and len(lines) * size * 1.2 <= height + .000001
+        if fits or size <= minimum:
+            return lines, size, fits
+        size = max(minimum, size - .5)
+
+
 def template_preflight(certificate, revision):
     """Return actionable fit warnings; raise on invalid input before rendering."""
     validate_certificate_data(certificate)
@@ -81,20 +109,18 @@ def template_preflight(certificate, revision):
             if not field.get("min_value", 1900) <= value <= field.get("max_value", timezone.now().year):
                 raise ValueError("Graduation year is outside the template's configured range. Correct the year or approve a new template with the appropriate range.")
         else:
-            value = clean_text(value, key.replace("_", " "), field.get("max_length", LIMITS[key]), required=field.get("required", key in REQUIRED))
+            value = clean_text(value, key.replace("_", " "), field.get("max_length", LIMITS[key]), required=field.get("required", key in REQUIRED), multiline=key == "static_text")
             if value and len(value) < field.get("min_length", 2 if key == "student_name" else 0):
                 raise ValueError(f"{key.replace('_', ' ')} is shorter than the template's minimum length. Correct the value or adjust the template validation.")
         text = str(value)
-        if any(ord(char) > 255 for char in text):
-            raise ValueError(f"{key.replace('_', ' ')} contains characters unsupported by the selected built-in font. Configure a supported font before generation; do not alter an official name.")
+        if not supports_text(field.get("font", "Times-Roman"), text):
+            raise ValueError(f"{key.replace('_', ' ')} contains characters unsupported by the selected font. Configure a supported font before generation; do not alter an official name.")
         info = revision.analysis["pages"][field.get("page", 1) - 1]
         width, height = field["width"] * info["width"], field["height"] * info["height"]
         font, size = field.get("font", "Times-Roman"), field.get("font_size", 18)
         minimum = field.get("min_font_size", 6)
-        fitted = size
-        while fitted > minimum and (stringWidth(text, font, fitted) > width or fitted * 1.2 > height):
-            fitted = max(minimum, fitted - .5)
-        if stringWidth(text, font, fitted) > width or fitted * 1.2 > height:
+        _, fitted, fits = fit_template_text(text, font, size, minimum, width, height, multiline=key == "static_text")
+        if not fits:
             raise ValueError(f"{key.replace('_', ' ')} does not fit its labelled area. Widen or increase the height of the box, or adjust font size/minimum size in a new template. Do not shorten official data to make it fit.")
         if fitted < size:
             warnings.append(f"{key.replace('_', ' ')} will use {fitted:g}pt instead of {size:g}pt. Widen the field or adjust its configured font size to preserve readability.")

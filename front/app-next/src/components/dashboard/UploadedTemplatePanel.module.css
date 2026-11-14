@@ -145,3 +145,129 @@
 @media(min-width: 1200px) { .inspector { position: sticky; top: 20px; } }
 @media(max-width: 1100px) { .workspace { grid-template-columns: minmax(0, 1fr); } .inspector { max-height: none; overflow: visible; } }
 @media(max-width: 640px) { .editor { padding: 14px; border-radius: 14px; } .suggestions, .canvasCard { padding: 14px; } .editorHeading > :global(.cred-btn), .saveBar > button { width: 100%; } }
+
+/* Document-first editor */
+.editor { padding: 20px; background: #fff; }
+.editorHeading { padding-bottom: 12px; align-items: center; }
+.editorHeading h4 { font-size: 18px; }
+.draftBadge { margin-top: 6px; }
+.steps { display: flex; flex-wrap: wrap; gap: 10px 24px; padding: 10px 0; color: #687b8e; font-size: 12px; }
+.steps [aria-current] { color: #08283f; font-weight: 700; }
+.suggestions { padding: 12px 16px; background: #f8f9fa; border-radius: 10px; }
+.suggestions > summary { cursor: pointer; color: #08283f; font-size: 13px; font-weight: 600; }
+.suggestions > summary > span { margin-left: 8px; color: #687b8e; font-size: 11px; font-weight: 400; }
+.workspace { grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; }
+.canvasCard { grid-column: 1; grid-row: 1; padding: 14px; background: #fafbfc; }
+.inspector { grid-column: 2; grid-row: 1; max-height: none; overflow: visible; box-shadow: none; padding: 16px; }
+.advanced { border: 1px solid #e4e7e9; border-radius: 8px; padding: 10px 12px; font-size: 12px; background: #fff; }
+.advanced > summary { cursor: pointer; font-weight: 600; color: #4a5a68; }
+.advanced > div { padding-top: 12px; display: flex; flex-direction: column; gap: 12px; }
+.advanced .controlHeading { margin: 0; padding: 0; border: 0; }
+.inspector textarea { width: 100%; border: 1px solid #dadddc; border-radius: 7px; padding: 10px; font-size: 13px; resize: vertical; }
+.saveBar { position: sticky; bottom: 12px; z-index: 20; background: #fff; border: 1px solid #e4e7e9; border-radius: 12px; padding: 12px; box-shadow: 0 4px 20px #08283f10; }
+@media (max-width: 1100px) { .workspace { grid-template-columns: minmax(0, 1fr) 250px; } }
+@media (max-width: 850px) {
+  .workspace { grid-template-columns: minmax(0, 1fr); }
+  .canvasCard { grid-column: 1; grid-row: 1; }
+  .inspector { grid-column: 1; grid-row: 2; position: static; }
+  .saveBar { bottom: 0; }
+}
+.nextAction { margin-right: auto; max-width: 320px; color: #4a5a68; font-size: 12px; line-height: 1.5; }
+.uploadCard { display: flex; flex-direction: column; gap: 20px; padding: 24px; border: 1px solid #dedcd3; border-radius: 16px; background: white; }
+.uploadCard h4 { color: #08283f; font-size: 18px; font-weight: 650; }
+.uploadCard > div > p { margin-top: 6px; color: #687b8e; font-size: 13px; }
+.uploadFile { display: block; }
+.uploadTarget { position: relative; display: flex; align-items: center; justify-content: center; gap: 16px; min-height: 150px; padding: 24px; border: 2px dashed #a9b8c1; border-radius: 12px; background: #f8fafb; color: #08283f; cursor: pointer; }
+.uploadTarget:hover, .uploadTarget:focus-within { border-color: #08283f; background: #f0f5f8; }
+.uploadTarget:focus-within { outline: 2px solid #b98a28; outline-offset: 3px; }
+.uploadTarget strong { display: block; font-size: 15px; overflow-wrap: anywhere; }
+.uploadTarget span span { display: block; margin-top: 6px; color: #687b8e; font-size: 12px; }
+.uploadName { display: flex; flex-direction: column; gap: 6px; max-width: 440px; color: #4a5a68; font-size: 12px; font-weight: 600; }
+.uploadFooter { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding-top: 16px; border-top: 1px solid #e4e7e9; }
+.uploadFooter > span { color: #687b8e; font-size: 12px; }
+.uploadSupport { display: flex; flex-direction: column; gap: 16px; padding-top: 16px; border-top: 1px solid #e4e7e9; }
+@media(max-width: 640px) { .uploadCard { padding: 16px; } .uploadFooter > button { width: 100%; } .uploadTarget { padding: 16px; } }
+.blankStart { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding: 16px; border: 1px solid #d8e3e9; border-radius: 10px; background: #f3f7fa; }
+.blankStart p { color: #4a5a68; font-size: 12px; }
+
+/* Three task panels share one document workspace. */
+.inspector { padding: 0; gap: 0; position: static; border-radius: 0 12px 12px 0; }
+.inspectorTabs { display: flex; gap: 4px; padding: 12px; border-bottom: 1px solid #e4e7e9; }
+.inspectorTabs button { flex: 1; padding: 8px 4px; border-radius: 6px; color: #687b8e; font-size: 12px; }
+.inspectorTabs button[aria-pressed="true"] { background: #eeeae0; color: #08283f; font-weight: 700; }
+.inspectorPanel { display: flex; flex-direction: column; gap: 14px; padding: 16px; max-height: 78vh; overflow: auto; scrollbar-width: thin; }
+.inspectorPanel[hidden] { display: none; }
+.fieldList { display: flex; flex-direction: column; gap: 5px; max-height: 180px; overflow: auto; }
+.fieldList button { display: flex; gap: 8px; justify-content: space-between; text-align: left; border: 1px solid #e4e7e9; border-radius: 6px; padding: 8px; font-size: 12px; }
+.fieldList button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fieldList small { flex-shrink: 0; color: #687b8e; font-size: 10px; }
+.fieldList button[aria-pressed="true"] { background: #f1f5fa; border-color: #849eb2; }
+.fieldList p { font-size: 12px; color: #687b8e; }
+.detailActions { display: flex; gap: 6px; flex-wrap: wrap; }
+.detailActions > button { flex: 1; }
+.inspectorPanel .suggestions { padding: 10px; }
+.inspectorPanel .blankStart { padding: 12px; }
+.documentToolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.documentToolbar > div { display: flex; gap: 6px; }
+.documentToolbar button { padding: 7px 14px; border: 1px solid #dadddc; border-radius: 6px; font-size: 12px; }
+.documentToolbar button[aria-pressed="true"] { background: #eeeae0; font-weight: 700; }
+.documentToolbar label { font-size: 12px; }
+.documentPreview { min-height: 500px; background: #edf1f5; border-radius: 8px; padding: 12px; }
+.documentPreview iframe { width: 100%; height: 72vh; border: 0; }
+.documentPreview > p { padding: 30px; color: #4a5a68; font-size: 14px; }
+.checkList { display: flex; flex-direction: column; gap: 0; list-style: none; padding: 0; }
+.checkList li { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid #e4e7e9; font-size: 11px; }
+.checkList strong { font-weight: 600; }
+.inspectorPanel dl { font-size: 11px; }
+.inspectorPanel dt { color: #687b8e; margin-top: 8px; }
+.inspectorPanel dd { margin: 0; }
+@media(min-width: 1200px) { .workspace { grid-template-columns: minmax(0, 1fr) 310px; } }
+@media(max-width: 850px) { .inspectorPanel { max-height: none; overflow: visible; } .inspector { border-radius: 12px; } }
+.checkPlaced { color: #36705a; }
+.checkMissing { color: #945022; }
+.managementHeading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+.activationBanner { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; border: 1px solid #e4e7de; border-radius: 12px; background: #efefe8; padding: 18px; }
+.activationBanner strong { font-size: 13px; }
+.activationBanner p { margin-top: 6px; font-size: 12px; color: #687b8e; }
+.templateManager { display: grid; grid-template-columns: 235px minmax(0, 1fr); overflow: hidden; border: 1px solid #e1e5e7; border-radius: 14px; background: #fff; }
+.versionList { display: flex; flex-direction: column; gap: 12px; padding: 18px; border-right: 1px solid #e1e5e7; background: #fcfcfa; }
+.versionList h4 { font-size: 13px; font-weight: 650; }
+.versionList > p { color: #687b8e; font-size: 11px; line-height: 1.6; }
+.versionList > button { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid #e1e5e7; border-radius: 10px; text-align: left; background: white; }
+.versionList > button[aria-pressed="true"] { border-color: #8ba6b5; background: #edf2f5; }
+.versionList strong { font-size: 12px; overflow-wrap: anywhere; }
+.versionList small { color: #687b8e; font-size: 11px; }
+.versionStatus { align-self: flex-start; padding: 2px 6px; background: #eeeae0; border-radius: 4px; font-size: 10px; color: #596773; }
+.managedTemplate { min-width: 0; }
+.managedHeader, .managerFooter { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding: 20px; }
+.managedHeader h4 { font-size: 15px; font-weight: 650; }
+.managedHeader p, .managerFooter p { color: #687b8e; font-size: 12px; margin-top: 5px; }
+.managerFooter strong { font-size: 13px; }
+.managerPreview { display: flex; align-items: center; justify-content: center; min-height: 460px; padding: 24px; background: #edf0f2; }
+.managerPreview img { display: block; width: auto; max-width: 100%; max-height: 620px; object-fit: contain; box-shadow: 0 6px 24px #08283f12; }
+.managerPreview iframe { width: 100%; height: 580px; border: 0; }
+.managerPreview p { color: #687b8e; font-size: 13px; }
+.previewCaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 12px 20px; border-bottom: 1px solid #e1e5e7; color: #687b8e; font-size: 11px; }
+.previewCaption a { color: #08283f; font-weight: 600; }
+.emptyTemplates { border: 1px solid #e1e5e7; border-radius: 12px; padding: 40px 24px; text-align: center; background: white; }
+.emptyTemplates h4 { font-weight: 650; font-size: 18px; }
+.emptyTemplates p { color: #687b8e; font-size: 13px; margin: 10px 0 20px; }
+@media(max-width: 850px) { .templateManager { grid-template-columns: minmax(0, 1fr); } .versionList { border-right: 0; border-bottom: 1px solid #e1e5e7; } .managerPreview { min-height: 300px; padding: 14px; } }
+.artworkUploads { display: flex; flex-direction: column; gap: 14px; align-items: stretch; }
+.artworkUploads .artworkUpload { margin: 0; min-width: 0; }
+.panel .artworkUploads input[type="file"] { font-size: 10px; padding: 5px; }
+.editor .artworkUploads > button { width: 100%; min-height: 40px; padding: 10px 12px; font-size: 12px; align-self: stretch; max-width: none; }
+
+@font-face { font-family: 'Certificate Vera'; src: url('/fonts/bitstream-vera/Vera.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Certificate Vera'; src: url('/fonts/bitstream-vera/VeraBd.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Certificate Vera'; src: url('/fonts/bitstream-vera/VeraIt.ttf') format('truetype'); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Certificate Vera'; src: url('/fonts/bitstream-vera/VeraBI.ttf') format('truetype'); font-weight: 700; font-style: italic; font-display: swap; }
+
+.fontSample { padding: 12px; border: 1px solid #e4e7e9; border-radius: 8px; background: #fffcf4; font-size: 24px !important; line-height: 1.6; overflow-wrap: anywhere; }
+@font-face { font-family: 'Certificate Cormorant'; src: url('/fonts/certificate/CormorantGaramond.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Certificate Cormorant'; src: url('/fonts/certificate/CormorantGaramond-Bold.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Certificate Cormorant'; src: url('/fonts/certificate/CormorantGaramond-Italic.ttf') format('truetype'); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Certificate Cormorant'; src: url('/fonts/certificate/CormorantGaramond-BoldItalic.ttf') format('truetype'); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Certificate Cinzel'; src: url('/fonts/certificate/Cinzel.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Certificate Cinzel'; src: url('/fonts/certificate/Cinzel-Bold.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Certificate Great Vibes'; src: url('/fonts/certificate/GreatVibes.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }

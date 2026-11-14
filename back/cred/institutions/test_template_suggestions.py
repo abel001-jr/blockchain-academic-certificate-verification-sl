@@ -8,6 +8,16 @@ class TemplateSuggestionTests(SimpleTestCase):
         return {"pages": [{"page": 1, "width": 600, "height": 400, "method": method,
             "lines": [{"text": text, "bbox": [100, 100, 400, 130], "font": "DejaVuSerif-Bold", "font_size": 24, "color": "#7D3C3C", **extras}]}]}
 
+    def test_font_mapping_preserves_family_and_combined_style(self):
+        from .template_suggestions import font_choice
+        cases = {"ABCDEF+TimesNewRomanPS-BoldItalicMT": "Times-BoldItalic",
+            "Arial-BoldOblique": "Helvetica-BoldOblique", "CourierNew-Italic": "Courier-Oblique",
+            "CormorantGaramond-BoldItalic": "CormorantGaramond-BoldItalic",
+            "ABCDEF+Cinzel-Bold": "Cinzel-Bold", "Great Vibes": "GreatVibes"}
+        for source, expected in cases.items():
+            with self.subTest(source=source):
+                self.assertEqual(font_choice(source)[0], expected)
+
     def test_name_coordinates_formatting_and_supported_fallback(self):
         analysis = self.analysis()
         item = suggest_fields(analysis)["items"][0]

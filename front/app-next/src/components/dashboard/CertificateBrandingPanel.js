@@ -12,7 +12,7 @@ import UploadedTemplatePanel from "./UploadedTemplatePanel";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api";
 
 export default function CertificateBrandingPanel() {
-  return <section aria-label="Certificate branding settings" className="flex flex-col gap-8"><UploadedTemplatePanel /><details className="border-t pt-4"><summary className="text-sm cursor-pointer text-[#687B8E]">Preset fallback for credentials without an uploaded template</summary><div className="mt-4"><LegacyCertificateBrandingPanel /></div></details></section>;
+  return <section aria-label="Certificate branding settings" className="flex flex-col gap-8"><UploadedTemplatePanel /><details className="border-t pt-4"><summary className="text-sm cursor-pointer text-[#687B8E]">When no branded template is available</summary><div className="mt-4"><LegacyCertificateBrandingPanel /></div></details></section>;
 }
 
 function LegacyCertificateBrandingPanel() {

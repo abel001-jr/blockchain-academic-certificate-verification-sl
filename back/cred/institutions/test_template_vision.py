@@ -9,7 +9,7 @@ from .test_template_asset_suggestions import artwork
 from .ai_suggestions import AssistanceError
 
 
-@override_settings(GROQ_API_KEY="test", GROQ_VISION_MODEL="test-vision")
+@override_settings(GROQ_API_KEY="test", GROQ_VISION_MODEL="test-vision", GEMINI_API_KEY="")
 class VisualLayoutTests(SimpleTestCase):
     def setUp(self):
         with fitz.open() as doc:
@@ -18,7 +18,7 @@ class VisualLayoutTests(SimpleTestCase):
         self.analysis = {"pages": [{"page": 1, "width": 600, "height": 800, "lines": []}]}
 
     def response(self, items):
-        return Mock(content=b"{}", json=lambda: {"choices": [{"message": {"content": json.dumps({"items": items})}}]})
+        return Mock(status_code=200, content=b"{}", json=lambda: {"choices": [{"message": {"content": json.dumps({"items": items})}}]})
 
     @patch("institutions.template_vision.requests.post")
     def test_uploaded_art_is_sent_and_proportions_preserved_without_saving(self, post):
@@ -50,6 +50,24 @@ class VisualLayoutTests(SimpleTestCase):
     def test_provider_failure_has_safe_error(self, post):
         import requests
         post.side_effect = requests.Timeout()
+        with self.assertRaises(AssistanceError):
+            suggest_visual_layout(self.revision, self.analysis, {}, [])
+
+    @override_settings(GEMINI_API_KEY="test-gemini", GEMINI_MODEL="test-gemini-model")
+    @patch("institutions.template_vision.requests.post")
+    def test_gemini_fallback_receives_page_and_artwork(self, post):
+        items = [{"key": "student_name", "x": .1, "y": .4, "width": .8, "height": .05}]
+        post.side_effect = [Mock(status_code=429), Mock(status_code=200, content=b"{}", json=lambda: {
+            "candidates": [{"content": {"parts": [{"text": json.dumps({"items": items})}]}}]})]
+        result = suggest_visual_layout(self.revision, self.analysis, {"logo": artwork()}, [])
+        self.assertEqual(result["items"][0]["field"]["key"], "student_name")
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(sum("inlineData" in part for part in payload["contents"][0]["parts"]), 2)
+        self.assertIn("test-gemini-model", post.call_args.args[0])
+
+    @patch("institutions.template_vision.requests.post")
+    def test_invalid_json_is_reported_as_unavailable(self, post):
+        post.return_value = Mock(status_code=200, content=b"{}", json=lambda: {"choices": [{"message": {"content": "{"}}]})
         with self.assertRaises(AssistanceError):
             suggest_visual_layout(self.revision, self.analysis, {}, [])
 

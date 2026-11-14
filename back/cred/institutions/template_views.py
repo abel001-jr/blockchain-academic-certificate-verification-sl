@@ -122,7 +122,14 @@ class TemplateAISuggestionsView(APIView):
         if revision.approved_at:
             return Response({"detail": "Approved templates are fixed."}, status=400)
         try:
-            analysis = extract_template_analysis(revision)
+            try:
+                analysis = extract_template_analysis(revision)
+            except DocumentAnalysisError:
+                if str(request.data.get("visual", "")).lower() != "true":
+                    raise
+                analysis = {**revision.analysis, "warning": "Text reading unavailable. Review AI positions against the page."}
+                if not analysis.get("pages"):
+                    raise DocumentAnalysisError("Page information is unavailable. Upload the design again.")
             profile = selected_profile(request.data.get("certificate_type", revision.analysis.get("certificate_type", "bsc")))
             analysis["certificate_profile"] = profile
             local = suggest_fields(analysis)
@@ -137,10 +144,11 @@ class TemplateAISuggestionsView(APIView):
                         result = suggest_visual_layout(revision, analysis, uploads, fields, int(request.data.get("page", 1)))
                 else:
                     result = suggest_with_groq(analysis)
+                result["ai_status"] = "completed"
             except AssistanceError:
                 if not local["items"]:
                     raise
-                result = {"items": [], "warnings": ["AI assistance is unavailable. Showing PDF/OCR and estimated layout suggestions instead."]}
+                result = {"items": [], "ai_status": "unavailable", "warnings": ["AI assistance is unavailable. Showing PDF/OCR and estimated layout suggestions instead."]}
             # Keep local blank-area detection; AI only classifies explicit text markers.
             items = list(result["items"])
             seen = {(item["field"]["page"], item["field"]["key"]) for item in items}
@@ -149,7 +157,7 @@ class TemplateAISuggestionsView(APIView):
                 if identity not in seen:
                     items.append(item)
                     seen.add(identity)
-            result = {**local, "items": items[:60],
+            result = {**local, "ai_status": result["ai_status"], "items": items[:60],
                 "warnings": list(dict.fromkeys(result.get("warnings", []) + local["warnings"]))}
             found = {item["field"]["key"] for item in result["items"]}
             result["missing_fields"] = [key for key in local["checked_fields"] if key not in found]
@@ -285,6 +293,9 @@ class TemplateSetupView(APIView):
         if not revision and CertificateTemplateRevision.objects.filter(institution=request.user.institution).count() >= 2:
             return Response({"detail": "An institution can have a maximum of two template versions, including drafts and approved templates."}, status=409)
         try:
+            requested_mode = request.data.get("design_mode", "auto")
+            if requested_mode not in {"auto", "blank", "existing"}:
+                raise ValueError("Choose automatic detection, blank background or existing certificate.")
             output = prepare_document(request.FILES.getlist("master"), int(request.data.get("rotation", 0)))
             analysis_error = ""
             try:
@@ -313,7 +324,7 @@ class TemplateSetupView(APIView):
             from .template_mode import detect_design_mode
             detection = detect_design_mode(analysis)
             analysis["design_detection"] = detection
-            analysis["design_mode"] = detection["recommended"]
+            analysis["design_mode"] = detection["recommended"] if requested_mode == "auto" else requested_mode
             revision.analysis = analysis
             revision.master.save("master.pdf", ContentFile(output), save=False)
             revision.save()

@@ -10,8 +10,8 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 
 TEXT_FIELDS = {"student_name", "degree_title", "institution_name", "graduation_year", "department", "grade", "certificate_id", "static_text"}
 ASSET_FIELDS = {"logo", "seal", "registrar_signature", "vc_signature", "chancellor_signature", "qr"}
-FONTS = {"Times-Roman", "Times-Bold", "Helvetica", "Helvetica-Bold", "Times-Italic"}
-from .credential_validation import LIMITS, template_preflight, clean_text
+from .template_fonts import FONTS, supports_text
+from .credential_validation import LIMITS, template_preflight, clean_text, fit_template_text
 
 
 def validate_layout(fields, analysis):
@@ -89,26 +89,27 @@ def render_uploaded_template(certificate, revision, *, include_attestations=Fals
                 box_width, box_height = field["width"] * width, field["height"] * height
                 if key in TEXT_FIELDS:
                     value = field.get("text", "") if key == "static_text" else certificate.institution.name if key == "institution_name" else getattr(certificate, key, "")
-                    value = str(value or "") if key == "graduation_year" else clean_text(value, key, LIMITS[key], required=False)
+                    value = str(value or "") if key == "graduation_year" else clean_text(value, key, LIMITS[key], required=False, multiline=key == "static_text")
                     font, size = field.get("font", "Times-Roman"), field.get("font_size", 18)
                     minimum = field.get("min_font_size", 6)
-                    while size > minimum and (stringWidth(value, font, size) > box_width or size * 1.2 > box_height):
-                        size = max(minimum, size - 0.5)
-                    if stringWidth(value, font, size) > box_width or size * 1.2 > box_height:
+                    lines, size, fits = fit_template_text(value, font, size, minimum, box_width, box_height, multiline=key == "static_text")
+                    if not fits:
                         raise ValueError(f"The {key} field is too small for its content. Enlarge it in template settings.")
-                    if any(ord(char) > 255 for char in value):
-                        raise ValueError(f"The {key} field needs a font supporting its characters; built-in fonts currently support Latin text.")
+                    if not supports_text(font, value):
+                        raise ValueError(f"The {key} field needs a font supporting its characters; choose a font supporting this text.")
                     overlay.setFont(font, size)
                     from reportlab.lib.colors import HexColor
                     overlay.setFillColor(HexColor(field.get("color", "#000000")))
-                    baseline = y + (box_height - size) / 2 + size * 0.2
+                    baseline = y + (box_height + len(lines) * size * 1.2) / 2 - size
                     align = field.get("align", "center")
-                    if align == "center":
-                        overlay.drawCentredString(x + box_width / 2, baseline, value)
-                    elif align == "right":
-                        overlay.drawRightString(x + box_width, baseline, value)
-                    else:
-                        overlay.drawString(x, baseline, value)
+                    for line in lines:
+                        if align == "center":
+                            overlay.drawCentredString(x + box_width / 2, baseline, line)
+                        elif align == "right":
+                            overlay.drawRightString(x + box_width, baseline, line)
+                        else:
+                            overlay.drawString(x, baseline, line)
+                        baseline -= size * 1.2
                 elif key == "qr":
                     import qrcode
                     png = BytesIO()

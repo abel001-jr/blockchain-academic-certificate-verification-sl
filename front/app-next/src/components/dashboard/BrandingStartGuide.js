@@ -54,7 +54,7 @@ export default function BrandingStartGuide({ onContinue, initiallyOpen = true, s
 
   return <div className="self-start" data-branding-start-guide>
     <button type="button" onClick={() => { setSlide(0); setOpen(true); }} className="cred-btn cred-btn-secondary gap-2 self-start">
-      <BookOpen size={18} /> Read before you start
+      <BookOpen size={18} /> Quick guide
     </button>
     <dialog ref={dialog} className={styles.guide} aria-labelledby="branding-start-title" aria-describedby="branding-start-description" onCancel={event => { event.preventDefault(); finishGuide(); }}>
       <header className="border-b border-[#D8DEE6] p-5 sm:p-6">

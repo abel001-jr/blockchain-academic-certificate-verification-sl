@@ -1,13 +1,14 @@
 """Review-only visual layout proposals for live-text and flattened masters."""
 import base64
 import json
+import logging
 from io import BytesIO
 import requests
 import pymupdf as fitz
 from PIL import Image, ImageOps
 from django.conf import settings
 from .ai_suggestions import AssistanceError
-from .template_rendering import TEXT_FIELDS, ASSET_FIELDS, validate_layout
+from .template_rendering import TEXT_FIELDS, ASSET_FIELDS, validate_layout, FONTS
 
 
 def image_url(source):
@@ -26,9 +27,50 @@ def overlaps(a, b):
     return a.get("page", 1) == b.get("page", 1) and a["x"] < b["x"]+b["width"] and a["x"]+a["width"] > b["x"] and a["y"] < b["y"]+b["height"] and a["y"]+a["height"] > b["y"]
 
 
+def request_visual_layout(prompt, content):
+    """Try configured vision providers with the same review-only document inputs."""
+    providers = []
+    if settings.GROQ_API_KEY and settings.GROQ_VISION_MODEL:
+        providers.append(("groq", "https://api.groq.com/openai/v1/chat/completions",
+            {"Authorization": "Bearer " + settings.GROQ_API_KEY},
+            {"model": settings.GROQ_VISION_MODEL, "temperature": 0, "max_completion_tokens": 6000,
+             "response_format": {"type": "json_object"},
+             "messages": [{"role": "system", "content": prompt}, {"role": "user", "content": content}]}))
+    if settings.GEMINI_API_KEY:
+        parts = []
+        for item in content:
+            if item["type"] == "text":
+                parts.append({"text": item["text"]})
+            else:
+                header, data = item["image_url"]["url"].split(",", 1)
+                parts.append({"inlineData": {"mimeType": header[5:].split(";")[0], "data": data}})
+        providers.append(("gemini", f"https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent",
+            {"x-goog-api-key": settings.GEMINI_API_KEY},
+            {"systemInstruction": {"parts": [{"text": prompt}]},
+             "contents": [{"role": "user", "parts": parts}],
+             "generationConfig": {"temperature": 0, "maxOutputTokens": 6000, "responseMimeType": "application/json"}}))
+    if not providers:
+        raise AssistanceError("Certificate AI is not configured on the server. Use Find fields instead.")
+    for provider, url, headers, payload in providers:
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=(5, 35))
+            if response.status_code != 200 or len(response.content) > 100000:
+                logging.getLogger(__name__).warning("Certificate vision provider %s failed (HTTP %s).", provider, response.status_code)
+                continue
+            body = response.json()
+            if provider == "groq":
+                raw = body["choices"][0]["message"]["content"]
+            else:
+                raw = "".join(part.get("text", "") for part in body["candidates"][0]["content"]["parts"] if not part.get("thought"))
+            data = json.loads(raw)
+            if isinstance(data, dict) and isinstance(data.get("items"), list):
+                return data
+        except (requests.RequestException, ValueError, KeyError, IndexError, TypeError):
+            logging.getLogger(__name__).warning("Certificate vision provider %s failed or returned invalid JSON.", provider)
+    raise AssistanceError("Certificate AI could not respond. Try again or use Find fields to continue.")
+
+
 def suggest_visual_layout(revision, analysis, uploads, fields, page_number=1, full_design=False):
-    if not settings.GROQ_API_KEY or not settings.GROQ_VISION_MODEL:
-        raise AssistanceError("Groq vision is not configured.")
     if type(page_number) is not int or not 1 <= page_number <= len(analysis.get("pages", [])):
         raise ValueError("Choose an existing page.")
     validate_layout(fields, analysis)
@@ -69,22 +111,11 @@ def suggest_visual_layout(revision, analysis, uploads, fields, page_number=1, fu
             'graduation_year, certificate_id, and labelled registrar/VC/chancellor signature areas. Include uploaded artwork where appropriate. '
             'Do not invent student data, signatures or institution facts. Use concise generic ceremonial wording for review. '
             'Each static_text item must include text (one line, at most 250 characters). Multiple static_text items are allowed. '
-            'Each item may include font_size (6..72), font (Times-Roman, Times-Bold, Times-Italic, Helvetica, Helvetica-Bold), '
+            'Each item may include font_size (6..72), font (' + ', '.join(sorted(FONTS)) + '), '
             'align (left, center, right), color (#RRGGBB). Make all wording editable, with separate non-overlapping boxes. '
+            'Use Cinzel for formal headings, CormorantGaramond for ceremonial wording, and GreatVibes sparingly for names. '
             'Preserve any wording already present in the master; do not duplicate it. Leave generous space for long student names and degrees.')
-    try:
-        response = requests.post("https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": "Bearer " + settings.GROQ_API_KEY},
-            json={"model": settings.GROQ_VISION_MODEL, "temperature": 0, "max_completion_tokens": 3000,
-                  "response_format": {"type": "json_object"}, "messages": [{"role": "system", "content": prompt}, {"role": "user", "content": content}]}, timeout=(5,35))
-        response.raise_for_status()
-        if len(response.content) > 100000:
-            raise ValueError("Oversized response")
-        data = json.loads(response.json()["choices"][0]["message"]["content"])
-        if not isinstance(data, dict) or not isinstance(data.get("items"), list):
-            raise ValueError("Invalid response")
-    except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as exc:
-        raise AssistanceError("Visual AI is unavailable. Local PDF/OCR suggestions remain available.") from exc
+    data = request_visual_layout(prompt, content)
     items, occupied, seen = [], list(fields), set()
     page = analysis["pages"][page_number-1]
     for candidate in data["items"][:30]:

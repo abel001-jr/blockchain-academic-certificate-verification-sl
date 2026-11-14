@@ -21,11 +21,28 @@ ALIASES = {
 def font_choice(name):
     if name in FONTS:
         return name, False
-    normalized = name.lower()
-    serif = "serif" in normalized or "times" in normalized
+    normalized = re.sub(r"^[A-Z]{6}\+", "", name).lower()
     italic = "italic" in normalized or "oblique" in normalized
-    bold = "bold" in normalized
-    return ("Times-Italic" if serif and italic else "Times-Bold" if serif and bold else "Times-Roman" if serif else "Helvetica-Bold" if bold else "Helvetica"), True
+    bold = "bold" in normalized or "semibold" in normalized
+    if "cormorant" in normalized:
+        base = "CormorantGaramond"
+    elif "cinzel" in normalized:
+        return "Cinzel-Bold" if bold else "Cinzel", True
+    elif "greatvibes" in re.sub(r"[\s-]", "", normalized):
+        return "GreatVibes", True
+    elif "vera" in normalized:
+        base = "Vera"
+    elif "courier" in normalized:
+        base = "Courier"
+    elif "sans" not in normalized and any(word in normalized for word in ("serif", "times", "garamond", "baskerville", "georgia", "palatino")):
+        base = "Times"
+    else:
+        base = "Helvetica"
+    if not bold and not italic:
+        return "Times-Roman" if base == "Times" else base, True
+    slant = "Oblique" if base in {"Helvetica", "Courier"} else "Italic"
+    return base + "-" + ("Bold" if bold else "") + (slant if italic else ""), True
+
 
 def blank_field_suggestions(analysis):
     """Propose review-only boxes in text-free gaps beside familiar certificate anchors."""
